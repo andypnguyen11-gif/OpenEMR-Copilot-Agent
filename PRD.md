@@ -38,8 +38,9 @@
   colleague's ambulatory patient panel. Faces a panel of unfamiliar follow-up patients with      
   established histories. Two distinct moments in the day:
                                                                                                  
-  - Pre-clinic (≈30 min before clinic starts): reviewing today's panel, prepping for unknown     
-  patients
+  - Pre-clinic (variable, 0–30 min before clinic starts; the architecture does not assume    
+  this window exists — pre-warming is server-triggered): reviewing today's panel, prepping    
+  for unknown patients when time allows
   - Between rooms (≈90 sec): refreshing context on the next patient before walking in            
                                                                                                  
   Why this user (and not the case study's other examples):                                       
@@ -128,7 +129,11 @@
 
   Implication: the slow lane pre-warms the fast lane. Discrepancy detection and patient summaries
    computed pre-clinic are cached; between-room queries hit cache + light synthesis instead of
-  cold-fetch + verify.                                                                           
+  cold-fetch + verify. Critically, the slow-lane pre-warm runs as a server-side background pass
+  (triggered by schedule load, EMR login, or pre-clinic cron) — *not* by the clinician opening
+  the Daily Brief. The Daily Brief is one consumption surface; the cache warms whether or not it
+  is used. This decouples the architecture from any assumption about clinician prep time, which
+  varies in practice from 0 to ~30 minutes.                                                      
                   
   Model selection note. Anthropic Claude is committed as the LLM provider (clinical reasoning    
   quality, structured-output support, tool use, BAA availability). Specific model tier per lane
@@ -266,7 +271,12 @@
   - physician — full read on assigned cross-coverage panel                                                      
   - resident — same read scope as physician, but every action logged for supervisor review
   - supervisor — read on supervised resident's activity log                                      
-                                                                                                 
+
+  The supervisor role expands **audit visibility, not PHI permissions** — they see the
+  same patient data a covering attending would see, plus read-access to their supervised
+  resident's activity log. No role in MVP unlocks PHI beyond what its base clinical scope
+  already grants.
+
   Out of scope for MVP: break-glass emergency access, role overrides, fine-grained scopes per    
   data type.                                                                                     
                                                                                                  
@@ -322,8 +332,11 @@
   │ LLM model tier    │ Haiku (fast lane) —      │ data                                     │    
   │                   │ candidate                │                                          │ 
   ├───────────────────┼──────────────────────────┼──────────────────────────────────────────┤    
-  │ Cache             │ In-memory + TTL (single  │ Redis is operational debt without payoff │    
-  │                   │ process, MVP)            │  at MVP scale                            │ 
+  │ Cache             │ In-process Python TTL    │ Redis is operational debt without payoff │    
+  │                   │ cache for hot flags +    │  at MVP scale                            │
+  │                   │ Postgres-backed durable  │                                          │
+  │                   │ cache for precomputed    │                                          │
+  │                   │ artifacts. No Redis MVP. │                                          │ 
   ├────────────────────────┼─────────────────────────┼───────────────────────────────────────┤   
   │ Agent metadata DB      │ Railway managed         │ Eval results, traces, audit log —     │   
   │ (deployed)             │ Postgres                │ persistence matters; Railway volumes  │

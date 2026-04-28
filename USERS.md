@@ -14,7 +14,7 @@ This user is chosen deliberately. The case study lists "a primary care physician
 
 The agent enters the user's day at two distinct moments with very different latency-quality tradeoffs:
 
-1. **Pre-clinic, ~30 minutes before doors open.** The user is sitting at a desk with coffee, going through today's panel one patient at a time, building enough context to walk into rooms. The agent is allowed to take 10–20 seconds per patient. Verification depth is full. The output is read carefully.
+1. **Pre-clinic, when available — anywhere from 0 to 30 minutes before doors open.** *When* the user has time, they sit at a desk going through today's panel one patient at a time, building context to walk into rooms; the agent is allowed 10–20 seconds per query and verification depth is full. The architecture does *not* assume this window exists — the slow-lane pre-warm runs as a server-side background pass triggered by schedule load, login, or cron, so the cache is warm whether or not the clinician engages with the Daily Brief. Real-world prep time varies from "none" (running late, back-to-back schedule) to a calm 30 minutes; both cases are designed for.
 2. **Between rooms, ~90 seconds.** The user has just left room 4, is walking to room 5, and needs a refresher in time to put their hand on the door. The agent has under 5 seconds. Verification depth is lighter (it leans on flags pre-computed in the slow lane). The output is glanced at.
 
 Four use cases cover the day. Three of them — *what's changed since last visit*, *active problems / meds / allergies / abnormal labs*, and *what should I know before walking in* — are concrete chart-reading tasks that today take dense minutes and produce error under pressure. The fourth — *what conflicts or missing data should I verify* — is the **differentiating feature**: a synthesis the user simply cannot get from a dashboard, because discrepancies aren't a list view, they're a cross-source comparison the chart UI doesn't make. This fourth use case is also the surface where the agent honors the case study's domain-constraint requirement, by flagging what the chart already says rather than generating new clinical recommendations.
@@ -37,7 +37,7 @@ This document was derived from the case study, OpenEMR's actual data model, and 
 | Setting | Outpatient ambulatory clinic |
 | Today's mode | Cross-coverage for a colleague's panel |
 | Panel for the day | ~20 follow-up patients, mostly unknown to the user |
-| Time before clinic opens | ~30 minutes for prep |
+| Time before clinic opens | Variable: 0–30 minutes depending on practice load and the day. Architecture does not assume a prep window exists; the slow-lane pre-warm is server-triggered, not UI-triggered. |
 | Time between rooms | ~60–120 seconds in practice, called "90 seconds" as a planning number |
 | Visit type today | Established follow-up (not new-patient intake) |
 | Technical fluency | Comfortable with EHR; not interested in agent UX as a tool to learn |
@@ -94,7 +94,7 @@ Authorized clinical users in MVP are **attending physicians, covering physicians
 
 ## 2. Workflow — A Day in the Life
 
-This walks through one specific Tuesday for the target user. Times are illustrative; the structure of the day is not. The agent's entry points are called out explicitly.
+This walks through one specific Tuesday for the target user. Times are illustrative; the structure of the day is not. Prep time before clinic opens varies in real practice from 0 to ~30 minutes; this walkthrough portrays a clinic-with-prep-time case, but the architecture is designed to work whether or not the clinician uses the Daily Brief (see ARCHITECTURE.md §2 — pre-warming is server-triggered, not UI-triggered). The agent's entry points are called out explicitly.
 
 ### 7:30 AM — arrival
 

@@ -353,6 +353,7 @@ Items the audit identified as plausible but not exhaustively verified line-by-li
 3. **Demo data row count** — verify `example_patient_data.sql` line count and confirm it loads zero clinical rows. (use case 3 hard gate)
 4. **`patientSummaryCard.render` event firing** — load the demographics tab in the running instance and confirm a no-op Symfony listener gets invoked. (A-02 mitigation)
 5. **FHIR coverage smoke test** — hit `/fhir/Patient`, `/fhir/Condition?patient=...`, `/fhir/MedicationRequest?patient=...` against the running instance and confirm 200s with expected payload shapes.
+6. **Pre-warm trigger events** — confirm whether OpenEMR fires reachable Symfony events for (a) login completion and (b) schedule/calendar load, so the slow-lane discrepancy pass can fire on these triggers per ARCH §2 trigger/consumption split (the architectural answer to "what if the clinician has zero prep time?"). If neither event is reachable, fall back to a pre-clinic cron job only — no architectural change required, but the trigger story narrows.
 
 These are not blockers; they're the items where the audit produced a high-confidence inference but the running instance can give a one-line confirmation.
 

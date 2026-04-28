@@ -135,7 +135,7 @@ The single most consequential design decision. Speed and completeness are bifurc
 - **Use cases:** 1, 2, 3.
 - **Verification depth:** full (citation + field check + discrepancy + abstention).
 - **Candidate model:** Claude Sonnet-class.
-- **Outputs cached:** per-patient flags and pre-computed briefings written to in-process cache + Postgres-backed durable cache. These warm the fast lane.
+- **Outputs cached:** per-patient flags and pre-computed briefings written to the canonical cache layout — in-process Python TTL cache for hot flags; Postgres-backed durable cache for precomputed artifacts. No external cache service (Redis) at MVP. These warm the fast lane.
 
 ### Fast lane — between rooms
 
@@ -148,9 +148,11 @@ The single most consequential design decision. Speed and completeness are bifurc
 
 ### Pre-warming model
 
-The slow lane *is* the warming pass for the fast lane. When the clinician opens the Daily Brief at 8:30 AM, the discrepancy engine runs across today's panel, briefings are precomputed, and flags land in cache. By the time clinic starts at 9:00 AM, every patient's between-room query hits warm cache + structured retrieval, no LLM cold path required for facts.
+The slow lane *is* the warming pass for the fast lane. The discrepancy engine and per-patient briefings run as a **server-side background pass**, triggered by any of: schedule load, EMR login, or a pre-clinic cron job — **not** by the clinician opening the Daily Brief UI. This separation is deliberate: prep time in real practice varies from 0 to ~30 minutes, and the architecture cannot assume the clinician will sit with the Daily Brief. By the time clinic starts, every patient's between-room query hits warm cache + structured retrieval regardless of whether the clinician engaged with the Daily Brief at all.
 
-If the clinician skips the Daily Brief, fast-lane queries fall back to on-demand recomputation, with the budget acknowledged as best-effort.
+The Daily Brief is therefore a **consumption surface, not a trigger.** If the clinician opens it (calm morning, full prep window), they get prioritized cards and can drill into flagged patients. If they don't (running late, back-to-back schedule), the cache is still warm because the background pass already ran. If even the cache is cold (all triggers missed — schedule loaded late, login event lost), fast-lane queries fall back to on-demand recomputation with the budget acknowledged as best-effort.
+
+This trigger/consumption split is the architectural answer to "what if the clinician has zero prep time?" — the cache pre-warm is independent of UI engagement.
 
 ---
 
@@ -337,6 +339,8 @@ Two boundaries with different requirements; two tokens are the correct shape, no
 
 A check at the orchestrator layer is wrong because the orchestrator sees only the user's question, not the data being touched. By the time you decide "this user shouldn't have seen patient_id 999," you've already read patient_id 999's data into memory. Authorization belongs at the data-access boundary, in each tool, before fetch.
 
+**If JWT claims and OpenEMR ACL disagree, OpenEMR ACL wins — deny by default.** The HMAC JWT carries the *clinician's per-request identity* (who is asking, for which patient, with what role); OpenEMR's ACL is the *source of truth for whether that identity is authorized to see the data.* The agent's tool layer pre-filters with JWT scopes, but the FHIR endpoint re-checks ACL on every call (audit finding S-07). Any divergence — JWT says "yes," ACL says "no" — resolves in favor of ACL, surfaced as `UNAUTHORIZED` to the user with a mandatory audit-log entry. The reverse case (ACL says "yes," JWT scopes say "no") cannot occur because JWT scopes are issued *from* the clinician's session role, not granted independently.
+
 ### Patient context binding
 
 When the in-chart side panel opens for patient X, the chat session is server-side bound to `patient_id=X`. All tool calls within the session are scoped to X. Switching patients = new session = new token = new binding. The agent **structurally cannot drift** to wrong-patient mistakes.
@@ -358,6 +362,8 @@ The Daily Brief is multi-patient by design; its session is bound to "today's pan
 | `physician` | Own + assigned cross-coverage panel | Yes (per HIPAA minimum) | Default |
 | `resident` | Own + assigned cross-coverage panel | Every action logged for supervisor | RBAC story for case study |
 | `supervisor` | Own panel + supervised resident's audit log | Yes | View access only |
+
+The supervisor role expands **audit visibility, not PHI permissions** — they see the same patient data a covering attending would see in their own panel, plus read-access to their supervised resident's activity log. No role in MVP unlocks PHI beyond what its base clinical scope already grants.
 
 Out of scope: break-glass emergency access, role overrides, fine-grained per-data-type scopes.
 
@@ -421,10 +427,18 @@ It's the differentiating feature (use case 3) and a verification-enrichment sour
 
 Same Python service, separate module.
 
+### Data access boundary
+
+All PHI reads — including discrepancy detection — flow through OpenEMR's FHIR/REST APIs or approved PHP gateway endpoints. The discrepancy engine does not read OpenEMR's MariaDB directly; "cross-source reasoning" means *cross-FHIR-resource reasoning* (MedicationRequest vs. DocumentReference text, AllergyIntolerance vs. MedicationRequest, etc.), not direct table joins. This keeps the engine inside the same trust boundary as every other tool: ACL is enforced server-side by OpenEMR, scopes are checked at the FHIR endpoint, and no Python code in the agent service has DB credentials for the OpenEMR schema.
+
 ### Background pass
 
 ```
-[Trigger 1] Clinician opens Daily Brief
+[Trigger 1] Pre-clinic warm — any of:
+              ├─ schedule load event
+              ├─ EMR login event
+              ├─ pre-clinic cron job
+              └─ Daily Brief open (one option among these, not the only one)
               │
               ▼
    Load today's panel (patient IDs)
@@ -504,7 +518,7 @@ Beyond the minimum:
 - **Cache hit rate** for fast lane — directly tied to user-perceived latency
 - **Audit log completeness** — every PHI access has a corresponding audit log row (asserted, not assumed)
 
-PHI is not sent to LangSmith. We log structural events (tool name, latency, claim count) but not record contents. Patient IDs are hashed in trace IDs. Instrumentation is via the `@traceable` decorator on plain Anthropic SDK calls — LangSmith does not require LangChain, and we do not introduce LangChain to the stack.
+PHI is not sent to LangSmith. **Prompt content is redacted before tracing**: only structural metadata (tool name, latency, span counts, claim count, model tier, abstention state) and hashed patient IDs are serialized into observability payloads. Raw patient text, chart contents, clinical note bodies, free-form fields, and tool-result PHI are scrubbed at the instrumentation boundary — they never enter a span. The redaction layer sits between the agent's structured output and the `@traceable` wrapper; it is failure-mode tested as part of the eval suite (a probe that emits PHI through a tool result is asserted to never appear in the LangSmith trace). Instrumentation is via the `@traceable` decorator on plain Anthropic SDK calls — LangSmith does not require LangChain, and we do not introduce LangChain to the stack.
 
 ### Evaluation framework
 
