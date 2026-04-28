@@ -1,0 +1,15 @@
+stages:
+  - deploy
+
+deploy:
+  stage: deploy
+  image: node:20-alpine
+  before_script:
+    - apk add --no-cache curl bash
+    - npm install -g @railway/cli
+  script:
+    - railway up --service openemr --ci
+  only:
+    - main
+  environment:
+    name: production
