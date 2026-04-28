@@ -1,11 +1,11 @@
 # OpenEMR production image for Railway.
 #
-# Layers your repo source on top of the official openemr/openemr image so
-# pushes to GitLab actually deploy your code changes. Vendor and node_modules
-# are inherited from the base image (see .dockerignore) — rebuild the base
-# image manually if you change composer.json or package.json.
+# Uses the stock openemr/openemr image without overlaying repo source.
+# Source overlays caused version mismatches between the image's bundled
+# auto_configure.php and our newer Installer class. To ship code changes
+# in the future, layer in selective COPYs for /modules/custom_modules,
+# /templates, /library/js, /interface/themes, and /public — those paths
+# don't have signature dependencies on the image's core PHP.
 FROM openemr/openemr:latest
-
-COPY --chown=apache:apache . /var/www/localhost/htdocs/openemr/
 
 EXPOSE 80
