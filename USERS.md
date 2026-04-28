@@ -280,7 +280,7 @@ Every architecture capability serves a use case here. This table is the contract
 | Two-model strategy (Sonnet/Haiku candidates) (PRD §4, §8) | 1, 3 → slow; 2, 4 → fast | Latency budgets demand model-tier split |
 | Non-streaming responses (PRD §5) | All | Whole-response verification depends on buffer-then-display |
 | Audit log durability (PRD §6, §10) | All; secondary user | HIPAA-relevant; supervisor view depends on it |
-| Langfuse observability (PRD §8) | All | Per-request trace, token cost, latency — case-study required |
+| LangSmith observability (PRD §8) | All | Per-request trace, token cost, latency — case-study required; annotation queue feeds use-case-4 human grading |
 
 Every capability in ARCHITECTURE.md should map to at least one row in this table. Capabilities with no row are scope creep and should be removed.
 

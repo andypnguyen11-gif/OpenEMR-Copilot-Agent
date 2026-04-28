@@ -90,7 +90,7 @@ The Clinical Co-Pilot is an AI agent embedded in OpenEMR that gives a cross-cove
        └──── all PHI access goes here ────┘
 
 External: Anthropic API (Claude Sonnet/Haiku candidates),
-          Langfuse (traces, costs, observability)
+          LangSmith (traces, costs, observability, eval datasets)
 ```
 
 ### Service responsibilities
@@ -101,7 +101,7 @@ External: Anthropic API (Claude Sonnet/Haiku candidates),
 | **PHP Gateway (new, in OpenEMR fork)** | Session validation; HMAC token signing; request proxy; thin custom data endpoints for FHIR gaps | Agent orchestration, LLM calls |
 | **Agent Service (new, Python/FastAPI)** | Orchestration, tool layer, verification middleware, discrepancy engine | Direct DB access; user authentication (delegated to PHP gateway) |
 | **Agent Postgres (new)** | Agent metadata, eval results, traces, **HIPAA-relevant audit log** | OpenEMR record data |
-| **Langfuse (external)** | Tracing, token cost, latency, model-call inspection | Patient data (we don't send PHI to Langfuse) |
+| **LangSmith (external)** | Tracing, token cost, latency, model-call inspection, annotation queue, eval datasets | Patient data (we don't send PHI to LangSmith) |
 
 ### Single orchestrator over multi-agent decomposition
 
@@ -491,10 +491,10 @@ For MVP, rules are authored as YAML/JSON configuration in the agent service repo
 
 | Question (case study minimum) | How we answer it |
 |---|---|
-| What did the agent do on a specific request, in what order? | Langfuse trace per request, spans per tool call, verification step, model call |
-| How long did each step take? | Span durations in Langfuse + Postgres trace table for offline analysis |
-| Did any tools fail, and why? | Tool calls emit structured error events; aggregated in Langfuse and stored durably |
-| How many tokens / what cost? | Langfuse token + cost tracking per request; aggregated in dashboards |
+| What did the agent do on a specific request, in what order? | LangSmith trace per request, spans per tool call, verification step, model call |
+| How long did each step take? | Span durations in LangSmith + Postgres trace table for offline analysis |
+| Did any tools fail, and why? | Tool calls emit structured error events; aggregated in LangSmith and stored durably |
+| How many tokens / what cost? | LangSmith token + cost tracking per request; aggregated in dashboards |
 
 Beyond the minimum:
 
@@ -504,7 +504,7 @@ Beyond the minimum:
 - **Cache hit rate** for fast lane — directly tied to user-perceived latency
 - **Audit log completeness** — every PHI access has a corresponding audit log row (asserted, not assumed)
 
-PHI is not sent to Langfuse. We log structural events (tool name, latency, claim count) but not record contents. Patient IDs are hashed in trace IDs.
+PHI is not sent to LangSmith. We log structural events (tool name, latency, claim count) but not record contents. Patient IDs are hashed in trace IDs. Instrumentation is via the `@traceable` decorator on plain Anthropic SDK calls — LangSmith does not require LangChain, and we do not introduce LangChain to the stack.
 
 ### Evaluation framework
 

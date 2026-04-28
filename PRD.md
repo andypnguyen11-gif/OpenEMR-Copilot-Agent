@@ -336,8 +336,10 @@
   │ Agent audit log        │  table; retention TBD   │ durability is a requirement, not a    │
   │                        │                         │ nice-to-have                          │   
   ├────────────────────────┼─────────────────────────┼───────────────────────────────────────┤
-  │ Observability          │ Langfuse (cloud, free   │ Traces, token cost, latency — covers  │   
-  │                        │ tier)                   │ the case study's required metrics     │
+  │ Observability          │ LangSmith (cloud, free  │ Traces, token cost, latency + annota- │   
+  │                        │ tier)                   │ tion queue for human-graded eval (use │   
+  │                        │                         │ case 4); Claude Code MCP integration  │   
+  │                        │                         │ for iteration loop (post-MVP)         │
   ├────────────────────────┼─────────────────────────┼───────────────────────────────────────┤   
   │ Eval framework         │ Custom Python harness,  │ Faster to iterate at MVP volume than  │
   │                        │ JSON test cases         │ Braintrust                            │   
@@ -482,7 +484,7 @@
   conflicting records, stale data, fabrication probes                                            
   - Eval suite passes ≥90% overall, and 100% on RBAC / security cases. Security failures are not
   a "mostly pass" category — any RBAC bypass is a stop-ship.                                     
-  - Observability (Langfuse) shows per-request trace, latency, token cost, tool calls
+  - Observability (LangSmith) shows per-request trace, latency, token cost, tool calls
   - Architecture defense (Tuesday) holds without "we'll figure that out later" answers           
                                                                                                  
   ---                                                                                            
