@@ -135,9 +135,9 @@ openemr/                                              (this repo — OpenEMR for
 │               ├── conflicting/
 │               ├── stale/
 │               ├── fabrication/
-│               └── rbac_bypass/
-│
-└── .gitlab-ci.yml                                    (EDIT — add agent-service deploy + eval gate)
+                └── rbac_bypass/
+
+(No CI config — deploy is manual via `railway up`; eval gate runs locally pre-merge.)
 ```
 
 ---
@@ -155,7 +155,7 @@ alongside `openemr-web`. No agent logic yet — this is the deployable shell.
 - [ ] `railway.toml` for the `agent-service` Railway service
 - [ ] `config.py` reading env vars (HMAC secret, LLM key, FHIR base URL, Postgres DSN)
 - [ ] Structured logging via `structlog`
-- [ ] CI: lint (`ruff`), type-check (`mypy`), unit-test (`pytest`) jobs
+- [ ] Local quality gates: lint (`ruff`), type-check (`mypy`), unit-test (`pytest`) — runnable via a Make target / shell script before manual deploy
 
 **NEW**
 - `agent-service/pyproject.toml`
@@ -165,11 +165,9 @@ alongside `openemr-web`. No agent logic yet — this is the deployable shell.
 - `agent-service/src/clinical_copilot/main.py`
 - `agent-service/src/clinical_copilot/config.py`
 - `agent-service/tests/unit/test_health.py`
+- `agent-service/Makefile` (or `scripts/check.sh`) — `make check` runs ruff + mypy + pytest
 
-**EDIT**
-- `.gitlab-ci.yml` — add `deploy_agent` stage, lint/test jobs for `agent-service/`
-
-**Acceptance:** `railway up --service agent-service` produces a green deploy; `/healthz` returns 200.
+**Acceptance:** `make check` passes locally; `railway up --service agent-service` produces a green deploy; `/healthz` returns 200.
 
 ---
 
@@ -505,8 +503,9 @@ Sub-tasks:
   prefixed `test-fixture-discrepancy-*` for clean teardown.
 - [ ] **`bin/generate-discrepancy-sql.php`** — small generator that reads
   `discrepancy-scenarios.php` and emits `sql/example_discrepancy_data.sql`. Run at build
-  time + checked-in output (so demo deploys don't need PHP at install time). CI verifies
-  the file is up-to-date (`generate` then `git diff --exit-code`).
+  time + checked-in output (so demo deploys don't need PHP at install time). A pre-merge
+  local check verifies the file is up-to-date (`generate` then `git diff --exit-code`),
+  wired into `make check` and the pre-commit hook.
 - [ ] **`sql/example_discrepancy_data.sql`** is the **generated artifact** — never
   hand-edited. Header comment reads: "Generated from
   `tests/Tests/Fixtures/discrepancy-scenarios.php` — do not edit; run
@@ -545,14 +544,15 @@ Sub-tasks:
 - `agent-service/tests/integration/test_seeded_fixture.py`
 
 **EDIT**
-- `.gitlab-ci.yml` — add a "fixture-up-to-date" check (`bin/generate-discrepancy-sql.php`
-  then `git diff --exit-code sql/example_discrepancy_data.sql`)
+- `agent-service/Makefile` (or `scripts/check.sh`) — add `fixture-check` target running
+  `bin/generate-discrepancy-sql.php` then `git diff --exit-code sql/example_discrepancy_data.sql`
+- `.pre-commit-config.yaml` — wire the same check as a hook
 
 **Acceptance:** The rules engine evaluates the five seeded scenarios loaded **either**
 through `DiscrepancyFixtureManager::installFixtures()` (PHP integration tests) **or**
 through `mysql < sql/example_discrepancy_data.sql` (Python eval / demo install) and
 produces an **identical expected flag set** with correct categories and source attribution
-in both paths. Drift between the two paths fails CI.
+in both paths. Drift between the two paths fails the local pre-merge check.
 
 ---
 
@@ -841,23 +841,35 @@ stop-ship per PRD §13.**
   beyond the PR 13 demo fixture are needed for eval coverage)
 
 **Acceptance:** Overall pass rate ≥90%; RBAC suite passes 100%. Failure on any RBAC case
-fails the CI job — non-overridable.
+fails the local pre-merge eval gate — non-overridable; deploy is blocked until green.
 
 ---
 
-### PR 24 — Eval gate in CI
+### PR 24 — Pre-merge eval gate (local)
 
-Wire the eval suite into `.gitlab-ci.yml` so merges to main are gated on it.
+Wire the eval suite into a local pre-merge gate so changes can't be deployed until eval
+passes. Deploy is manual via `railway up`; CI/CD is intentionally not used (see file-tree
+note above), so the gate runs on the developer's machine before merging to main.
 
-- [ ] CI stage: `eval` runs after unit and integration
-- [ ] Job fails if overall <90% or any RBAC case fails
-- [ ] Reports posted as MR comments
+- [ ] `make eval` target runs unit + integration + eval suites in order
+- [ ] `make deploy` target requires `make eval` to pass; refuses to call `railway up` otherwise
+- [ ] Gate fails if overall <90% or any RBAC case fails
+- [ ] Eval results written to `eval_runs` table (PR 2) for trend tracking across runs
+- [ ] Pre-commit hook (or pre-push) runs the unit + integration subset; full eval is a
+  pre-deploy step (too slow for every commit)
+- [ ] `agent-service/README.md` documents the deploy workflow:
+  `make eval && make deploy` (or `railway up --service agent-service`)
+
+**NEW**
+- `agent-service/Makefile` — targets: `check`, `eval`, `deploy`
+- `.pre-commit-config.yaml` — pre-push hook running unit + integration
 
 **EDIT**
-- `.gitlab-ci.yml` — add `eval` stage; require pass before `deploy`
+- `agent-service/README.md` — manual deploy + eval gate workflow
 
-**Acceptance:** A PR that breaks RBAC fails CI; a PR that drops overall pass-rate below 90%
-fails CI.
+**Acceptance:** Running `make deploy` on a branch that breaks RBAC refuses to deploy and
+prints the failing case(s). A branch that drops overall pass-rate below 90% likewise blocks
+deploy. Manual deploy succeeds only after a green eval run.
 
 ---
 
@@ -927,8 +939,8 @@ ARCHITECTURE §9.4. Cold starts on `agent-service` may break fast-lane budget; m
 
 **EDIT**
 - `agent-service/railway.toml` — replicas, restart policy
-- `.gitlab-ci.yml` — production env config
-- `agent-service/README.md` — env-var matrix
+- `agent-service/README.md` — env-var matrix and manual deploy runbook
+  (production env vars are set in the Railway dashboard, not in repo config)
 
 **Acceptance:** Fast-lane p50 ≤5s and p95 ≤8s on Railway against demo data, sustained over a
 30-minute interval.

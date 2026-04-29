@@ -522,7 +522,7 @@ PHI is not sent to LangSmith. **Prompt content is redacted before tracing**: onl
 
 ### Evaluation framework
 
-Custom Python harness, JSON test cases, runs from CLI. CI integration: eval suite gates merges to main.
+Custom Python harness, JSON test cases, runs from CLI. **Pre-merge gate is local, not CI:** the eval suite runs on the developer's machine via `make eval` before merging to main, and `make deploy` refuses to call `railway up` unless the latest eval run is green. Deploy itself is manual (no GitLab CI / GitHub Actions / Railway auto-deploy in MVP scope) — the explicit local gate keeps the eval-blocks-deploy invariant without standing up CI infrastructure.
 
 Test categories:
 
