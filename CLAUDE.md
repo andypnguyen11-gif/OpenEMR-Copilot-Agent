@@ -40,6 +40,19 @@ docker compose up --detach --wait
 
 ## Testing
 
+### Test policy
+
+- **Tests ship in the same PR as the code they cover.** Never implement a feature and defer its
+  tests to a follow-up PR.
+- **Test-first is required for high-risk behaviors:** JWT verification, audit-log fail-closed path,
+  RBAC / scope enforcement, PHI redaction to LangSmith, and any path where a silent failure would
+  expose PHI or bypass authorization. For these, write the failing test before the implementation.
+- **Test-alongside is sufficient for everything else** (CRUD, UI glue, config parsing, non-critical
+  utilities). RED-GREEN everywhere slows delivery without proportional safety gain.
+- **`TASKS.md` is the source of truth** for which test files each PR must include. When
+  implementing a PR, check its block in `TASKS.md` and ensure every listed test file is created
+  and passing before marking the PR ready.
+
 Tests run inside Docker via devtools. Run from `docker/development-easy/`:
 
 ```bash
