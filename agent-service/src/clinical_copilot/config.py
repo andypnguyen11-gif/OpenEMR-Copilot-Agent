@@ -4,9 +4,10 @@ Settings are loaded once at startup from environment variables. Each field is
 typed; missing required values fail fast at import time so a misconfigured
 deploy never silently runs with defaults that look like production.
 
-PR 1 only carries the four boundary settings called out in TASKS.md
-(HMAC secret, LLM API key, FHIR base URL, Postgres DSN). Lane/model/cache
-settings land in later PRs as their respective code paths arrive.
+Settings grow per PR as new code paths arrive. Currently carries the four
+boundary settings from PR 1 (HMAC secret, LLM API key, FHIR base URL, Postgres
+DSN) plus the audit-log patient-ID hashing salt added in PR 2. Lane/model/cache
+settings land in later PRs.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ class Settings:
     llm_api_key: str
     fhir_base_url: str
     database_url: str
+    audit_salt: str
 
     @property
     def is_production(self) -> bool:
@@ -61,11 +63,13 @@ def _load() -> Settings:
         llm_api_key = _optional("ANTHROPIC_API_KEY", "")
         fhir_base_url = _optional("FHIR_BASE_URL", "http://localhost:8300/apis/default/fhir")
         database_url = _optional("DATABASE_URL", "sqlite:///./agent.db")
+        audit_salt = _optional("COPILOT_AUDIT_SALT", "dev-insecure-audit-salt")
     else:
         hmac_secret = _require("COPILOT_HMAC_SECRET")
         llm_api_key = _require("ANTHROPIC_API_KEY")
         fhir_base_url = _require("FHIR_BASE_URL")
         database_url = _require("DATABASE_URL")
+        audit_salt = _require("COPILOT_AUDIT_SALT")
 
     return Settings(
         env=env,
@@ -74,6 +78,7 @@ def _load() -> Settings:
         llm_api_key=llm_api_key,
         fhir_base_url=fhir_base_url,
         database_url=database_url,
+        audit_salt=audit_salt,
     )
 
 

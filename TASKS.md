@@ -142,6 +142,24 @@ openemr/                                              (this repo — OpenEMR for
 
 ---
 
+## How to use this document
+
+Each PR block lists the files to create/edit and an **Acceptance** criterion. When implementing
+a PR (or asking an AI agent to implement it):
+
+1. **Read the full PR block first** — understand the goal, listed files, and acceptance criterion.
+2. **Implement listed test files in the same change as the feature code.** Do not defer tests.
+3. **For high-risk paths, write the failing test first** (test-first / RED-GREEN), then implement:
+   - JWT verification and token replay rejection (PR 4)
+   - Audit-log fail-closed path (PR 2, PR 19)
+   - RBAC / scope enforcement (PR 6, PR 7)
+   - PHI redaction to LangSmith (PR 20)
+   - Any path where a silent failure exposes PHI or bypasses authorization
+4. **Run `make check` (Python) or `composer phpunit-isolated` (PHP)** before marking done.
+5. **Do not mark a PR complete if any of its listed test files are missing or failing.**
+
+---
+
 ## Milestone 0 — Foundation
 
 ### PR 1 — Agent service scaffold
@@ -187,8 +205,13 @@ the **HIPAA-relevant audit log** (ARCHITECTURE §4 / §8).
 - [ ] SQLite fallback for local dev (per PRD §8 stack table)
 
 **NEW**
+- `agent-service/alembic.ini`
+- `agent-service/src/clinical_copilot/db/base.py`
+- `agent-service/src/clinical_copilot/db/engine.py`
 - `agent-service/src/clinical_copilot/db/models.py`
-- `agent-service/src/clinical_copilot/db/migrations/0001_initial.py`
+- `agent-service/src/clinical_copilot/db/migrations/env.py`
+- `agent-service/src/clinical_copilot/db/migrations/script.py.mako`
+- `agent-service/src/clinical_copilot/db/migrations/versions/0001_initial.py`
 - `agent-service/src/clinical_copilot/audit/log.py`
 - `agent-service/src/clinical_copilot/audit/models.py`
 - `agent-service/tests/unit/test_audit_log_failclosed.py`
@@ -569,7 +592,7 @@ durable for precomputed artifacts. **No Redis.**
 
 **NEW**
 - `agent-service/src/clinical_copilot/discrepancy/cache.py`
-- `agent-service/src/clinical_copilot/db/migrations/0002_discrepancy_cache.py`
+- `agent-service/src/clinical_copilot/db/migrations/versions/0002_discrepancy_cache.py`
 - `agent-service/tests/unit/test_discrepancy_cache.py`
 
 **EDIT**
@@ -784,7 +807,7 @@ dashboard-friendly summary written to Postgres.
 
 **EDIT**
 - `agent-service/src/clinical_copilot/main.py` — register metrics route
-- `agent-service/src/clinical_copilot/db/migrations/0003_metrics.py`
+- `agent-service/src/clinical_copilot/db/migrations/versions/0003_metrics.py`
 
 **Acceptance:** Metrics endpoint returns JSON; cache hit rate visibly rises after warm pass;
 audit-log completeness check passes on demo data.
