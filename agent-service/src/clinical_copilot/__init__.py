@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from clinical-copilot!")
+"""Clinical Co-Pilot agent service."""
+
+__version__ = "0.1.0"
