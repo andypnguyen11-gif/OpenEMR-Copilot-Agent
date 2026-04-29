@@ -577,6 +577,10 @@ Separate Postgres table. Every PHI access (tool fetch, FHIR call) writes a row: 
 
 ### Scaling — what changes at each tier
 
+This table covers what *changes* per tier; for what each tier *costs* (per-request token
+math, per-user-day volume, tier-by-tier $/month with the sub-linear cost levers), see
+**COST.md**.
+
 | Tier | What changes |
 |---|---|
 | **100 users** | Single agent-service replica, in-memory cache. Cost dominated by LLM tokens. |
