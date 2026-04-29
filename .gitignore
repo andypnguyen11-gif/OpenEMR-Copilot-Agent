@@ -17,6 +17,8 @@ ccdaservice/node_modules
 
 # dev editor configs
 /.idea/*
+# Claude Code (local locks; session metadata — never commit)
+.claude/scheduled_tasks.lock
 /.vscode/*
 /.vscode-oss/*
 /nbproject/*
