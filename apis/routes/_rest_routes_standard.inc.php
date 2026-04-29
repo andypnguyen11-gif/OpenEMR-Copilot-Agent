@@ -47,7 +47,10 @@ use OpenEMR\RestControllers\UserRestController;
 use OpenEMR\RestControllers\VersionRestController;
 use OpenEMR\Services\Search\SearchQueryConfig;
 
-return [
+// Standard routes are defined in $standardRoutes below; the file appends the
+// Clinical Co-Pilot gateway routes (``/api/agent/*``) before returning so all
+// non-FHIR / non-portal routes flow through StandardRouteFinder.
+$standardRoutes = [
     "GET /api/facility" => function (HttpRestRequest $request) {
         RestConfig::request_authorization_check($request, "admin", "users");
         $return = (new FacilityRestController())->getAll($request, $request->query->all());
@@ -715,3 +718,8 @@ return [
     'POST /api/background_service/$run'
         => fn(HttpRestRequest $request) => (new BackgroundServiceRestController())->runAllDue(),
 ];
+
+/** @var array<string, callable> $copilotRoutes */
+$copilotRoutes = require __DIR__ . '/_rest_routes_copilot.inc.php';
+
+return array_merge($standardRoutes, $copilotRoutes);

@@ -221,30 +221,45 @@ causes request to fail with 500 (verified by test).
 
 ---
 
-### PR 3 — PHP gateway scaffold (`/agent/*` routes)
+### PR 3 — PHP gateway scaffold (`/api/agent/*` routes)
 
 Add the OpenEMR-side gateway entry point. No JWT signing yet; this PR registers the route
 surface and a stub that proxies to the agent service.
 
-- [ ] Register `/agent/*` REST routes in OpenEMR
-- [ ] `GatewayController` with `/agent/healthz` proxy to agent service
-- [ ] `AgentHttpClient` (Guzzle-based HTTP client, configurable base URL via `$GLOBALS` /
+URL prefix is `/api/agent/...` (under `/apis/default/api/agent/...`) so the routes flow through
+`StandardRouteFinder` alongside the rest of the non-FHIR REST surface — anything not under
+`/fhir/` or `/portal/` falls to the standard finder.
+
+- [ ] Register `/api/agent/*` REST routes in OpenEMR
+- [ ] `GatewayController` with `/api/agent/healthz` proxy to agent service
+- [ ] `AgentHttpClient` (Guzzle-based PSR-18 client, configurable base URL via `$GLOBALS` /
   `OEGlobalsBag`)
-- [ ] `CopilotConfig` typed config (extends `OEGlobalsBag` accessor pattern from CLAUDE.md)
-- [ ] PHPUnit isolated test for `GatewayController` healthz proxy (mocked HTTP client)
+- [ ] `CopilotConfig` typed accessor over `OEGlobalsBag` (per CLAUDE.md typed-getter pattern)
+- [ ] `AgentResponse` DTO + `AgentServiceException` for transport-error translation
+- [ ] PHPUnit isolated tests: `GatewayControllerTest`, `AgentHttpClientTest`, `CopilotConfigTest`
+  (all mock HTTP / globals — no Docker, no DB)
 - [ ] PHPStan level 10 clean; PSR-4; `declare(strict_types=1)` (per CLAUDE.md)
 
 **NEW**
-- `apis/routes/copilot.php`
+- `apis/routes/_rest_routes_copilot.inc.php` (was `apis/routes/copilot.php` — renamed to match
+  the existing `_rest_routes_*.inc.php` convention used by standard / FHIR / portal)
 - `src/Services/Copilot/GatewayController.php`
 - `src/Services/Copilot/AgentHttpClient.php`
+- `src/Services/Copilot/AgentResponse.php`
+- `src/Services/Copilot/AgentServiceException.php`
 - `src/Services/Copilot/Config/CopilotConfig.php`
 - `tests/Tests/Isolated/Services/Copilot/GatewayControllerTest.php`
+- `tests/Tests/Isolated/Services/Copilot/AgentHttpClientTest.php`
+- `tests/Tests/Isolated/Services/Copilot/CopilotConfigTest.php`
 
 **EDIT**
-- `_rest_routes.inc.php` — include the copilot route file
+- `apis/routes/_rest_routes_standard.inc.php` — capture standard map in `$standardRoutes` and
+  `array_merge` the copilot map before returning. (Updated from original plan: edit happens in
+  the standard route file, not `_rest_routes.inc.php`, because `StandardRouteFinder` includes
+  the standard file directly at dispatch time — `RestConfig::$ROUTE_MAP` is vestigial for the
+  actual routing path.)
 
-**Acceptance:** Visiting `/apis/default/agent/healthz` (authenticated) round-trips to agent
+**Acceptance:** Visiting `/apis/default/api/agent/healthz` (authenticated) round-trips to agent
 service `/healthz` and returns 200.
 
 ---
