@@ -162,18 +162,18 @@ a PR (or asking an AI agent to implement it):
 
 ## Milestone 0 — Foundation
 
-### PR 1 — Agent service scaffold
+### PR 1 — Agent service scaffold — ✅ landed (80651df91, fd00cb579, 67f027609)
 
 Stand up an empty Python/FastAPI service that boots, exposes `/healthz`, and deploys to Railway
 alongside `openemr-web`. No agent logic yet — this is the deployable shell.
 
-- [ ] FastAPI app skeleton with `/healthz` and `/readyz`
-- [ ] `pyproject.toml` with pinned deps: `fastapi`, `uvicorn`, `pydantic`, `httpx`, `anthropic`, `sqlalchemy`, `alembic`, `pyjwt`, `pyyaml`, `structlog`, `langsmith`
-- [ ] `Dockerfile` (slim Python 3.12 base)
-- [ ] `railway.toml` for the `agent-service` Railway service
-- [ ] `config.py` reading env vars (HMAC secret, LLM key, FHIR base URL, Postgres DSN)
-- [ ] Structured logging via `structlog`
-- [ ] Local quality gates: lint (`ruff`), type-check (`mypy`), unit-test (`pytest`) — runnable via a Make target / shell script before manual deploy
+- [x] FastAPI app skeleton with `/healthz` and `/readyz`
+- [x] `pyproject.toml` with pinned deps: `fastapi`, `uvicorn`, `pydantic`, `httpx`, `anthropic`, `sqlalchemy`, `alembic`, `pyjwt`, `pyyaml`, `structlog`, `langsmith`
+- [x] `Dockerfile` (slim Python 3.12 base)
+- [x] `railway.toml` for the `agent-service` Railway service
+- [x] `config.py` reading env vars (HMAC secret, LLM key, FHIR base URL, Postgres DSN)
+- [x] Structured logging via `structlog`
+- [x] Local quality gates: lint (`ruff`), type-check (`mypy`), unit-test (`pytest`) — runnable via a Make target / shell script before manual deploy
 
 **NEW**
 - `agent-service/pyproject.toml`
@@ -189,20 +189,20 @@ alongside `openemr-web`. No agent logic yet — this is the deployable shell.
 
 ---
 
-### PR 2 — Agent metadata DB + audit log schema
+### PR 2 — Agent metadata DB + audit log schema — ✅ landed (453a2ec97)
 
 Provision `agent-db` (managed Postgres on Railway), define schema for traces, eval results, and
 the **HIPAA-relevant audit log** (ARCHITECTURE §4 / §8).
 
-- [ ] Provision `agent-db` Postgres plugin in Railway (manual; document in README)
-- [ ] Alembic init + first migration with three tables:
+- [x] Provision `agent-db` Postgres plugin in Railway (manual; document in README)
+- [x] Alembic init + first migration with three tables:
   - `agent_traces` (request_id, user_id, role, lane, latency_ms, token_in, token_out, model_tier, created_at)
   - `eval_runs` (run_id, suite, case_id, passed, observed, expected, created_at)
   - `audit_log` (id, ts, user_id, role, patient_id_hash, resource_type, action, request_id) — append-only
-- [ ] SQLAlchemy models for each
-- [ ] Audit-log writer is **fail-closed** — request fails if write fails (ARCHITECTURE §7)
-- [ ] Patient ID hashing helper (HMAC-SHA256 with per-env salt)
-- [ ] SQLite fallback for local dev (per PRD §8 stack table)
+- [x] SQLAlchemy models for each
+- [x] Audit-log writer is **fail-closed** — request fails if write fails (ARCHITECTURE §7)
+- [x] Patient ID hashing helper (HMAC-SHA256 with per-env salt)
+- [x] SQLite fallback for local dev (per PRD §8 stack table)
 
 **NEW**
 - `agent-service/alembic.ini`
@@ -221,7 +221,7 @@ causes request to fail with 500 (verified by test).
 
 ---
 
-### PR 3 — PHP gateway scaffold (`/api/agent/*` routes)
+### PR 3 — PHP gateway scaffold (`/api/agent/*` routes) — ✅ landed (53d2ffcb5)
 
 Add the OpenEMR-side gateway entry point. No JWT signing yet; this PR registers the route
 surface and a stub that proxies to the agent service.
@@ -230,15 +230,15 @@ URL prefix is `/api/agent/...` (under `/apis/default/api/agent/...`) so the rout
 `StandardRouteFinder` alongside the rest of the non-FHIR REST surface — anything not under
 `/fhir/` or `/portal/` falls to the standard finder.
 
-- [ ] Register `/api/agent/*` REST routes in OpenEMR
-- [ ] `GatewayController` with `/api/agent/healthz` proxy to agent service
-- [ ] `AgentHttpClient` (Guzzle-based PSR-18 client, configurable base URL via `$GLOBALS` /
+- [x] Register `/api/agent/*` REST routes in OpenEMR
+- [x] `GatewayController` with `/api/agent/healthz` proxy to agent service
+- [x] `AgentHttpClient` (Guzzle-based PSR-18 client, configurable base URL via `$GLOBALS` /
   `OEGlobalsBag`)
-- [ ] `CopilotConfig` typed accessor over `OEGlobalsBag` (per CLAUDE.md typed-getter pattern)
-- [ ] `AgentResponse` DTO + `AgentServiceException` for transport-error translation
-- [ ] PHPUnit isolated tests: `GatewayControllerTest`, `AgentHttpClientTest`, `CopilotConfigTest`
+- [x] `CopilotConfig` typed accessor over `OEGlobalsBag` (per CLAUDE.md typed-getter pattern)
+- [x] `AgentResponse` DTO + `AgentServiceException` for transport-error translation
+- [x] PHPUnit isolated tests: `GatewayControllerTest`, `AgentHttpClientTest`, `CopilotConfigTest`
   (all mock HTTP / globals — no Docker, no DB)
-- [ ] PHPStan level 10 clean; PSR-4; `declare(strict_types=1)` (per CLAUDE.md)
+- [x] PHPStan level 10 clean; PSR-4; `declare(strict_types=1)` (per CLAUDE.md)
 
 **NEW**
 - `apis/routes/_rest_routes_copilot.inc.php` (was `apis/routes/copilot.php` — renamed to match
@@ -308,10 +308,14 @@ OpenEMR's FHIR endpoint with frozen scopes.
 
 - [ ] Register an OAuth2 client in OpenEMR for the agent service (one-time setup; document)
 - [ ] Python: `oauth_client.py` with token cache + refresh (~1hr lifetime per OpenEMR config)
-- [ ] Scope set: `patient/Patient.read`, `patient/Condition.read`,
-  `patient/MedicationRequest.read`, `patient/MedicationStatement.read`,
-  `patient/AllergyIntolerance.read`, `patient/Observation.read`, `patient/Encounter.read`,
-  `patient/DocumentReference.read`
+- [ ] Scope set (SMART Backend Services `system/*` over `client_credentials` —
+  the agent service authenticates as a backend service, not on behalf of a
+  user; per-clinician RBAC is enforced at the tool layer against PR 4's JWT
+  claims, not by OpenEMR's OAuth):
+  `system/Patient.read`, `system/Condition.read`,
+  `system/MedicationRequest.read`, `system/MedicationStatement.read`,
+  `system/AllergyIntolerance.read`, `system/Observation.read`, `system/Encounter.read`,
+  `system/DocumentReference.read`
 - [ ] Test: agent fetches `Patient/$id` end-to-end through OAuth2 against a local OpenEMR
 
 **NEW**
