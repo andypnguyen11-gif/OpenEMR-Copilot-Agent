@@ -301,14 +301,14 @@ expired, and replayed tokens all return 401.
 
 ---
 
-### PR 5 — OAuth2 client (Python → OpenEMR FHIR)
+### PR 5 — OAuth2 client (Python → OpenEMR FHIR) — ✅ landed (ff345cb23)
 
 The cross-service token (ARCHITECTURE §4 — "two trust layers, two tokens"). Bearer token to
 OpenEMR's FHIR endpoint with frozen scopes.
 
-- [ ] Register an OAuth2 client in OpenEMR for the agent service (one-time setup; document)
-- [ ] Python: `oauth_client.py` with token cache + refresh (~1hr lifetime per OpenEMR config)
-- [ ] Scope set (SMART Backend Services `system/*` over `client_credentials` —
+- [x] Register an OAuth2 client in OpenEMR for the agent service (one-time setup; document)
+- [x] Python: `oauth_client.py` with token cache + refresh (~1hr lifetime per OpenEMR config)
+- [x] Scope set (SMART Backend Services `system/*` over `client_credentials` —
   the agent service authenticates as a backend service, not on behalf of a
   user; per-clinician RBAC is enforced at the tool layer against PR 4's JWT
   claims, not by OpenEMR's OAuth):
@@ -316,7 +316,17 @@ OpenEMR's FHIR endpoint with frozen scopes.
   `system/MedicationRequest.read`, `system/MedicationStatement.read`,
   `system/AllergyIntolerance.read`, `system/Observation.read`, `system/Encounter.read`,
   `system/DocumentReference.read`
-- [ ] Test: agent fetches `Patient/$id` end-to-end through OAuth2 against a local OpenEMR
+- [x] Test: agent fetches `Patient/$id` end-to-end through OAuth2 against a local OpenEMR
+
+**Integration test status:** the end-to-end test ships in
+`agent-service/tests/integration/test_oauth_client.py`, gated by
+`OPENEMR_INTEGRATION=1` plus `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` /
+`OAUTH_TOKEN_URL` / `FHIR_BASE_URL` / `OPENEMR_TEST_PATIENT_ID`. Default
+`make check` runs the 24-test offline unit suite (53 passed / 1 skipped on
+landing). The live OAuth+FHIR round-trip against a real OpenEMR is one
+`uv run pytest tests/integration` invocation away once a confidential
+client is registered per the README walkthrough — to be exercised before
+PR 6 starts consuming the token.
 
 **NEW**
 - `agent-service/src/clinical_copilot/auth/oauth_client.py`
