@@ -6,8 +6,9 @@ deploy never silently runs with defaults that look like production.
 
 Settings grow per PR as new code paths arrive. Currently carries the four
 boundary settings from PR 1 (HMAC secret, LLM API key, FHIR base URL, Postgres
-DSN) plus the audit-log patient-ID hashing salt added in PR 2. Lane/model/cache
-settings land in later PRs.
+DSN), the audit-log patient-ID hashing salt added in PR 2, and the OAuth2
+client_credentials triple added in PR 5 for the agent→OpenEMR FHIR boundary.
+Lane/model/cache settings land in later PRs.
 """
 
 from __future__ import annotations
@@ -48,6 +49,9 @@ class Settings:
     fhir_base_url: str
     database_url: str
     audit_salt: str
+    oauth_client_id: str
+    oauth_client_secret: str
+    oauth_token_url: str
 
     @property
     def is_production(self) -> bool:
@@ -64,12 +68,18 @@ def _load() -> Settings:
         fhir_base_url = _optional("FHIR_BASE_URL", "http://localhost:8300/apis/default/fhir")
         database_url = _optional("DATABASE_URL", "sqlite:///./agent.db")
         audit_salt = _optional("COPILOT_AUDIT_SALT", "dev-insecure-audit-salt")
+        oauth_client_id = _optional("OAUTH_CLIENT_ID", "")
+        oauth_client_secret = _optional("OAUTH_CLIENT_SECRET", "")
+        oauth_token_url = _optional("OAUTH_TOKEN_URL", "http://localhost:8300/oauth2/default/token")
     else:
         hmac_secret = _require("COPILOT_HMAC_SECRET")
         llm_api_key = _require("ANTHROPIC_API_KEY")
         fhir_base_url = _require("FHIR_BASE_URL")
         database_url = _require("DATABASE_URL")
         audit_salt = _require("COPILOT_AUDIT_SALT")
+        oauth_client_id = _require("OAUTH_CLIENT_ID")
+        oauth_client_secret = _require("OAUTH_CLIENT_SECRET")
+        oauth_token_url = _require("OAUTH_TOKEN_URL")
 
     return Settings(
         env=env,
@@ -79,6 +89,9 @@ def _load() -> Settings:
         fhir_base_url=fhir_base_url,
         database_url=database_url,
         audit_salt=audit_salt,
+        oauth_client_id=oauth_client_id,
+        oauth_client_secret=oauth_client_secret,
+        oauth_token_url=oauth_token_url,
     )
 
 
