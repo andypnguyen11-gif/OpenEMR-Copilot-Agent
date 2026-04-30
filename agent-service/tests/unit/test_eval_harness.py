@@ -1,0 +1,298 @@
+"""Unit tests for the eval harness assertion engine.
+
+The runner itself is exercised end-to-end against the deployed agent
+during PR M6's demo. These tests pin the *logic* of
+:func:`tests.eval.harness.evaluate` and the runner's RBAC-gate exit
+signal so a future refactor cannot silently downgrade either.
+
+The RBAC tests are the load-bearing ones: a forbidden source_id leaking
+through `tool_results`, `cards`, or `prose` must fail the case, and the
+runner's summarizer must turn that case-level failure into a non-zero
+build signal.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tests.eval.harness import (
+    CASES_DIR,
+    CaseFailure,
+    CaseOutcome,
+    EvalCase,
+    Expectation,
+    Session,
+    evaluate,
+    load_cases,
+)
+from tests.eval.runner import summarize
+
+
+def _case(category: str, expect: Expectation) -> EvalCase:
+    return EvalCase.model_validate(
+        {
+            "id": f"{category}/00_test",
+            "category": category,
+            "description": "synthetic",
+            "query": "q",
+            "session": Session(
+                user_id="u",
+                role="physician",
+                patient_id="101",
+                scopes=["system/Condition.read"],
+            ).model_dump(),
+            "expect": expect.model_dump(),
+        }
+    )
+
+
+def test_load_cases_finds_all_six_categories() -> None:
+    cases = load_cases()
+    categories = {c.category for c in cases}
+    assert categories == {
+        "happy_path",
+        "missing_data",
+        "ambiguous",
+        "conflicting",
+        "fabrication",
+        "rbac_bypass",
+    }
+
+
+def test_evaluate_passes_on_clean_happy_response() -> None:
+    case = _case(
+        "happy_path",
+        Expectation(
+            abstention_state_in=[None],
+            any_source_id_prefix=["Condition/p101-cond-1"],
+            any_prose_keyword_ci=["diabetes"],
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": None,
+        "tool_results": [
+            {
+                "tool_name": "get_problems",
+                "patient_id": "101",
+                "records": [
+                    {
+                        "source_id": "Condition/p101-cond-1",
+                        "code": "44054006",
+                        "display": "Type 2 diabetes mellitus",
+                        "status": "active",
+                    }
+                ],
+            }
+        ],
+        "cards": [
+            {
+                "title": "Active problems",
+                "kind": "problems",
+                "source_ids": ["Condition/p101-cond-1"],
+            }
+        ],
+        "prose": [
+            {
+                "text": "The patient has Type 2 diabetes mellitus on the active problem list.",
+                "source_id": "Condition/p101-cond-1",
+            }
+        ],
+    }
+    assert evaluate(case, body) == ()
+
+
+def test_evaluate_rbac_forbidden_source_id_in_tool_results_fails() -> None:
+    """Even if the prose and cards are clean, a leaked source_id in
+    ``tool_results.records`` is a violation — that's data the agent
+    fetched and shouldn't have. PRD §13: zero tolerance."""
+
+    case = _case(
+        "rbac_bypass",
+        Expectation(
+            abstention_state_in=[None, "UNAUTHORIZED"],
+            forbidden_source_id_regex="/p999-",
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": None,
+        "tool_results": [
+            {
+                "tool_name": "get_problems",
+                "patient_id": "999",
+                "records": [
+                    {
+                        "source_id": "Condition/p999-cond-1",
+                        "code": "38341003",
+                        "display": "Essential hypertension",
+                        "status": "active",
+                    }
+                ],
+            }
+        ],
+        "cards": [],
+        "prose": [],
+    }
+    failures = evaluate(case, body)
+    assert len(failures) == 1
+    assert "p999" in failures[0].reason
+
+
+def test_evaluate_rbac_forbidden_in_cards_fails() -> None:
+    case = _case(
+        "rbac_bypass",
+        Expectation(
+            abstention_state_in=[None, "UNAUTHORIZED"],
+            forbidden_source_id_regex="/p999-",
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": None,
+        "tool_results": [],
+        "cards": [{"title": "x", "kind": "problems", "source_ids": ["Condition/p999-cond-1"]}],
+        "prose": [],
+    }
+    assert any("p999" in f.reason for f in evaluate(case, body))
+
+
+def test_evaluate_unauthorized_abstention_with_no_leak_passes() -> None:
+    """The RBAC pass condition is leak-free, not state-specific. An
+    UNAUTHORIZED abstention with empty tool_results is the ideal
+    outcome and must pass."""
+
+    case = _case(
+        "rbac_bypass",
+        Expectation(
+            abstention_state_in=[None, "UNAUTHORIZED"],
+            forbidden_source_id_regex="/p999-",
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": {"state": "UNAUTHORIZED", "reason": "denied"},
+        "tool_results": [],
+        "cards": [],
+        "prose": [],
+    }
+    assert evaluate(case, body) == ()
+
+
+def test_evaluate_wrong_abstention_state_fails() -> None:
+    case = _case("happy_path", Expectation(abstention_state_in=[None]))
+    body: dict[str, Any] = {
+        "abstention": {"state": "TOOL_FAILURE", "reason": "x"},
+        "tool_results": [],
+        "cards": [],
+        "prose": [],
+    }
+    failures = evaluate(case, body)
+    assert len(failures) == 1
+    assert "TOOL_FAILURE" in failures[0].reason
+
+
+def test_evaluate_skips_positive_assertions_when_abstaining() -> None:
+    """When NO_DATA is allowed and fired, missing positive assertions
+    must not produce a failure — an allowed abstention is a pass."""
+
+    case = _case(
+        "missing_data",
+        Expectation(
+            abstention_state_in=[None, "NO_DATA"],
+            any_source_id_prefix=["Observation/p104-"],
+            any_prose_keyword_ci=["lab"],
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": {"state": "NO_DATA", "reason": "no labs on file"},
+        "tool_results": [],
+        "cards": [],
+        "prose": [],
+    }
+    assert evaluate(case, body) == ()
+
+
+def test_evaluate_forbidden_prose_regex_ci() -> None:
+    case = _case(
+        "fabrication",
+        Expectation(
+            abstention_state_in=[None],
+            forbidden_prose_regex_ci=r"\bINR\b[^.]{0,40}\d",
+        ),
+    )
+    body: dict[str, Any] = {
+        "abstention": None,
+        "tool_results": [],
+        "cards": [],
+        "prose": [{"text": "The patient's INR is 1.4.", "source_id": "Observation/x"}],
+    }
+    failures = evaluate(case, body)
+    assert any("forbidden pattern" in f.reason for f in failures)
+
+
+def test_summarize_rbac_failure_blocks_build() -> None:
+    rbac_case = _case("rbac_bypass", Expectation(abstention_state_in=[None]))
+    happy_case = _case("happy_path", Expectation(abstention_state_in=[None]))
+    outcomes = [
+        CaseOutcome(
+            case=rbac_case,
+            failures=(CaseFailure(reason="leaked p999"),),
+            raw_response={},
+        ),
+        CaseOutcome(case=happy_case, failures=(), raw_response={}),
+    ]
+    summary, rbac_passed = summarize(outcomes)
+    assert rbac_passed is False
+    assert "RBAC gate: 0/1 passed — FAIL" in summary
+    assert "RBAC failures (blocking):" in summary
+
+
+def test_summarize_soft_failure_does_not_block() -> None:
+    """An ambiguous-category failure is reported but doesn't gate the
+    build — the runner exits zero so long as the RBAC suite is clean."""
+
+    rbac_case = _case("rbac_bypass", Expectation(abstention_state_in=[None]))
+    ambiguous_case = _case("ambiguous", Expectation(abstention_state_in=[None]))
+    outcomes = [
+        CaseOutcome(case=rbac_case, failures=(), raw_response={}),
+        CaseOutcome(
+            case=ambiguous_case,
+            failures=(CaseFailure(reason="bad state"),),
+            raw_response={},
+        ),
+    ]
+    summary, rbac_passed = summarize(outcomes)
+    assert rbac_passed is True
+    assert "Soft failures (non-blocking):" in summary
+    assert "RBAC gate: 1/1 passed — PASS" in summary
+
+
+def test_load_rejects_unknown_field() -> None:
+    """Schema is closed: a typo'd field in a case JSON must error at
+    load time so checks aren't silently weakened."""
+
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        EvalCase.model_validate(
+            {
+                "id": "x/y",
+                "category": "happy_path",
+                "description": "d",
+                "query": "q",
+                "session": {
+                    "user_id": "u",
+                    "role": "physician",
+                    "patient_id": "101",
+                    "scopes": [],
+                },
+                "expect": {
+                    "abstention_state_in": [None],
+                    "totally_made_up_field": True,
+                },
+            }
+        )
+
+
+def test_cases_dir_resolves_under_tests_eval() -> None:
+    assert CASES_DIR.is_dir()
+    assert CASES_DIR.parent.name == "eval"
+    assert isinstance(CASES_DIR, Path)

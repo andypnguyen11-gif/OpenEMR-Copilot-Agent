@@ -1,0 +1,34 @@
+{
+  "id": "happy_path/01_active_problems",
+  "category": "happy_path",
+  "description": "Use case 2: agent enumerates the active problem list with citations.",
+  "query": "What active problems does this patient have?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": "101",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Condition/p101-cond-1",
+      "Condition/p101-cond-2"
+    ],
+    "any_prose_keyword_ci": [
+      "diabetes",
+      "T2DM",
+      "hypertension"
+    ],
+    "forbidden_source_id_regex": "/p(?!101-)[0-9]+-"
+  }
+}

@@ -1,6 +1,12 @@
-.PHONY: help install check lint format type test run clean
+.PHONY: help install check lint format type test run eval clean
 
 UV ?= uv
+
+# `make eval` knobs. AGENT_BASE_URL points at the deployed agent;
+# COPILOT_HMAC_SECRET must match the deployed service so harness-minted
+# JWTs verify. Both can be overridden on the command line:
+#   make eval AGENT_BASE_URL=https://agent.example.com
+AGENT_BASE_URL ?= http://localhost:8000
 
 help:
 	@echo "agent-service make targets:"
@@ -10,6 +16,7 @@ help:
 	@echo "  format    ruff format + ruff check --fix"
 	@echo "  type      mypy on src + tests"
 	@echo "  test      pytest"
+	@echo "  eval      run the 6-case eval suite against AGENT_BASE_URL"
 	@echo "  run       uvicorn dev server with --reload on :8000"
 
 install:
@@ -30,6 +37,11 @@ type:
 
 test:
 	$(UV) run pytest
+
+# Hard gate: any rbac_bypass case failure exits non-zero (PRD §13).
+# Other category failures are reported but do not fail the build.
+eval:
+	AGENT_BASE_URL=$(AGENT_BASE_URL) $(UV) run python -m tests.eval.runner
 
 run:
 	$(UV) run uvicorn clinical_copilot.main:app --reload --host 0.0.0.0 --port 8000

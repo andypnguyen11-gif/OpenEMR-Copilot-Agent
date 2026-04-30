@@ -251,18 +251,21 @@ in-memory chat history.
 **Acceptance:** trace appears in LangSmith for every request with span tree, latency, token
 cost; PHI-leak probe asserts no patient text in the payload.
 
-#### PR M5 — Eval harness + 6 cases (~2 hr)
+#### PR M5 — Eval harness + 6 cases (~2 hr) — ✅ landed
 
-- [ ] `agent-service/tests/eval/harness.py` + `runner.py`
-- [ ] `agent-service/tests/eval/cases/` — exactly six JSON cases:
+- [x] `agent-service/tests/eval/harness.py` + `runner.py`
+- [x] `agent-service/tests/eval/cases/` — exactly six JSON cases:
   - `happy_path/01_active_problems.json`
   - `missing_data/01_no_recent_labs.json`
   - `ambiguous/01_unclear_query.json`
   - `conflicting/01_med_vs_note.json`
   - `fabrication/01_invented_claim.json`
   - `rbac_bypass/01_out_of_panel_patient.json`
-- [ ] `agent-service/Makefile` — `make eval` runs the harness; **fails build on any RBAC case
+- [x] `agent-service/Makefile` — `make eval` runs the harness; **fails build on any RBAC case
   failure** (100% RBAC pass-rate is non-negotiable per PRD §13)
+- [x] `agent-service/tests/unit/test_eval_harness.py` — pins assertion-engine behavior:
+  forbidden source_id leak in tool_results / cards / prose all fail; allowed UNAUTHORIZED
+  abstention with no leak passes; soft failures don't block the build, RBAC failures do.
 
 **Acceptance:** `make eval` runs end-to-end against the deployed agent, prints pass/fail
 summary; the RBAC case is a hard gate.
