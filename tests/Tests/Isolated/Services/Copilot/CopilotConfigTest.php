@@ -16,6 +16,7 @@ namespace OpenEMR\Tests\Isolated\Services\Copilot;
 
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
+use OpenEMR\Services\Copilot\Config\CopilotConfigException;
 use PHPUnit\Framework\TestCase;
 
 final class CopilotConfigTest extends TestCase
@@ -68,5 +69,42 @@ final class CopilotConfigTest extends TestCase
         ]));
 
         self::assertSame(5, $config->getAgentTimeoutSeconds());
+    }
+
+    public function testReturnsJwtSecretWhenConfigured(): void
+    {
+        $secret = str_repeat('a', 64);
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_jwt_secret' => $secret,
+        ]));
+
+        self::assertSame($secret, $config->getJwtSecret());
+    }
+
+    public function testRaisesWhenJwtSecretMissing(): void
+    {
+        // No silent fallback: the gateway must refuse to mint tokens before
+        // it has a real secret. Returning a default would expose a window
+        // where every clinic running stock config trusts the same key.
+        $config = new CopilotConfig(new OEGlobalsBag([]));
+
+        $this->expectException(CopilotConfigException::class);
+        $this->expectExceptionMessage('copilot_jwt_secret');
+
+        $config->getJwtSecret();
+    }
+
+    public function testRaisesWhenJwtSecretTooShort(): void
+    {
+        // 16 bytes still encodes a key, but well below HS256's 256-bit
+        // security margin — easier to brute-force a leaked token offline.
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_jwt_secret' => 'too-short',
+        ]));
+
+        $this->expectException(CopilotConfigException::class);
+        $this->expectExceptionMessage('at least 32 bytes');
+
+        $config->getJwtSecret();
     }
 }

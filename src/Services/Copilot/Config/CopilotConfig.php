@@ -46,4 +46,32 @@ final readonly class CopilotConfig
         $timeout = $this->globals->getInt('copilot_agent_timeout_seconds', 5);
         return $timeout > 0 ? $timeout : 5;
     }
+
+    /**
+     * HS256 secret shared with the agent service. The Python verifier on
+     * the other side reads the same byte string from ``COPILOT_HMAC_SECRET``;
+     * rotation must happen on both sides together (see the agent service
+     * README for the procedure).
+     *
+     * @throws CopilotConfigException When the secret is unset or short
+     *                                enough to weaken HS256 below the
+     *                                256-bit security level.
+     */
+    public function getJwtSecret(): string
+    {
+        $secret = $this->globals->getString('copilot_jwt_secret', '');
+        if ($secret === '') {
+            throw new CopilotConfigException('copilot_jwt_secret is not configured');
+        }
+        if (strlen($secret) < 32) {
+            // HS256 takes any byte string, but anything shorter than the
+            // 256-bit output digest weakens the security margin without
+            // any operational benefit. Treating it as a misconfiguration
+            // matches what the agent service's verifier expects.
+            throw new CopilotConfigException(
+                'copilot_jwt_secret must be at least 32 bytes',
+            );
+        }
+        return $secret;
+    }
 }
