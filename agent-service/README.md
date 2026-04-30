@@ -33,7 +33,7 @@ curl -fsS http://127.0.0.1:8000/readyz
 |---|---|---|---|
 | `APP_ENV` | no | `development` | `development` / `test` / `production`; flips required-var enforcement |
 | `LOG_LEVEL` | no | `INFO` | structlog filtering level |
-| `COPILOT_HMAC_SECRET` | yes | `dev-insecure-hmac-secret` | HS256 secret shared with PHP gateway (PR 4) |
+| `COPILOT_HMAC_SECRET` | yes | `dev-insecure-hmac-secret` | HS256 secret shared with PHP gateway (PR 4); rotate together with `copilot_jwt_secret` in OpenEMR globals — see [Shared HMAC secret rotation](#shared-hmac-secret-rotation) |
 | `ANTHROPIC_API_KEY` | yes | `""` | Anthropic API key for orchestrator (PR 9+) |
 | `FHIR_BASE_URL` | yes | `http://localhost:8300/apis/default/fhir` | OpenEMR FHIR R4 base (PR 5+) |
 | `DATABASE_URL` | yes | `sqlite:///./agent.db` | Postgres DSN for traces / eval / audit (PR 2+) |
@@ -65,6 +65,33 @@ railway up --service agent-service
 
 Production env vars are configured via the Railway dashboard, not via
 checked-in config.
+
+## Shared HMAC secret rotation
+
+The PR 4 boundary token is HS256, so the same byte string must live on both
+sides:
+
+- PHP gateway (OpenEMR): `copilot_jwt_secret` in OpenEMR globals.
+- Agent service (this repo): `COPILOT_HMAC_SECRET` env var (Railway dashboard
+  in production).
+
+Rotation is a four-step sequence — both sides briefly run with both old and
+new secrets queued, so no in-flight request is dropped:
+
+1. Generate a new secret: `openssl rand -hex 32` (32 bytes / 64 hex chars).
+2. Set the new secret on the agent service first (Railway redeploy),
+   keeping the *old* `COPILOT_HMAC_SECRET` as the verification fallback for
+   the 5-minute JWT lifetime window.
+3. Once the agent service is verified healthy on the new secret, update
+   `copilot_jwt_secret` in OpenEMR globals — every newly-minted token now
+   uses the new secret.
+4. After at least 5 minutes (the JWT lifetime), drop the old secret from
+   the agent service.
+
+A leak of either side's secret means rotating both immediately. Tokens
+already minted with the leaked secret remain valid until `exp`; the JWT
+lifetime is intentionally short (5 min) to bound that exposure
+(`ARCHITECTURE §4`).
 
 ## Layout
 
