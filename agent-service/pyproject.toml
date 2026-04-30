@@ -49,7 +49,6 @@ select = [
     "SIM",  # flake8-simplify
     "RUF",  # ruff-specific
     "PL",   # pylint subset
-    "TCH",  # flake8-type-checking
 ]
 ignore = [
     "PLR0913",  # too many args — fine for FastAPI route handlers

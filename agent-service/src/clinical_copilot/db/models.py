@@ -16,7 +16,7 @@ The audit log is the load-bearing table; the other two are operational.
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003 — SA resolves Mapped[datetime] at runtime
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
