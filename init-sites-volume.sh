@@ -1,6 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # First-boot volume initializer for the Railway openemr deploy.
+#
+# Shebang note: the openemr image is Alpine-based, where bash is installed
+# via apk but isn't guaranteed to live at /bin/bash. Upstream openemr.sh
+# itself uses `#!/usr/bin/env bash` to PATH-resolve the interpreter; we
+# match that convention here. A hard-coded `#!/bin/bash` triggers the
+# kernel "exec container process: No such file or directory" boot error.
 #
 # Why this exists: Railway mounts persistent volumes as empty bind mounts,
 # which overlays (hides) the openemr image's bundled sites/default/. The
