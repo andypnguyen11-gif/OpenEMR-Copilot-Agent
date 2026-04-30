@@ -238,14 +238,14 @@ cited prose return; a fabricated `source_id` from the model is rejected.
 four working answers with citations and any flagged conflicts; switching patients clears
 in-memory chat history.
 
-#### PR M4 — LangSmith observability + PHI redaction (~30 min)
+#### PR M4 — LangSmith observability + PHI redaction (~30 min) — ✅ landed
 
-- [ ] `agent-service/src/clinical_copilot/observability/tracing.py` — `@traceable` decorator
+- [x] `agent-service/src/clinical_copilot/observability/tracing.py` — `@traceable` decorator
   on Anthropic SDK calls and tool invocations
-- [ ] `agent-service/src/clinical_copilot/observability/redaction.py` — strip raw chart text,
+- [x] `agent-service/src/clinical_copilot/observability/redaction.py` — strip raw chart text,
   note bodies; keep only structural metadata (tool name, latency, span count, claim count,
   model tier, abstention state) and hashed patient IDs
-- [ ] `agent-service/tests/unit/test_phi_redaction.py` — assert PHI from a tool result never
+- [x] `agent-service/tests/unit/test_phi_redaction.py` — assert PHI from a tool result never
   appears in the trace payload
 
 **Acceptance:** trace appears in LangSmith for every request with span tree, latency, token

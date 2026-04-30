@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from clinical_copilot.observability import traceable_orchestrator_run
 from clinical_copilot.orchestrator.llm_gateway import LlmGateway, LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
 from clinical_copilot.tools.base import (
@@ -67,6 +68,7 @@ class Orchestrator:
         )
         self._max_turns = max_turns
 
+    @traceable_orchestrator_run
     def run(
         self,
         *,

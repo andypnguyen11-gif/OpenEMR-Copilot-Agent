@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from clinical_copilot.observability import traceable_tool_dispatch
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.impl import all_tool_classes
 
@@ -75,6 +76,7 @@ class ToolRegistry:
 
         return [self._tools[name].anthropic_schema() for name in self.names()]
 
+    @traceable_tool_dispatch
     def dispatch(
         self,
         name: str,

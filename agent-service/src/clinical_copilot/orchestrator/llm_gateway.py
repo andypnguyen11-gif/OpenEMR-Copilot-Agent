@@ -17,6 +17,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from clinical_copilot.observability import traceable_llm_complete
+
 if TYPE_CHECKING:
     from anthropic import Anthropic
 
@@ -84,6 +86,7 @@ class AnthropicLlmGateway:
         self._model = model
         self._max_tokens = max_tokens
 
+    @traceable_llm_complete
     def complete(
         self,
         *,

@@ -20,6 +20,7 @@ from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.auth.jwt_verifier import JwtVerifier
 from clinical_copilot.auth.session import NonceStore
 from clinical_copilot.db.engine import create_engine_from_url, create_session_factory
+from clinical_copilot.observability import configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
 from clinical_copilot.tools.fixtures import FixtureStore
@@ -61,6 +62,8 @@ def build_app_state(
     and without a real fixture file. The defaults produce the
     production wiring.
     """
+
+    configure_tracing(audit_salt=settings.audit_salt)
 
     nonce_store = NonceStore(ttl_seconds=NONCE_TTL_SECONDS)
     jwt_verifier = JwtVerifier(
