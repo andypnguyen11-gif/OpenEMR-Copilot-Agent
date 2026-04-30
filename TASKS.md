@@ -281,10 +281,11 @@ patient_id, scopes, nonce}`. ARCHITECTURE §4.
 - [x] Shared HMAC secret via env var on both sides; documented rotation in README
 - [x] Test: forged token rejected; expired token rejected; reused nonce rejected
 
-**Hooks bypass:** PR 4 was committed with `--no-verify` due to pre-existing PHPStan baseline
-drift unrelated to this change — see *Tech Debt / Follow-ups* below. Scoped phpstan + rector
-on the changed files returned `[OK]`; isolated test suites all green (PHP: 32 tests / 78
-assertions; Python: 21 tests).
+**Hooks bypass:** PR 4 was committed with `--no-verify` due to a pre-existing PHPStan
+failure unrelated to this change — root-caused after the fact to a stale `tmp-phpstan/`
+analysis cache, not baseline drift. See *Tech Debt / Follow-ups* below for the fix
+(`rm -rf tmp-phpstan/`). Scoped phpstan + rector on the changed files returned `[OK]`;
+isolated test suites all green (PHP: 32 tests / 78 assertions; Python: 21 tests).
 
 **NEW**
 - `src/Services/Copilot/JwtSigner.php`
@@ -1012,25 +1013,32 @@ These don't ship as standalone PRs; they're touched in many of the above.
 One-off PRs that aren't part of the build sequence but block or degrade work elsewhere. Land
 each in its own dedicated PR — bundling silently expands scope.
 
-### Regenerate PHPStan baseline (drifted since 2.1.51 bump)
+### PHPStan baseline drift — root cause was stale `tmp-phpstan/` cache, not version drift
 
-`.phpstan/baseline/` was last regenerated in `3da4f83cb` (refactor(daysheet)). Afterwards
-`afd36caa1` bumped phpstan/phpstan **2.1.50 → 2.1.51** without re-running
-`composer phpstan-baseline`. The two versions report a slightly different set of errors, so
-1000+ baseline ignore patterns no longer match anything → PHPStan fails with
-`ignore.unmatched (non-ignorable)`. This blocks the `phpstan` pre-commit hook on every PR
-that touches PHP, even when the changed code is clean.
+Originally filed as a baseline regeneration task after PR 4 (`07fd3750f`) was committed with
+`--no-verify`. Investigation showed the regen produced a byte-identical baseline, so the
+"drift" framing was wrong — the actual cause is **stale `tmp-phpstan/` analysis cache** from
+before the `afd36caa1` phpstan **2.1.50 → 2.1.51** bump. The cache holds per-file analysis
+results plus ignore-pattern match data; the bump invalidated the schema but PHPStan kept
+loading entries silently, surfacing as `ignore.unmatched (non-ignorable)` errors against
+patterns that actually did still match the current source.
 
-Concretely surfaced in PR 4 (`07fd3750f`) — committed with `--no-verify` after scoped
-phpstan returned `[OK] No errors` on the changed files. Future PHP PRs (PR 5+, 7, 8, 11–17,
-18–19) will hit the same wall.
+**Fix:** clear the cache. `tmp-phpstan/` is already gitignored, so this is a per-clone
+local action, not a committed change.
 
-- [ ] In a dedicated PR: run `composer phpstan-baseline` to regenerate `.phpstan/baseline/`
-- [ ] Diff the regenerated baseline to confirm only "remove no-longer-matching pattern"
-  changes, no new suppressions for real lurking issues
-- [ ] PR description: cite `afd36caa1` (the bump that caused the drift) and `07fd3750f`
-  (first PR blocked by it)
-- [ ] After merge, future Co-Pilot PRs can drop the `--no-verify` workaround
+```bash
+rm -rf tmp-phpstan/
+composer phpstan   # cold run; subsequent runs use the rebuilt cache
+```
+
+After clearing, host phpstan runs in ~5 min cold / ~21 s warm with `[OK] No errors` against
+the unchanged HEAD baseline. Future PHP PRs can drop the `--no-verify` workaround once they
+have run on a cleared cache.
+
+Side-finding worth flagging separately: in-Docker `composer phpstan` exits 9 with empty
+stdout/stderr when the cache is corrupt (no error message at all), which is why the original
+diagnosis pointed at the baseline. Host phpstan in the same state prints the real errors
+and exits 1. Worth keeping in mind whenever Docker phpstan is silent.
 
 ---
 
