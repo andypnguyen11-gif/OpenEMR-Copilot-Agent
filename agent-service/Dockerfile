@@ -18,6 +18,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
+COPY tests/fixtures ./tests/fixtures
 
 RUN uv sync --frozen --no-dev
 
