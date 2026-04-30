@@ -112,6 +112,70 @@ final class AgentHttpClientTest extends TestCase
         $this->client->get('/healthz');
     }
 
+    public function testPostSendsJsonBodyAndBearerHeader(): void
+    {
+        $this->httpClient->expects($this->once())
+            ->method('sendRequest')
+            ->with($this->callback(static function (RequestInterface $request): bool {
+                self::assertSame('POST', $request->getMethod());
+                self::assertSame(
+                    'http://agent.local:8500/api/agent/query',
+                    (string) $request->getUri(),
+                );
+                self::assertSame(['application/json'], $request->getHeader('Content-Type'));
+                self::assertSame(['application/json'], $request->getHeader('Accept'));
+                self::assertSame(['Bearer test-token-abc'], $request->getHeader('Authorization'));
+                self::assertSame(
+                    '{"query":"hello"}',
+                    (string) $request->getBody(),
+                );
+                return true;
+            }))
+            ->willReturn($this->stubResponse(200, '{"ok":true}'));
+
+        $response = $this->client->post('/api/agent/query', ['query' => 'hello'], 'test-token-abc');
+
+        self::assertSame(200, $response->statusCode);
+        self::assertSame(['ok' => true], $response->body);
+    }
+
+    public function testPostRejectsRelativePath(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->client->post('api/agent/query', ['query' => 'hi'], 'token');
+    }
+
+    public function testPostRejectsEmptyBearerToken(): void
+    {
+        // Without a bearer token the agent's verifier returns 401; failing
+        // here is faster and produces a more attributable log line.
+        $this->expectException(AgentServiceException::class);
+        $this->client->post('/api/agent/query', ['query' => 'hi'], '');
+    }
+
+    public function testPostWrapsTransportFailures(): void
+    {
+        $transportError = new class extends \RuntimeException implements ClientExceptionInterface {};
+        $this->httpClient->method('sendRequest')->willThrowException($transportError);
+
+        $this->expectException(AgentServiceException::class);
+        $this->client->post('/api/agent/query', ['query' => 'hi'], 'token');
+    }
+
+    public function testPostPropagatesNon2xxStatusFromAgent(): void
+    {
+        // The agent's structured error responses (4xx/5xx) must round-trip
+        // verbatim to the controller — the controller decides whether to
+        // surface them or wrap them.
+        $this->httpClient->method('sendRequest')
+            ->willReturn($this->stubResponse(401, '{"error":"invalid token"}'));
+
+        $response = $this->client->post('/api/agent/query', ['query' => 'hi'], 'token');
+
+        self::assertSame(401, $response->statusCode);
+        self::assertSame(['error' => 'invalid token'], $response->body);
+    }
+
     private function stubResponse(int $status, string $body): ResponseInterface
     {
         $stream = $this->createMock(StreamInterface::class);

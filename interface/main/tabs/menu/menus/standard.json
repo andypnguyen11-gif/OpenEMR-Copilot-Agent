@@ -71,6 +71,18 @@
     ]
   },
   {
+    "label": "Co-Pilot",
+    "menu_id": "cpl0",
+    "target": "cpl",
+    "url": "/interface/copilot/chat.php",
+    "children": [],
+    "requirement": 0,
+    "acl_req": [
+      "patients",
+      "demo"
+    ]
+  },
+  {
     "label": "Patient",
     "menu_id": "patimg",
     "children": [

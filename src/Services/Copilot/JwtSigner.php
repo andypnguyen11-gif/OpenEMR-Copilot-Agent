@@ -31,11 +31,11 @@ namespace OpenEMR\Services\Copilot;
 use DateInterval;
 use DateTimeZone;
 use InvalidArgumentException;
-use Lcobucci\Clock\Clock;
 use Lcobucci\JWT\Configuration;
 use Lcobucci\JWT\Signer\Hmac\Sha256;
 use Lcobucci\JWT\Signer\Key\InMemory;
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
+use Psr\Clock\ClockInterface;
 use Ramsey\Uuid\Uuid;
 
 final readonly class JwtSigner
@@ -48,7 +48,7 @@ final readonly class JwtSigner
 
     public function __construct(
         string $hmacSecret,
-        private Clock $clock,
+        private ClockInterface $clock,
     ) {
         if ($hmacSecret === '') {
             // Constructor-time failure rather than sign-time so a misconfigured

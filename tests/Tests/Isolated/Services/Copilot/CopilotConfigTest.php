@@ -107,4 +107,24 @@ final class CopilotConfigTest extends TestCase
 
         $config->getJwtSecret();
     }
+
+    public function testStandardScopesContainsTheMvpReadSurface(): void
+    {
+        // The standard scope set is the MVP fallback when the session has
+        // none. Pinning it here means a future change that drops or
+        // renames a scope is loud — those names are also baked into the
+        // agent service's tool layer (Tool.required_scope) and the M5
+        // eval suite expects every tool to have a corresponding scope
+        // grant in the JWT.
+        $config = new CopilotConfig(new OEGlobalsBag([]));
+
+        $scopes = $config->getStandardScopes();
+
+        self::assertContains('system/Condition.read', $scopes);
+        self::assertContains('system/MedicationRequest.read', $scopes);
+        self::assertContains('system/AllergyIntolerance.read', $scopes);
+        self::assertContains('system/Observation.read', $scopes);
+        self::assertContains('system/Encounter.read', $scopes);
+        self::assertContains('system/DocumentReference.read', $scopes);
+    }
 }

@@ -112,4 +112,62 @@ final class SessionMapper
     {
         return bin2hex(random_bytes(16));
     }
+
+    /**
+     * Build a :class:`ClinicianIdentity` for the M3 chat-query path, where
+     * the patient is selected from the chat UI's dropdown rather than from
+     * OpenEMR's chart context.
+     *
+     * Differences from :meth:`map`:
+     *
+     * * ``patient_id`` is supplied by the caller (the controller validates
+     *   it from the request body).
+     * * Scopes fall back to ``$fallbackScopes`` when the session has none —
+     *   this is the path the standard MVP scope set from
+     *   :class:`CopilotConfig` flows through. PR 18's role/scope plumbing
+     *   replaces both legs.
+     * * The role default is ``'physician'`` (rather than ``'unknown'``)
+     *   because the chat surface is gated behind OpenEMR's ACL; reaching
+     *   this code with an authenticated session implies a clinician role
+     *   for the MVP. Real role lookup lands with PR 18.
+     *
+     * @param list<string> $fallbackScopes
+     *
+     * @throws RuntimeException When the session is unauthenticated.
+     */
+    public function mapWithPatient(string $patientId, array $fallbackScopes): ClinicianIdentity
+    {
+        if ($patientId === '') {
+            throw new RuntimeException(
+                'mapWithPatient requires a non-empty patient_id',
+            );
+        }
+
+        /** @var array<string, mixed> $session */
+        $session = $_SESSION ?? [];
+
+        $userId = self::scalarToString($session['authUserID'] ?? null);
+        if ($userId === '') {
+            throw new RuntimeException(
+                'Co-Pilot gateway called from an unauthenticated session',
+            );
+        }
+
+        $scopesRaw = $session['copilot_scopes'] ?? null;
+        if (is_array($scopesRaw) && $scopesRaw !== []) {
+            $scopes = array_values(array_map(self::scalarToString(...), $scopesRaw));
+        } else {
+            $scopes = $fallbackScopes;
+        }
+
+        $roleRaw = $session['copilot_role'] ?? null;
+        $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'physician';
+
+        return new ClinicianIdentity(
+            userId: $userId,
+            role: $role,
+            patientId: $patientId,
+            scopes: $scopes,
+        );
+    }
 }

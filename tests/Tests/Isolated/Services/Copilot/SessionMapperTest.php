@@ -167,4 +167,57 @@ final class SessionMapperTest extends TestCase
         self::assertSame('doc-1', $identity->userId);
         self::assertSame('3.14', $identity->patientId);
     }
+
+    public function testMapWithPatientUsesBodyPatientIdAndFallbackScopes(): void
+    {
+        // The chat surface takes patient_id from the request body and
+        // grants the standard MVP scope set when the session has none.
+        $_SESSION['authUserID'] = 'dr-patel';
+        // No copilot_scopes, no copilot_role, no pid — all of which the
+        // mapWithPatient path is designed to tolerate.
+        $fallback = ['system/Condition.read', 'system/Observation.read'];
+
+        $identity = (new SessionMapper())->mapWithPatient('101', $fallback);
+
+        self::assertSame('dr-patel', $identity->userId);
+        self::assertSame('101', $identity->patientId);
+        self::assertSame('physician', $identity->role);
+        self::assertSame($fallback, $identity->scopes);
+    }
+
+    public function testMapWithPatientPrefersSessionScopesOverFallback(): void
+    {
+        // PR 18 wires per-role scope assignment into the session; if the
+        // session already has a scope list we must honor it rather than
+        // silently overwriting with the MVP fallback.
+        $_SESSION['authUserID'] = 'dr-patel';
+        $_SESSION['copilot_scopes'] = ['custom/Scope.read'];
+        $_SESSION['copilot_role'] = 'resident';
+
+        $identity = (new SessionMapper())->mapWithPatient(
+            '101',
+            ['system/Condition.read'],
+        );
+
+        self::assertSame('resident', $identity->role);
+        self::assertSame(['custom/Scope.read'], $identity->scopes);
+    }
+
+    public function testMapWithPatientRequiresAuthenticatedSession(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('authenticated');
+
+        (new SessionMapper())->mapWithPatient('101', []);
+    }
+
+    public function testMapWithPatientRequiresNonEmptyPatientId(): void
+    {
+        $_SESSION['authUserID'] = 'dr-patel';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('patient_id');
+
+        (new SessionMapper())->mapWithPatient('', []);
+    }
 }

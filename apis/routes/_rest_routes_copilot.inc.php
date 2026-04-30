@@ -4,14 +4,22 @@
  * Clinical Co-Pilot Routes
  *
  * The OpenEMR-side gateway for ``/api/agent/*``. Routes here are merged into
- * the standard route map by ``_rest_routes_standard.inc.php``. PR 3 ships
- * only the unauthenticated ``/healthz`` proxy; PR 4 adds the JWT-signed
- * tool routes.
+ * the standard route map by ``_rest_routes_standard.inc.php``.
  *
- * Auth: like ``GET /api/version``, ``GET /api/agent/healthz`` requires only
- * a valid OAuth2 session (handled by the kernel's authorization listener) —
- * no ACL gate, since the endpoint exposes no PHI and only reports whether
- * the agent service is reachable.
+ * Routes:
+ *
+ * * ``GET /api/agent/healthz`` — unauthenticated proxy for the agent
+ *   service's liveness check (PR 3).
+ * * ``POST /api/agent/query`` — the M3 chat-query route. Mints a per-request
+ *   HS256 JWT from the current session and forwards the user's natural-
+ *   language query to the agent service. Body: ``{patient_id, query}``;
+ *   response: the structured :class:`AgentResponse` from M2.
+ *
+ * Auth: ``GET /api/agent/healthz`` requires only a valid OAuth2 session.
+ * ``POST /api/agent/query`` likewise relies on the kernel's authorization
+ * listener for the OAuth2 gate; the per-request RBAC that matters at the
+ * agent boundary is done downstream by the Python tool layer using the
+ * minted JWT's claims.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -30,6 +38,9 @@ use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\GatewayController;
+use OpenEMR\Services\Copilot\JwtSigner;
+use OpenEMR\Services\Copilot\QueryController;
+use OpenEMR\Services\Copilot\SessionMapper;
 
 return [
     "GET /api/agent/healthz" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
@@ -42,5 +53,33 @@ return [
         $agentClient = new AgentHttpClient($httpClient, $factory, $config);
         $controller = new GatewayController($agentClient, ServiceContainer::getLogger());
         return $controller->healthz();
+    },
+    "POST /api/agent/query" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
+        $config = new CopilotConfig($globals);
+        $factory = new HttpFactory();
+        // Slow-lane query timeouts can run 15-20s once the model is invoked;
+        // override the short healthz default by a configurable margin.
+        $httpClient = new GuzzleClient([
+            'timeout' => max($config->getAgentTimeoutSeconds() * 6, 30),
+            'http_errors' => false,
+        ]);
+        $agentClient = new AgentHttpClient($httpClient, $factory, $config);
+        $signer = new JwtSigner(
+            $config->getJwtSecret(),
+            ServiceContainer::getClock(),
+        );
+        $sessionMapper = new SessionMapper();
+        $controller = new QueryController(
+            $agentClient,
+            $signer,
+            $sessionMapper,
+            $config,
+            ServiceContainer::getLogger(),
+        );
+        // The HttpRestRequest is OpenEMR's narrowed wrapper; the
+        // QueryController wants the raw body which Symfony's Request
+        // exposes via ``getContent``. They share the same parent, so a
+        // direct pass-through works here.
+        return $controller->query($request);
     },
 ];

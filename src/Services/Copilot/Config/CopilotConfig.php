@@ -74,4 +74,28 @@ final readonly class CopilotConfig
         }
         return $secret;
     }
+
+    /**
+     * Standard MVP scope set the gateway grants to a chat session when the
+     * user's stored scopes are empty. PR 18 replaces this with a per-role
+     * lookup; for the M-PR demo every logged-in clinician can see the full
+     * read surface, and the per-clinician check that matters at the
+     * agent-side tool layer is the patient-id binding (see Tool ABC's
+     * RBAC enforcement).
+     *
+     * @return list<string>
+     */
+    public function getStandardScopes(): array
+    {
+        return [
+            'system/Patient.read',
+            'system/Condition.read',
+            'system/MedicationRequest.read',
+            'system/MedicationStatement.read',
+            'system/AllergyIntolerance.read',
+            'system/Observation.read',
+            'system/Encounter.read',
+            'system/DocumentReference.read',
+        ];
+    }
 }
