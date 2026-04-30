@@ -142,6 +142,176 @@ openemr/                                              (this repo — OpenEMR for
 
 ---
 
+## MVP Triage Plan — Thursday Submission (de-scoped from the full 27-PR plan)
+
+**Submission deadline:** Thursday 2026-04-30 11:00 PM — minimum requirements.
+**Final deadline:** Sunday 2026-05-03 — three extra days for depth additions.
+
+**Graded contract** (case-study Agent Requirements, not the full PRD):
+
+1. Agentic Chatbot — multi-turn, tool-using, conversational
+2. Verification System — source attribution + domain constraint enforcement
+3. Observability — per-request trace, step order, tool failures, token cost
+4. Evaluation — failure modes, regressions, edge cases including RBAC
+
+**USERS.md coverage:** all four use cases ship in tonight's MVP, but on a single chat surface
+rather than the Daily Brief + side panel split. Surfaces split out Sunday.
+
+**Hard cuts from the original 27-PR plan** (justified in the architecture defense as Phase 2,
+nothing deleted from this document — just rescheduled below):
+
+- Real OAuth Backend Services (PR 5 client_secret_post path) — replaced with **fixture-driven
+  tool layer** for the demo. AUDIT §3.2 already established that OpenEMR's seeded demo data
+  has zero clinical content, so live FHIR fetching would return empty bundles anyway. The
+  fixture is the honest MVP critical path; PR 5.5 (jwt-bearer client_assertion against
+  OpenEMR's SMART Backend Services profile) lands Sunday.
+- Two-lane separation (PR 10) — single orchestrator at one budget. The two-lane architecture
+  is real and defended in interview; the code can ship Sunday.
+- Daily Brief surface (PR 16) — skip. Sunday work.
+- Real discrepancy engine (PR 13–15) — replaced with hand-encoded conflict scenarios in the
+  fixture. Use case 3 demos against the fixture. Real engine Sunday.
+- Symfony event listeners / invalidation hooks (PR 15) — skip; cache TTL only.
+- Six FHIR-backed tools (PR 6, 8) — collapse into fixture-reading tool stubs with stable
+  output schemas (so PR 6 can swap implementation behind the same interface Sunday).
+
+### Two rules to keep tonight's work compatible with Sunday
+
+1. **Pin the tool I/O schemas tonight.** The schemas the tools return are the contract PR 6
+   will inherit. If they stay stable, Sunday is implementation-only — no call-site changes.
+2. **Don't skip eval and observability tonight to buy time.** Both are load-bearing for
+   detecting regressions when Sunday's swaps land. They look optional under deadline pressure
+   but they are exactly what makes "work out of order" safe.
+
+### Thursday-shippable PR sequence
+
+Each block is sized for the constrained day. Stay strict on the cuts.
+
+#### PR M1 — Fixture data + tool layer (~2 hr)
+
+- [ ] `agent-service/tests/fixtures/patients.json` — 5 patients covering the four use cases:
+  one happy-path, one with missing-data gap, one with med-vs-note conflict, one with
+  allergy-vs-med safety conflict, one out-of-panel (RBAC bypass test target)
+- [ ] `agent-service/src/clinical_copilot/tools/base.py` — Tool ABC + RBAC check that compares
+  JWT claims (PR 4 already shipped) against requested patient_id; **`UNAUTHORIZED` writes
+  audit row** via PR 2's audit-log writer
+- [ ] `agent-service/src/clinical_copilot/tools/registry.py` — registers all tools
+- [ ] Tool implementations (each ~30 LOC, all read from `patients.json`):
+  `get_problems`, `get_meds`, `get_allergies`, `get_labs`, `get_visits`, `get_notes`,
+  `get_flags` (returns hand-encoded conflicts from the fixture)
+- [ ] `agent-service/tests/unit/test_tools.py` — happy path + RBAC denial path per tool
+
+**Acceptance:** tools return typed records with `source_id` per row; RBAC denial writes one
+audit-log row and returns `UNAUTHORIZED`; no tool returns data for an out-of-panel patient.
+
+#### PR M2 — Single-orchestrator agent + verification middleware (~3 hr)
+
+- [ ] `agent-service/src/clinical_copilot/orchestrator/agent.py` — single-loop tool-use
+  orchestrator using Anthropic SDK with prompt caching on system prompt + tool defs
+- [ ] `agent-service/src/clinical_copilot/orchestrator/schemas.py` — Pydantic schemas for the
+  structured response: `cards[]`, `prose: [{claim, source_id, source_field}]`, `tool_results`,
+  `abstention: {state, reason}`
+- [ ] `agent-service/src/clinical_copilot/orchestrator/prompts/system.md` — chart contents
+  passed exclusively as delimited tool-call results (prompt-injection defense)
+- [ ] `agent-service/src/clinical_copilot/verification/middleware.py` — citation existence
+  check + field-level value check + abstention taxonomy
+- [ ] `agent-service/src/clinical_copilot/verification/abstention.py` — four-state enum
+  (`NO_DATA` / `VERIFICATION_FAILED` / `TOOL_FAILURE` / `UNAUTHORIZED`); whole-response
+  abstain on any verification failure
+- [ ] `agent-service/tests/unit/test_orchestrator.py` + `test_verification.py`
+
+**Acceptance:** end-to-end test: clinician asks "active problems for patient X" → orchestrator
+invokes `get_problems` → emits structured response → middleware passes → response cards +
+cited prose return; a fabricated `source_id` from the model is rejected.
+
+#### PR M3 — POST `/api/agent/query` endpoint + minimal chat UI (~2 hr)
+
+- [ ] `agent-service/src/clinical_copilot/main.py` — register `POST /api/agent/query` route,
+  takes JWT (PR 4 verifier dependency), invokes orchestrator, returns structured response
+- [ ] `interface/copilot/chat.php` — single page with patient selector, chat input, message
+  thread; calls PHP gateway (PR 3) which signs JWT and proxies to agent service
+- [ ] `templates/copilot/chat.tpl` — minimal Smarty template
+- [ ] `public/copilot/chat.js` — vanilla JS, posts query and renders response cards + prose +
+  abstention banner
+- [ ] OpenEMR top-nav menu entry: "Co-Pilot" linking to `interface/copilot/chat.php`
+
+**Acceptance:** logged-in physician picks a patient → asks all four use-case questions → sees
+four working answers with citations and any flagged conflicts; switching patients clears
+in-memory chat history.
+
+#### PR M4 — LangSmith observability + PHI redaction (~30 min)
+
+- [ ] `agent-service/src/clinical_copilot/observability/tracing.py` — `@traceable` decorator
+  on Anthropic SDK calls and tool invocations
+- [ ] `agent-service/src/clinical_copilot/observability/redaction.py` — strip raw chart text,
+  note bodies; keep only structural metadata (tool name, latency, span count, claim count,
+  model tier, abstention state) and hashed patient IDs
+- [ ] `agent-service/tests/unit/test_phi_redaction.py` — assert PHI from a tool result never
+  appears in the trace payload
+
+**Acceptance:** trace appears in LangSmith for every request with span tree, latency, token
+cost; PHI-leak probe asserts no patient text in the payload.
+
+#### PR M5 — Eval harness + 6 cases (~2 hr)
+
+- [ ] `agent-service/tests/eval/harness.py` + `runner.py`
+- [ ] `agent-service/tests/eval/cases/` — exactly six JSON cases:
+  - `happy_path/01_active_problems.json`
+  - `missing_data/01_no_recent_labs.json`
+  - `ambiguous/01_unclear_query.json`
+  - `conflicting/01_med_vs_note.json`
+  - `fabrication/01_invented_claim.json`
+  - `rbac_bypass/01_out_of_panel_patient.json`
+- [ ] `agent-service/Makefile` — `make eval` runs the harness; **fails build on any RBAC case
+  failure** (100% RBAC pass-rate is non-negotiable per PRD §13)
+
+**Acceptance:** `make eval` runs end-to-end against the deployed agent, prints pass/fail
+summary; the RBAC case is a hard gate.
+
+#### PR M6 — Deploy + record demo (~3 hr)
+
+- [ ] `railway up --service agent-service` — push the new code with all the above
+- [ ] Smoke-test all four use cases through the deployed app
+- [ ] Record demo video (~5 min) showing:
+  - Use case 1: "What's changed since last visit?" — multi-turn follow-up
+  - Use case 2: "Active problems / meds / allergies / labs" — cards + cited synthesis
+  - Use case 3: med-vs-note conflict surfaced from the fixture
+  - Use case 4: "What should I know before walking in?" — compressed briefing
+  - **RBAC bypass attempt** showing the agent denying access + audit log entry
+  - LangSmith trace open in another window
+  - `make eval` running with all 6 cases passing
+
+### Sunday additions (post-Thursday submission, before final deadline)
+
+Once the Thursday MVP is in the can, work the original PR 1–27 plan below in priority order.
+Suggested order based on architecture-defense leverage:
+
+1. **PR 5.5** — JWT-bearer `client_assertion` for SMART Backend Services. New PR added
+   tonight after we discovered OpenEMR's confidential-client OAuth2 endpoint requires
+   `jwks` for any registration that includes `system/*` scopes (see
+   `src/RestControllers/AuthorizationController.php` lines 312–317). Generates an RSA
+   keypair, sends the public key as `jwks` at registration time, and rewrites
+   `OAuthClient._fetch_token()` to mint a per-request signed JWT instead of posting
+   `client_id`/`client_secret`. Unblocks live FHIR.
+2. **PR 6** — real FHIR client wrappers, swap fixture reads inside tools for live FHIR
+   calls (Tool ABC interface stays unchanged from M1).
+3. **PR 13** — real discrepancy engine + seeded fixtures; `get_flags` switches from reading
+   hand-encoded conflicts to consuming engine output.
+4. **PR 10** — two-lane orchestrator split (slow / fast); existing M2 single path becomes
+   the slow lane default.
+5. **PR 16** — Daily Brief surface; reuses the same `/api/agent/query` route.
+6. **PR 22–23** — expand eval suite from 6 cases to the full adversarial set (10+ per
+   category, 100% RBAC pass-rate enforced).
+7. **PR 17** — in-chart side panel via `patientSummaryCard.render` Symfony event
+   (non-forking injection, AUDIT §2.2).
+
+The Thursday MVP's fixture-driven tool layer becomes the **test fixture** for these later
+PRs (its conflict scenarios are exactly the inputs the discrepancy engine eval needs), so
+nothing built tomorrow is wasted. Tonight's fixture lives at
+`agent-service/tests/fixtures/patients.json`; PR 13's `tests/Tests/Fixtures/discrepancy-scenarios.php`
+mirrors the same five conflict shapes for cross-language eval parity.
+
+---
+
 ## How to use this document
 
 Each PR block lists the files to create/edit and an **Acceptance** criterion. When implementing
