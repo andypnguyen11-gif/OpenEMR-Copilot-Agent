@@ -29,7 +29,11 @@ use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 
-$session = SessionWrapperFactory::getInstance()->getActiveSession();
+// getCoreSession() rather than getActiveSession() so this works against
+// older openemr/openemr base images on Railway that predate the latter
+// helper. The chat surface is always core (never portal), so the two
+// would return the same session anyway.
+$session = SessionWrapperFactory::getInstance()->getCoreSession();
 $apiCsrfToken = CsrfUtils::collectCsrfToken($session, 'api');
 $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
 

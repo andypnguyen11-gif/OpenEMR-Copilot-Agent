@@ -69,8 +69,12 @@ return [
             $config->getJwtSecret(),
             ServiceContainer::getClock(),
         );
+        // getCoreSession() rather than getActiveSession() so this works
+        // against older openemr/openemr base images that predate the
+        // latter. The Co-Pilot route is always called from the core
+        // clinician app, never the patient portal.
         $sessionMapper = new SessionMapper(
-            SessionWrapperFactory::getInstance()->getActiveSession(),
+            SessionWrapperFactory::getInstance()->getCoreSession(),
         );
         $controller = new QueryController(
             $agentClient,
