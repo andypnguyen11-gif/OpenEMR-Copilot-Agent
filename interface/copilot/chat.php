@@ -35,13 +35,23 @@ use OpenEMR\Core\OEGlobalsBag;
 // been stable for years and is what every CsrfUtils variant in the wild
 // computes; reading the private key from the session bag directly
 // bypasses the unstable wrapper.
-/** @var mixed $openemrSessionRaw */
-$openemrSessionRaw = $_SESSION['OpenEMR'] ?? null;
+// Older OpenEMR base images don't namespace session data under a
+// Symfony AttributeBag, so $_SESSION['csrf_private_key'] is set
+// directly. Newer images put it under $_SESSION['OpenEMR']
+// (SessionUtil::CORE_SESSION_ID). Probe both so the gateway works
+// regardless of which version the deployed base image is on.
 $privateKey = '';
-if (is_array($openemrSessionRaw)) {
-    $maybeKey = $openemrSessionRaw['csrf_private_key'] ?? null;
-    if (is_string($maybeKey)) {
-        $privateKey = $maybeKey;
+$topLevelKey = $_SESSION['csrf_private_key'] ?? null;
+if (is_string($topLevelKey) && $topLevelKey !== '') {
+    $privateKey = $topLevelKey;
+} else {
+    /** @var mixed $bag */
+    $bag = $_SESSION['OpenEMR'] ?? null;
+    if (is_array($bag)) {
+        $bagKey = $bag['csrf_private_key'] ?? null;
+        if (is_string($bagKey)) {
+            $privateKey = $bagKey;
+        }
     }
 }
 $apiCsrfToken = $privateKey !== ''

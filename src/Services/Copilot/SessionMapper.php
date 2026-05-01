@@ -61,15 +61,24 @@ final readonly class SessionMapper
     }
 
     /**
-     * Construct a mapper from the live ``$_SESSION``, drilling into the
-     * core AttributeBag namespace. Convenience for route closures that
-     * have already been hit by OpenEMR's session bootstrap.
+     * Construct a mapper from the live ``$_SESSION``. Newer OpenEMR
+     * versions namespace clinician data under the core AttributeBag
+     * (key ``"OpenEMR"``); older ones write straight to the top of
+     * ``$_SESSION``. Probe the bag first; if it's missing the auth
+     * keys, fall back to the top level so the gateway works against
+     * either layout.
      */
     public static function fromGlobalSession(): self
     {
-        /** @var array<string, mixed> $bag */
-        $bag = $_SESSION[self::CORE_SESSION_BAG] ?? [];
-        return new self($bag);
+        /** @var mixed $bag */
+        $bag = $_SESSION[self::CORE_SESSION_BAG] ?? null;
+        if (is_array($bag) && array_key_exists('authUserID', $bag)) {
+            /** @var array<string, mixed> $bag */
+            return new self($bag);
+        }
+        /** @var array<string, mixed> $session */
+        $session = $_SESSION ?? [];
+        return new self($session);
     }
 
     /**

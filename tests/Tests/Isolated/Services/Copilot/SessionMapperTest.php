@@ -197,12 +197,12 @@ final class SessionMapperTest extends TestCase
             ->mapWithPatient('', []);
     }
 
-    public function testFromGlobalSessionDrillsIntoCoreBag(): void
+    public function testFromGlobalSessionPrefersBagOverTopLevel(): void
     {
-        // The core OpenEMR session lives under $_SESSION['OpenEMR'] thanks
-        // to Symfony's AttributeBag namespacing. Reading $_SESSION directly
-        // hits the wrong nesting level; the convenience constructor must
-        // pull the bag-scoped subarray.
+        // The newer OpenEMR session lives under $_SESSION['OpenEMR'] thanks
+        // to Symfony's AttributeBag namespacing. When the bag is present and
+        // populated, fromGlobalSession must read from there — top-level
+        // keys are the legacy layout and would shadow real values.
         $saved = $_SESSION ?? [];
         try {
             $_SESSION = [
@@ -218,6 +218,29 @@ final class SessionMapperTest extends TestCase
 
             self::assertSame('doc-9', $identity->userId);
             self::assertSame('101', $identity->patientId);
+        } finally {
+            $_SESSION = $saved;
+        }
+    }
+
+    public function testFromGlobalSessionFallsBackToTopLevelSession(): void
+    {
+        // Older OpenEMR base images (what we ship on Railway today) don't
+        // namespace under an AttributeBag; auth data lives at the top of
+        // $_SESSION. Pin the fallback so the gateway keeps working against
+        // those images.
+        $saved = $_SESSION ?? [];
+        try {
+            $_SESSION = [
+                'authUserID' => 'doc-legacy',
+                'pid' => '202',
+                'copilot_role' => 'physician',
+            ];
+
+            $identity = SessionMapper::fromGlobalSession()->map();
+
+            self::assertSame('doc-legacy', $identity->userId);
+            self::assertSame('202', $identity->patientId);
         } finally {
             $_SESSION = $saved;
         }
