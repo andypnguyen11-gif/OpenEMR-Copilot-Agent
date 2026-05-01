@@ -3,13 +3,13 @@
 /**
  * Isolated tests for :class:`SessionMapper`.
  *
- * The mapper is the *one* place in the Co-Pilot gateway that is allowed to
- * read the OpenEMR session (CLAUDE.md: superglobal reads must be confined
- * to the outermost entry point and parsed into typed objects immediately).
- * These tests pin that boundary discipline: required keys map cleanly into
- * a :class:`ClinicianIdentity`, missing keys raise rather than silently
- * defaulting, and the per-request nonce generator returns a fresh,
- * URL-safe value on every call.
+ * The mapper is the *one* place in the Co-Pilot gateway that handles
+ * session data (CLAUDE.md: superglobal reads must be confined to the
+ * outermost entry point and parsed into typed objects immediately).
+ * These tests pin that boundary discipline: required keys map cleanly
+ * into a :class:`ClinicianIdentity`, missing keys raise rather than
+ * silently defaulting, and the per-request nonce generator returns a
+ * fresh, URL-safe value on every call.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -25,35 +25,17 @@ namespace OpenEMR\Tests\Isolated\Services\Copilot;
 use OpenEMR\Services\Copilot\SessionMapper;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\Session\Session;
-use Symfony\Component\HttpFoundation\Session\SessionInterface;
-use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 final class SessionMapperTest extends TestCase
 {
-    /**
-     * Build an in-memory Symfony session pre-populated with the given keys —
-     * the dependency the mapper now reads through (rather than $_SESSION).
-     *
-     * @param array<string, mixed> $keys
-     */
-    private function session(array $keys = []): SessionInterface
-    {
-        $session = new Session(new MockArraySessionStorage());
-        foreach ($keys as $name => $value) {
-            $session->set($name, $value);
-        }
-        return $session;
-    }
-
     public function testMapsAuthenticatedSessionIntoClinicianIdentity(): void
     {
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 42,
             'pid' => 7,
             'copilot_role' => 'physician',
             'copilot_scopes' => ['patient/Patient.read', 'patient/Condition.read'],
-        ])))->map();
+        ]))->map();
 
         self::assertSame('42', $identity->userId);
         self::assertSame('7', $identity->patientId);
@@ -70,11 +52,11 @@ final class SessionMapperTest extends TestCase
         // JWT claim must be a string so the Python verifier can use it as a
         // map key without surprise type coercion. Doing the cast here keeps
         // the rest of the gateway from having to think about it.
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 42,
             'pid' => 7,
             'copilot_role' => 'physician',
-        ])))->map();
+        ]))->map();
 
         self::assertSame('42', $identity->userId);
         self::assertSame('7', $identity->patientId);
@@ -88,10 +70,10 @@ final class SessionMapperTest extends TestCase
         // request will still be denied at the tool boundary. The default
         // exists only so health-check style flows can sign a token before
         // the role plumbing lands.
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 42,
             'pid' => 7,
-        ])))->map();
+        ]))->map();
 
         self::assertSame('unknown', $identity->role);
         self::assertSame([], $identity->scopes);
@@ -106,7 +88,7 @@ final class SessionMapperTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('authenticated');
 
-        (new SessionMapper($this->session(['pid' => 7])))->map();
+        (new SessionMapper(['pid' => 7]))->map();
     }
 
     public function testRaisesWhenPatientNotInContext(): void
@@ -118,10 +100,10 @@ final class SessionMapperTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('patient context');
 
-        (new SessionMapper($this->session([
+        (new SessionMapper([
             'authUserID' => 42,
             'copilot_role' => 'physician',
-        ])))->map();
+        ]))->map();
     }
 
     public function testGenerateNonceReturnsUrlSafeHex(): void
@@ -129,7 +111,7 @@ final class SessionMapperTest extends TestCase
         // Hex keeps the nonce safe to drop into a JSON claim without
         // additional encoding. 32 hex chars == 16 bytes of entropy, which
         // matches the agent-service replay-store key budget.
-        $nonce = (new SessionMapper($this->session()))->generateNonce();
+        $nonce = (new SessionMapper([]))->generateNonce();
 
         self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', $nonce);
     }
@@ -140,7 +122,7 @@ final class SessionMapperTest extends TestCase
         // sequential calls must not return the same value. Birthday-paradox
         // collision in 16 bytes of CSPRNG output is effectively zero, so
         // any equal pair here is a real bug, not flake.
-        $mapper = new SessionMapper($this->session());
+        $mapper = new SessionMapper([]);
 
         self::assertNotSame(
             $mapper->generateNonce(),
@@ -155,11 +137,11 @@ final class SessionMapperTest extends TestCase
         // unconstrained), the mapper must not blow up — it should reduce
         // the value to a non-empty string and let the agent service's
         // tool layer reject the resulting bogus patient_id.
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 'doc-1',
             'pid' => 3.14,
             'copilot_role' => 'physician',
-        ])))->map();
+        ]))->map();
 
         self::assertSame('doc-1', $identity->userId);
         self::assertSame('3.14', $identity->patientId);
@@ -173,9 +155,9 @@ final class SessionMapperTest extends TestCase
         // mapWithPatient path is designed to tolerate.
         $fallback = ['system/Condition.read', 'system/Observation.read'];
 
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 'dr-patel',
-        ])))->mapWithPatient('101', $fallback);
+        ]))->mapWithPatient('101', $fallback);
 
         self::assertSame('dr-patel', $identity->userId);
         self::assertSame('101', $identity->patientId);
@@ -188,11 +170,11 @@ final class SessionMapperTest extends TestCase
         // PR 18 wires per-role scope assignment into the session; if the
         // session already has a scope list we must honor it rather than
         // silently overwriting with the MVP fallback.
-        $identity = (new SessionMapper($this->session([
+        $identity = (new SessionMapper([
             'authUserID' => 'dr-patel',
             'copilot_scopes' => ['custom/Scope.read'],
             'copilot_role' => 'resident',
-        ])))->mapWithPatient('101', ['system/Condition.read']);
+        ]))->mapWithPatient('101', ['system/Condition.read']);
 
         self::assertSame('resident', $identity->role);
         self::assertSame(['custom/Scope.read'], $identity->scopes);
@@ -203,7 +185,7 @@ final class SessionMapperTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('authenticated');
 
-        (new SessionMapper($this->session()))->mapWithPatient('101', []);
+        (new SessionMapper([]))->mapWithPatient('101', []);
     }
 
     public function testMapWithPatientRequiresNonEmptyPatientId(): void
@@ -211,7 +193,33 @@ final class SessionMapperTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('patient_id');
 
-        (new SessionMapper($this->session(['authUserID' => 'dr-patel'])))
+        (new SessionMapper(['authUserID' => 'dr-patel']))
             ->mapWithPatient('', []);
+    }
+
+    public function testFromGlobalSessionDrillsIntoCoreBag(): void
+    {
+        // The core OpenEMR session lives under $_SESSION['OpenEMR'] thanks
+        // to Symfony's AttributeBag namespacing. Reading $_SESSION directly
+        // hits the wrong nesting level; the convenience constructor must
+        // pull the bag-scoped subarray.
+        $saved = $_SESSION ?? [];
+        try {
+            $_SESSION = [
+                'OpenEMR' => [
+                    'authUserID' => 'doc-9',
+                    'pid' => '101',
+                    'copilot_role' => 'physician',
+                ],
+                'authUserID' => 'wrong-level',
+            ];
+
+            $identity = SessionMapper::fromGlobalSession()->map();
+
+            self::assertSame('doc-9', $identity->userId);
+            self::assertSame('101', $identity->patientId);
+        } finally {
+            $_SESSION = $saved;
+        }
     }
 }

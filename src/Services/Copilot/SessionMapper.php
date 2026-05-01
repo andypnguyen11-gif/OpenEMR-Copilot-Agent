@@ -37,19 +37,39 @@ namespace OpenEMR\Services\Copilot;
 
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
 final readonly class SessionMapper
 {
     /**
-     * The mapper reads from the injected Symfony session rather than the
-     * bare ``$_SESSION`` superglobal because OpenEMR namespaces its session
-     * data under the core AttributeBag (key ``"OpenEMR"``). Reading
-     * ``$_SESSION['authUserID']`` directly hits the wrong nesting level and
-     * always returns null in the API dispatch path.
+     * Bag-namespace key Symfony's AttributeBag uses for OpenEMR's core
+     * session. Equivalent to ``SessionUtil::CORE_SESSION_ID``; hard-coded
+     * here so the gateway works against older base images that predate
+     * that constant.
      */
-    public function __construct(private SessionInterface $session)
+    public const CORE_SESSION_BAG = 'OpenEMR';
+
+    /**
+     * @param array<string, mixed> $session The ``$_SESSION[...]`` bag
+     *        contents — typically extracted from
+     *        ``$_SESSION[self::CORE_SESSION_BAG]`` at the route boundary.
+     *        Reading the bag-scoped array directly avoids depending on
+     *        SessionWrapperFactory methods that vary across OpenEMR
+     *        versions.
+     */
+    public function __construct(private array $session)
     {
+    }
+
+    /**
+     * Construct a mapper from the live ``$_SESSION``, drilling into the
+     * core AttributeBag namespace. Convenience for route closures that
+     * have already been hit by OpenEMR's session bootstrap.
+     */
+    public static function fromGlobalSession(): self
+    {
+        /** @var array<string, mixed> $bag */
+        $bag = $_SESSION[self::CORE_SESSION_BAG] ?? [];
+        return new self($bag);
     }
 
     /**
@@ -60,26 +80,26 @@ final readonly class SessionMapper
      */
     public function map(): ClinicianIdentity
     {
-        $userId = self::scalarToString($this->session->get('authUserID'));
+        $userId = self::scalarToString($this->session['authUserID'] ?? null);
         if ($userId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called from an unauthenticated session',
             );
         }
-        $patientId = self::scalarToString($this->session->get('pid'));
+        $patientId = self::scalarToString($this->session['pid'] ?? null);
         if ($patientId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called without a patient context',
             );
         }
 
-        $scopesRaw = $this->session->get('copilot_scopes', []);
+        $scopesRaw = $this->session['copilot_scopes'] ?? [];
         $scopes = is_array($scopesRaw) ? array_values(array_map(
             self::scalarToString(...),
             $scopesRaw,
         )) : [];
 
-        $roleRaw = $this->session->get('copilot_role');
+        $roleRaw = $this->session['copilot_role'] ?? null;
         $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'unknown';
 
         return new ClinicianIdentity(
@@ -152,21 +172,21 @@ final readonly class SessionMapper
             );
         }
 
-        $userId = self::scalarToString($this->session->get('authUserID'));
+        $userId = self::scalarToString($this->session['authUserID'] ?? null);
         if ($userId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called from an unauthenticated session',
             );
         }
 
-        $scopesRaw = $this->session->get('copilot_scopes');
+        $scopesRaw = $this->session['copilot_scopes'] ?? null;
         if (is_array($scopesRaw) && $scopesRaw !== []) {
             $scopes = array_values(array_map(self::scalarToString(...), $scopesRaw));
         } else {
             $scopes = $fallbackScopes;
         }
 
-        $roleRaw = $this->session->get('copilot_role');
+        $roleRaw = $this->session['copilot_role'] ?? null;
         $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'physician';
 
         return new ClinicianIdentity(

@@ -24,17 +24,29 @@ declare(strict_types=1);
 
 require_once(__DIR__ . "/../globals.php");
 
-use OpenEMR\Common\Csrf\CsrfUtils;
-use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 
-// getCoreSession() rather than getActiveSession() so this works against
-// older openemr/openemr base images on Railway that predate the latter
-// helper. The chat surface is always core (never portal), so the two
-// would return the same session anyway.
-$session = SessionWrapperFactory::getInstance()->getCoreSession();
-$apiCsrfToken = CsrfUtils::collectCsrfToken($session, 'api');
+// Hand-compute the API CSRF token rather than calling
+// CsrfUtils::collectCsrfToken / SessionWrapperFactory — both have shifted
+// signatures across OpenEMR versions and our base image on Railway lags
+// behind the repo. The hash formula
+// (``substr(hash_hmac('sha256', $subject, $privateKey), 0, 40)``) has
+// been stable for years and is what every CsrfUtils variant in the wild
+// computes; reading the private key from the session bag directly
+// bypasses the unstable wrapper.
+/** @var mixed $openemrSessionRaw */
+$openemrSessionRaw = $_SESSION['OpenEMR'] ?? null;
+$privateKey = '';
+if (is_array($openemrSessionRaw)) {
+    $maybeKey = $openemrSessionRaw['csrf_private_key'] ?? null;
+    if (is_string($maybeKey)) {
+        $privateKey = $maybeKey;
+    }
+}
+$apiCsrfToken = $privateKey !== ''
+    ? substr(hash_hmac('sha256', 'api', $privateKey), 0, 40)
+    : '';
 $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
 
 ?>

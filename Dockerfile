@@ -14,7 +14,7 @@
 #
 # None of these paths are touched by the installer or by openemr.sh's
 # bootstrap, so they're safe to layer on top of the stock image.
-FROM openemr/openemr:flex
+FROM openemr/openemr:latest
 
 # Stash the image's bundled sites/ tree so we can restore it onto an
 # empty Railway volume mount on first boot. Railway bind-mount volumes

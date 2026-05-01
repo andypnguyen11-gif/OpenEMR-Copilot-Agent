@@ -34,7 +34,6 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Common\Http\HttpRestRequest;
-use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
@@ -69,13 +68,10 @@ return [
             $config->getJwtSecret(),
             ServiceContainer::getClock(),
         );
-        // getCoreSession() rather than getActiveSession() so this works
-        // against older openemr/openemr base images that predate the
-        // latter. The Co-Pilot route is always called from the core
-        // clinician app, never the patient portal.
-        $sessionMapper = new SessionMapper(
-            SessionWrapperFactory::getInstance()->getCoreSession(),
-        );
+        // Read the OpenEMR session bag directly rather than calling
+        // SessionWrapperFactory — the latter's modern helper methods are
+        // missing from older openemr/openemr base images on Docker Hub.
+        $sessionMapper = SessionMapper::fromGlobalSession();
         $controller = new QueryController(
             $agentClient,
             $signer,
