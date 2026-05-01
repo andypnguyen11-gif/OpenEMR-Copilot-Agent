@@ -594,15 +594,20 @@ OpenEMR using the RS384-signed JWT-bearer flow; offline `make check` passes;
 
 ## Milestone 2 — Data Access & Tool Layer
 
-### PR 6 — FHIR/REST client wrappers
+### PR 6 — FHIR/REST client wrappers — ✅ code landed (offline gate green); integration round-trip blocked on prod demo data
 
 Typed Python clients for OpenEMR's FHIR R4 surface. No tool wiring yet — this is the data layer.
 
-- [ ] `fhir_client.py` with typed methods per resource (returns Pydantic models)
-- [ ] `rest_client.py` for non-FHIR endpoints (will grow as audit reveals gaps; ARCHITECTURE §5)
-- [ ] httpx async client with retry/backoff on 5xx (NOT on 4xx)
-- [ ] **No direct MariaDB access** — enforced by absence of DB driver in deps (ARCHITECTURE §5)
-- [ ] Integration tests against local OpenEMR demo data
+- [x] `fhir_client.py` with typed methods per resource (returns Pydantic models)
+- [x] `rest_client.py` for non-FHIR endpoints (will grow as audit reveals gaps; ARCHITECTURE §5) —
+  intentionally an empty stub class until a concrete consumer needs a method
+- [x] httpx async client with retry/backoff on 5xx (NOT on 4xx) — one retry, 200ms backoff;
+  PR 25 owns the long-haul reliability layer
+- [x] **No direct MariaDB access** — enforced by absence of DB driver in deps (ARCHITECTURE §5)
+- [x] Integration tests against OpenEMR demo data — test wired and passing the wire-format
+  compatibility check (auth, request shape, empty-Bundle parsing) against deployed prod
+  OpenEMR; full per-resource round-trip blocked on prod having zero patients
+  (`total: 0` from `/Patient`). Re-run once demo data is loaded — see acceptance note below.
 
 **NEW**
 - `agent-service/src/clinical_copilot/data/fhir_client.py`
@@ -611,7 +616,13 @@ Typed Python clients for OpenEMR's FHIR R4 surface. No tool wiring yet — this 
 - `agent-service/tests/integration/test_fhir_client.py`
 
 **Acceptance:** Each FHIR resource (Patient, MedicationRequest, AllergyIntolerance, Observation,
-Condition, Encounter, DocumentReference) round-trips against demo data.
+Condition, Encounter, DocumentReference) round-trips against demo data. **Status:** unit suite
+covers parsing + error paths (34 tests, including bundle parsing, retry on 5xx + transport,
+no-retry on 4xx, malformed JSON, missing required fields); offline `make check` green at
+163 tests. Live wire-format check passed (FhirClient round-trips against deployed prod
+OpenEMR's `/Patient` endpoint and parses an empty Bundle without error). Real-data
+acceptance is gated on loading demo patients into the deployed OpenEMR — pickup item for
+whoever loads data, not a code blocker.
 
 ---
 
