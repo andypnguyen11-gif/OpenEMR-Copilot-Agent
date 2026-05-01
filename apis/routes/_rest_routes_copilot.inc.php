@@ -34,6 +34,8 @@ use DateTimeZone;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use Lcobucci\Clock\SystemClock;
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
@@ -42,10 +44,22 @@ use OpenEMR\Services\Copilot\GatewayController;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\QueryController;
 use OpenEMR\Services\Copilot\SessionMapper;
-use Psr\Log\NullLogger;
+use Psr\Log\LoggerInterface;
+
+/**
+ * Route-local PSR-3 logger that writes to PHP's error log via Monolog. The
+ * older openemr/openemr base images we ship on Railway don't expose
+ * OpenEMR's own logger through any importable surface, so we stand up a
+ * stderr-bound Monolog instance that's good enough for 502 forensics.
+ */
+$copilotLogger = static function (): LoggerInterface {
+    $logger = new Logger('copilot');
+    $logger->pushHandler(new StreamHandler('php://stderr'));
+    return $logger;
+};
 
 return [
-    "GET /api/agent/healthz" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
+    "GET /api/agent/healthz" => function (HttpRestRequest $request, OEGlobalsBag $globals) use ($copilotLogger) {
         $config = new CopilotConfig($globals);
         $factory = new HttpFactory();
         $httpClient = new GuzzleClient([
@@ -53,10 +67,10 @@ return [
             'http_errors' => false,
         ]);
         $agentClient = new AgentHttpClient($httpClient, $factory, $config);
-        $controller = new GatewayController($agentClient, new NullLogger());
+        $controller = new GatewayController($agentClient, $copilotLogger());
         return $controller->healthz();
     },
-    "POST /api/agent/query" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
+    "POST /api/agent/query" => function (HttpRestRequest $request, OEGlobalsBag $globals) use ($copilotLogger) {
         $config = new CopilotConfig($globals);
         $factory = new HttpFactory();
         // Slow-lane query timeouts can run 15-20s once the model is invoked;
@@ -79,7 +93,7 @@ return [
             $signer,
             $sessionMapper,
             $config,
-            new NullLogger(),
+            $copilotLogger(),
         );
         // The HttpRestRequest is OpenEMR's narrowed wrapper; the
         // QueryController wants the raw body which Symfony's Request
