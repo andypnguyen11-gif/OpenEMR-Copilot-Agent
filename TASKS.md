@@ -509,7 +509,7 @@ OAuth2 token refresh works on expiry.
 
 ---
 
-### PR 5.5 — JWT-bearer `client_assertion` for SMART Backend Services — ✅ code landed (offline `make check` green); awaiting integration round-trip
+### PR 5.5 — JWT-bearer `client_assertion` for SMART Backend Services — ✅ landed (98e0a1865), live token round-trip verified against prod OpenEMR 2026-05-01
 
 OpenEMR's confidential-client OAuth2 endpoint hard-rejects any registration with
 `system/*` scopes that lacks a `jwks` payload (`src/RestControllers/AuthorizationController.php`
@@ -554,8 +554,16 @@ business logic. The JWT header must include a `kid` matching the registered JWK
   (form-encoded `client_assertion`, mock-transport-decoded JWT has correct
   alg/kid/claims); drop the `client_secret` assertions
 - [x] `agent-service/tests/integration/test_oauth_client.py` — env-gated end-to-end
-  test hits real OpenEMR with the JWT-bearer flow, fetches `Patient/$id` (still
-  awaits a live run after Railway env vars are rotated)
+  test hits real OpenEMR with the JWT-bearer flow, fetches `Patient/$id`. Live
+  token round-trip against prod OpenEMR confirmed 2026-05-01 (a one-shot
+  `test_oauth.py` ran the OAuthClient against the deployed token endpoint and
+  successfully retrieved an access token; `Patient/$id` GET deferred to PR 6
+  acceptance since it depends on a known patient UUID).
+- [x] **Operational gotcha resolved during cutover:** OpenEMR's "Site Address
+  Override" global (`site_addr_oath`) must be set to the public HTTPS URL of
+  the deployed OpenEMR — left blank, OpenEMR derives a relative `aud` from the
+  request and rejects the JWT as `invalid_client`. Set in **Admin → Config →
+  Connectors → Site Address Override** to `https://openemr-production-6c31.up.railway.app`.
 
 **NEW**
 - `agent-service/src/clinical_copilot/auth/client_assertion.py`
