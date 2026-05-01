@@ -85,9 +85,7 @@ def _claims_summary(claims: object) -> dict[str, Any]:
     if isinstance(role, str):
         summary["role"] = role
     if isinstance(patient_id, str) and patient_id:
-        summary["session_patient_id_hash"] = hash_patient_id(
-            patient_id, salt=_REDACTION_SALT.value
-        )
+        summary["session_patient_id_hash"] = hash_patient_id(patient_id, salt=_REDACTION_SALT.value)
     if isinstance(scopes, list):
         summary["scope_count"] = len(scopes)
     return summary

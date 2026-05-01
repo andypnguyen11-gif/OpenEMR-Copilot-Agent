@@ -509,7 +509,7 @@ OAuth2 token refresh works on expiry.
 
 ---
 
-### PR 5.5 — JWT-bearer `client_assertion` for SMART Backend Services
+### PR 5.5 — JWT-bearer `client_assertion` for SMART Backend Services — ✅ code landed (offline `make check` green); awaiting integration round-trip
 
 OpenEMR's confidential-client OAuth2 endpoint hard-rejects any registration with
 `system/*` scopes that lacks a `jwks` payload (`src/RestControllers/AuthorizationController.php`
@@ -526,19 +526,19 @@ accepts on a real instance.
 business logic. The JWT header must include a `kid` matching the registered JWK
 (`RsaSha384Signer.php:106` reads it via `$key->getJSONWebKey($kid, 'RS384')`).
 
-- [ ] Generate RSA keypair (one-shot setup; private key into env, public key as JWK
+- [x] Generate RSA keypair (one-shot setup; private key into env, public key as JWK
   posted at registration time)
-- [ ] `agent-service/scripts/generate_client_keypair.py` — outputs `private_key.pem` +
+- [x] `agent-service/scripts/generate_client_keypair.py` — outputs `private_key.pem` +
   a JWK (`{"kty": "RSA", "alg": "RS384", "use": "sig", "kid": "<stable>", ...}`)
-- [ ] `agent-service/src/clinical_copilot/auth/client_assertion.py` — pure JWT minter:
+- [x] `agent-service/src/clinical_copilot/auth/client_assertion.py` — pure JWT minter:
   takes private key + claims + clock, returns RS384-signed JWT with `kid` header.
   Per-call `jti` (UUID4) for replay defense; `exp = iat + 5 min`
-- [ ] `agent-service/src/clinical_copilot/auth/oauth_client.py` — `_fetch_token()`
+- [x] `agent-service/src/clinical_copilot/auth/oauth_client.py` — `_fetch_token()`
   swaps the request body from `client_id`/`client_secret` to:
   `grant_type=client_credentials` + `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` + `client_assertion=<JWT>` + `scope=system/...`. Drop `client_secret` from the constructor; add `private_key_pem` and `key_id`.
-- [ ] `agent-service/scripts/register_oauth_client.py` — POST `jwks: {"keys": [<JWK>]}`
-  at one-shot registration time
-- [ ] **Env var migration in `agent-service/src/clinical_copilot/config.py`:**
+- [x] `agent-service/scripts/register_oauth_client.py` — POST `jwks: {"keys": [<JWK>]}`
+  at one-shot registration time (replaces the old `register-oauth-client.sh`)
+- [x] **Env var migration in `agent-service/src/clinical_copilot/config.py`:**
   - **add** `OAUTH_PRIVATE_KEY_PEM` — multi-line PEM (Railway dashboard supports it)
   - **add** `OAUTH_KEY_ID` — must match the `kid` in both the registered JWK and
     every minted JWT header
@@ -546,15 +546,16 @@ business logic. The JWT header must include a `kid` matching the registered JWK
     after deploy succeeds
   - **keep** `OAUTH_CLIENT_ID` (used as `iss` and `sub` claims),
     `OAUTH_TOKEN_URL` (used as `aud` claim and POST target)
-- [ ] `agent-service/tests/unit/test_client_assertion.py` — JWT minter unit tests:
+- [x] `agent-service/tests/unit/test_client_assertion.py` — JWT minter unit tests:
   correct claims (`iss = sub = client_id`, `aud = token_url`, `exp` window), unique
-  `jti` per call, signature verifies against the public JWK with a separate
-  library (e.g. `python-jose`), `alg = RS384` and `kid` round-trip
-- [ ] `agent-service/tests/unit/test_oauth_client.py` — assert request body shape
+  `jti` per call, signature verifies against the public JWK (decoded via pyjwt with
+  the public PEM), `alg = RS384` and `kid` round-trip — 16 cases
+- [x] `agent-service/tests/unit/test_oauth_client.py` — assert request body shape
   (form-encoded `client_assertion`, mock-transport-decoded JWT has correct
   alg/kid/claims); drop the `client_secret` assertions
-- [ ] `agent-service/tests/integration/test_oauth_client.py` — env-gated end-to-end
-  test hits real OpenEMR with the JWT-bearer flow, fetches `Patient/$id`
+- [x] `agent-service/tests/integration/test_oauth_client.py` — env-gated end-to-end
+  test hits real OpenEMR with the JWT-bearer flow, fetches `Patient/$id` (still
+  awaits a live run after Railway env vars are rotated)
 
 **NEW**
 - `agent-service/src/clinical_copilot/auth/client_assertion.py`

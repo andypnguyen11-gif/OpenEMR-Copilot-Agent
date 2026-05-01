@@ -38,8 +38,9 @@ curl -fsS http://127.0.0.1:8000/readyz
 | `FHIR_BASE_URL` | yes | `http://localhost:8300/apis/default/fhir` | OpenEMR FHIR R4 base (PR 5+) |
 | `DATABASE_URL` | yes | `sqlite:///./agent.db` | Postgres DSN for traces / eval / audit (PR 2+) |
 | `COPILOT_AUDIT_SALT` | yes | `dev-insecure-audit-salt` | HMAC salt for patient-ID hashing in audit log (PR 2) |
-| `OAUTH_CLIENT_ID` | yes | `""` | Confidential OAuth2 client ID provisioned in OpenEMR (PR 5); see [OpenEMR OAuth2 client registration](#openemr-oauth2-client-registration) |
-| `OAUTH_CLIENT_SECRET` | yes | `""` | Client secret paired with `OAUTH_CLIENT_ID` (PR 5) |
+| `OAUTH_CLIENT_ID` | yes | `""` | Confidential OAuth2 client ID provisioned in OpenEMR (PR 5.5); see [OpenEMR OAuth2 client registration](#openemr-oauth2-client-registration) |
+| `OAUTH_PRIVATE_KEY_PEM` | yes | `""` | Multi-line PKCS8 PEM RSA private key paired with the JWK registered at `OAUTH_CLIENT_ID` (PR 5.5) |
+| `OAUTH_KEY_ID` | yes | `""` | `kid` of the registered JWK; embedded in every minted JWT-bearer assertion (PR 5.5) |
 | `OAUTH_TOKEN_URL` | yes | `http://localhost:8300/oauth2/default/token` | OpenEMR OAuth2 token endpoint (PR 5) — note this is the *site root* path, not under `/apis/default/` |
 
 In `production` (`APP_ENV=production`), missing required variables raise
@@ -58,12 +59,14 @@ make check    # ruff + mypy + pytest (offline; integration tests skipped)
 Integration tests live under `tests/integration/` and are tagged with the
 `integration` pytest marker. They are skipped by default and only run when
 `OPENEMR_INTEGRATION=1` is set in the environment, plus the test-specific
-env vars listed in the test file's docstring (e.g. PR 5's OAuth + FHIR
-fetch needs `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, `OAUTH_TOKEN_URL`,
-`FHIR_BASE_URL`, `OPENEMR_TEST_PATIENT_ID`):
+env vars listed in the test file's docstring (e.g. PR 5.5's JWT-bearer
+OAuth + FHIR fetch needs `OAUTH_CLIENT_ID`, `OAUTH_PRIVATE_KEY_PEM`,
+`OAUTH_KEY_ID`, `OAUTH_TOKEN_URL`, `FHIR_BASE_URL`, `OPENEMR_TEST_PATIENT_ID`):
 
 ```bash
-OPENEMR_INTEGRATION=1 OAUTH_CLIENT_ID=... OAUTH_CLIENT_SECRET=... \
+OPENEMR_INTEGRATION=1 OAUTH_CLIENT_ID=... \
+  OAUTH_PRIVATE_KEY_PEM="$(cat agent-service-private-key.pem)" \
+  OAUTH_KEY_ID=... \
   uv run pytest tests/integration
 ```
 
@@ -85,53 +88,82 @@ checked-in config.
 ## OpenEMR OAuth2 client registration
 
 The agent service authenticates to OpenEMR's FHIR endpoint as a backend
-service using `client_credentials` against `OAUTH_TOKEN_URL`. This is the
-second of the two trust layers described in `../ARCHITECTURE.md` §4 —
-per-clinician trust is established by the JWT minted in PR 4, and per-tool
-RBAC is enforced at the agent's tool layer (PR 7) against the JWT claims.
-The OAuth token is intentionally coarse, scoped to the read surface the
-agent will ever need.
+service using `client_credentials` against `OAUTH_TOKEN_URL`, with the
+JWT-bearer `client_assertion` form of client authentication (RFC 7523 §2.2
++ SMART Backend Services). OpenEMR's confidential-client OAuth2 endpoint
+hard-rejects any registration with `system/*` scopes that lacks a registered
+JWK (`src/RestControllers/AuthorizationController.php` lines 312–317), so
+static-secret authentication is not an option against a real instance.
+Algorithm is RS384 — the only one OpenEMR's signer accepts
+(`src/Common/Auth/OpenIDConnect/JWT/RsaSha384Signer.php:42`).
+
+This is the second of the two trust layers described in
+`../ARCHITECTURE.md` §4 — per-clinician trust is established by the JWT
+minted in PR 4, and per-tool RBAC is enforced at the agent's tool layer
+(PR 7) against the JWT claims. The OAuth token is intentionally coarse,
+scoped to the read surface the agent will ever need.
 
 One-time setup (per environment):
 
-1. Log in to OpenEMR as admin and open **Admin → System → API Clients**
-   (the registered OAuth2 / FHIR clients management page).
-2. Click **Register New App** and fill in:
-   - **Name:** `Clinical Co-Pilot Agent Service`
-   - **Application Type:** `confidential` (server-side, holds a secret)
-   - **Grant Types:** `client_credentials` only
-   - **Scopes:** check the eight `system/*` read scopes —
-     `Patient`, `Condition`, `MedicationRequest`, `MedicationStatement`,
-     `AllergyIntolerance`, `Observation`, `Encounter`, `DocumentReference`
-     (each as `.read`)
-3. After registration, OpenEMR shows the `client_id` and `client_secret`
-   exactly once. Copy both into the agent service's environment as
-   `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET`. There is no recovery if
-   the secret is lost — re-register the client and rotate.
-4. In OpenEMR globals, ensure **OAuth2 Server Enabled** is on and the
-   **Token Lifetime** matches the cache assumption in
-   `auth/oauth_client.py` (1 hour is the OpenEMR default and the value
-   the cache is sized for).
+1. Generate the keypair locally:
+
+   ```bash
+   uv run python scripts/generate_client_keypair.py \
+     --kid agent-service-2026-05 \
+     --out agent-service-private-key.pem \
+     > public-jwk.json
+   ```
+
+   The script writes the PKCS8 PEM private key with mode `0600` and
+   prints the JWK to stdout. Pick a `kid` that is stable per key
+   *generation* — rotating the key gets a new `kid`.
+
+2. In OpenEMR globals → **Connectors**, enable (and save):
+   - **Enable OpenEMR Standard FHIR REST API**
+   - **Enable OpenEMR FHIR System Scopes** ← without this, OpenEMR
+     silently strips `system/*` scopes at registration
+   - **Enable OpenEMR Standard REST API**
+
+3. Register the client by POSTing the public JWK:
+
+   ```bash
+   uv run python scripts/register_oauth_client.py \
+     --openemr-url https://openemr.example.com \
+     --jwk public-jwk.json
+   ```
+
+   The registration response includes `client_id`. Save it as
+   `OAUTH_CLIENT_ID` on the agent service. The script also writes the
+   full response to `oauth-registration.json` for reference; treat that
+   file as sensitive (it carries the registration-access token).
+
+4. Set `OAUTH_PRIVATE_KEY_PEM` to the contents of
+   `agent-service-private-key.pem` and `OAUTH_KEY_ID` to the same `kid`
+   used in step 1.
+
 5. Verify with the integration test:
 
    ```bash
    OPENEMR_INTEGRATION=1 \
-     OAUTH_CLIENT_ID=... OAUTH_CLIENT_SECRET=... \
+     OAUTH_CLIENT_ID=... \
+     OAUTH_PRIVATE_KEY_PEM="$(cat agent-service-private-key.pem)" \
+     OAUTH_KEY_ID=agent-service-2026-05 \
      OAUTH_TOKEN_URL=http://localhost:8300/oauth2/default/token \
      FHIR_BASE_URL=http://localhost:8300/apis/default/fhir \
      OPENEMR_TEST_PATIENT_ID=<fhir-uuid-from-patient_data> \
      uv run pytest tests/integration/test_oauth_client.py
    ```
 
-   The test fetches a token, asserts the cache returns the same token on
-   a second call, then `GET`s `Patient/$id` with the bearer.
+   The test mints a fresh assertion, fetches a token, asserts the cache
+   returns the same token on a second call, then `GET`s `Patient/$id`
+   with the bearer.
 
-In production (Railway), set `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`, and
-`OAUTH_TOKEN_URL` via the dashboard — never check them in. Rotation is
-unilateral on the agent side: re-register a client in OpenEMR, update the
-two env vars, and redeploy. There's no shared-key window to coordinate
-because the secret is held only by OpenEMR's auth server, not by the PHP
-gateway.
+In production (Railway), set `OAUTH_CLIENT_ID`, `OAUTH_PRIVATE_KEY_PEM`,
+`OAUTH_KEY_ID`, and `OAUTH_TOKEN_URL` via the dashboard — never check them
+in. Rotation is unilateral on the agent side: generate a new keypair, run
+`register_oauth_client.py` to register the new public JWK, update the env
+vars, and redeploy. The old client can be revoked via the API Clients
+admin page once the new one is verified working.
 
 ## Shared HMAC secret rotation
 

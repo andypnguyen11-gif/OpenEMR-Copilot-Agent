@@ -33,3 +33,8 @@ agent.db
 .env
 .env.*
 !.env.example
+
+# OAuth JWT-bearer keypair + registration artifacts (never commit)
+*.pem
+public-jwk.json
+oauth-registration.json

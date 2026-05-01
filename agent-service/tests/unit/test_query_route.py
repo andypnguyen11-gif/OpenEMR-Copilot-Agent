@@ -75,7 +75,8 @@ def _settings() -> Settings:
         database_url="sqlite:///:memory:",
         audit_salt="test-salt",
         oauth_client_id="cid",
-        oauth_client_secret="cs",
+        oauth_private_key_pem=b"",
+        oauth_key_id="",
         oauth_token_url="http://localhost:0/token",
     )
 

@@ -7,7 +7,9 @@ deploy never silently runs with defaults that look like production.
 Settings grow per PR as new code paths arrive. Currently carries the four
 boundary settings from PR 1 (HMAC secret, LLM API key, FHIR base URL, Postgres
 DSN), the audit-log patient-ID hashing salt added in PR 2, and the OAuth2
-client_credentials triple added in PR 5 for the agent→OpenEMR FHIR boundary.
+JWT-bearer client-assertion settings (PR 5 originally as ``client_secret``,
+migrated to RS384 private key + kid in PR 5.5 to match what OpenEMR's
+confidential-client OAuth2 endpoint actually accepts for ``system/*`` scopes).
 Lane/model/cache settings land in later PRs.
 """
 
@@ -50,7 +52,8 @@ class Settings:
     database_url: str
     audit_salt: str
     oauth_client_id: str
-    oauth_client_secret: str
+    oauth_private_key_pem: bytes
+    oauth_key_id: str
     oauth_token_url: str
 
     @property
@@ -69,7 +72,8 @@ def _load() -> Settings:
         database_url = _optional("DATABASE_URL", "sqlite:///./agent.db")
         audit_salt = _optional("COPILOT_AUDIT_SALT", "dev-insecure-audit-salt")
         oauth_client_id = _optional("OAUTH_CLIENT_ID", "")
-        oauth_client_secret = _optional("OAUTH_CLIENT_SECRET", "")
+        oauth_private_key_pem = _optional("OAUTH_PRIVATE_KEY_PEM", "").encode("utf-8")
+        oauth_key_id = _optional("OAUTH_KEY_ID", "")
         oauth_token_url = _optional("OAUTH_TOKEN_URL", "http://localhost:8300/oauth2/default/token")
     else:
         hmac_secret = _require("COPILOT_HMAC_SECRET")
@@ -78,7 +82,8 @@ def _load() -> Settings:
         database_url = _require("DATABASE_URL")
         audit_salt = _require("COPILOT_AUDIT_SALT")
         oauth_client_id = _require("OAUTH_CLIENT_ID")
-        oauth_client_secret = _require("OAUTH_CLIENT_SECRET")
+        oauth_private_key_pem = _require("OAUTH_PRIVATE_KEY_PEM").encode("utf-8")
+        oauth_key_id = _require("OAUTH_KEY_ID")
         oauth_token_url = _require("OAUTH_TOKEN_URL")
 
     return Settings(
@@ -90,7 +95,8 @@ def _load() -> Settings:
         database_url=database_url,
         audit_salt=audit_salt,
         oauth_client_id=oauth_client_id,
-        oauth_client_secret=oauth_client_secret,
+        oauth_private_key_pem=oauth_private_key_pem,
+        oauth_key_id=oauth_key_id,
         oauth_token_url=oauth_token_url,
     )
 

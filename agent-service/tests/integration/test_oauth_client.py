@@ -1,16 +1,18 @@
 """End-to-end OAuth2 + FHIR fetch against a real local OpenEMR.
 
-This is the PR 5 acceptance check: a real ``client_credentials`` round-trip
-to ``${OAUTH_TOKEN_URL}`` returns a usable bearer token, and that token then
-fetches a real ``Patient/$id`` from ``${FHIR_BASE_URL}``. If either leg
-fails, PR 5 isn't done — no amount of unit coverage substitutes for the
-encoding details (form-vs-JSON, scope delimiters, allowed audiences) that
-only a real OpenEMR enforces.
+This is the PR 5.5 acceptance check: a real JWT-bearer ``client_assertion``
+round-trip to ``${OAUTH_TOKEN_URL}`` returns a usable bearer token, and that
+token then fetches a real ``Patient/$id`` from ``${FHIR_BASE_URL}``. If
+either leg fails, PR 5.5 isn't done — no amount of unit coverage substitutes
+for the wire-format details (RS384 signature acceptance, registered ``kid``
+resolution, audience pinning) that only a real OpenEMR enforces.
 
 Skipped by default. To run:
 
     OPENEMR_INTEGRATION=1 \\
-    OAUTH_CLIENT_ID=... OAUTH_CLIENT_SECRET=... \\
+    OAUTH_CLIENT_ID=... \\
+    OAUTH_PRIVATE_KEY_PEM="$(cat path/to/private_key.pem)" \\
+    OAUTH_KEY_ID=<kid-registered-in-jwks> \\
     OAUTH_TOKEN_URL=http://localhost:8300/oauth2/default/token \\
     FHIR_BASE_URL=http://localhost:8300/apis/default/fhir \\
     OPENEMR_TEST_PATIENT_ID=<fhir-uuid> \\
@@ -65,8 +67,13 @@ def client_id() -> str:
 
 
 @pytest.fixture
-def client_secret() -> str:
-    return _required_env("OAUTH_CLIENT_SECRET")
+def private_key_pem() -> bytes:
+    return _required_env("OAUTH_PRIVATE_KEY_PEM").encode("utf-8")
+
+
+@pytest.fixture
+def key_id() -> str:
+    return _required_env("OAUTH_KEY_ID")
 
 
 @pytest.fixture
@@ -78,21 +85,25 @@ async def test_fetches_token_and_then_patient_resource(
     token_url: str,
     fhir_base_url: str,
     client_id: str,
-    client_secret: str,
+    private_key_pem: bytes,
+    key_id: str,
     patient_id: str,
 ) -> None:
-    """The whole point of PR 5: token works, FHIR accepts it.
+    """The whole point of PR 5.5: JWT-bearer assertion works, FHIR accepts the token.
 
     This test is the only place we exercise the actual OpenEMR OAuth2
     server. If it fails, the unit suite passing is not enough — the
-    contract under test is the live wire format.
+    contract under test is the live wire format (RS384 signature
+    acceptance, ``kid`` resolution against the registered JWK, audience
+    enforcement against the token URL).
     """
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as http:
         oauth = OAuthClient(
             token_url=token_url,
             client_id=client_id,
-            client_secret=client_secret,
+            private_key_pem=private_key_pem,
+            key_id=key_id,
             http_client=http,
         )
 
