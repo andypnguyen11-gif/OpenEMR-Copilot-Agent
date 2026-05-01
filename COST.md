@@ -48,36 +48,53 @@ Verification depth: light (leans on slow-lane pre-warmed flags).
 
 | Component | Tokens | Notes |
 |---|---|---|
-| System prompt (fast) | TBD | Cacheable; reused across every fast-lane request for the session |
-| Tool schemas | TBD | Cacheable alongside system prompt |
-| Retrieved context (cards + flags) | TBD | Per-patient; varies with chart density |
-| User query | TBD | Typically <50 tokens; clinician between-room queries are terse |
-| **Total input (cold)** | **TBD** | First request in a session — full price |
-| **Total input (warm)** | **TBD** | System prompt + tool schemas served from prompt cache (~10% rate) |
-| Output | TBD | Structured response; bounded by Pydantic schema |
+| System prompt (fast) | ~800 | Cacheable; reused across every fast-lane request for the session |
+| Tool schemas (7 tools) | ~2,500 | Cacheable alongside system prompt |
+| Retrieved context (cards + flags, 1–2 records) | ~600–1,200 | Per-patient; smaller than slow-lane because the warmer already extracted relevant flags |
+| User query | <50 | Clinician between-room queries are terse |
+| **Total input (cold)** | **~4,500** | First request in a session — full price |
+| **Total input (warm)** | **~1,200 fresh + ~3,300 cached** | System prompt + tool schemas served from prompt cache |
+| Output | ~300–500 | Structured response; bounded by Pydantic schema |
 
-**Per-request unit cost (Haiku-class, prompt cache active):**
-$\text{TBD}_\text{input} \cdot p_\text{in} + \text{TBD}_\text{cached} \cdot p_\text{cache} + \text{TBD}_\text{output} \cdot p_\text{out}$
+**Per-request unit cost (Haiku 4.5):**
+- Cold: 4,500 × $0.80/M + 400 × $4.00/M ≈ **$0.0052**
+- Warm (cache active): 1,200 × $0.80/M + 3,300 × $0.08/M + 400 × $4.00/M ≈ **$0.0028**
 
-Filled in §3.
+Cache write (first request that establishes prefix): one-time +$0.0033, amortized
+across the session.
 
 ### 2.2 Slow lane — Daily Brief / synthesis
 
 ARCHITECTURE.md §2 slow lane. Budget: 10–20s per query. Model tier: Sonnet-class.
 Verification depth: full (citation + field check on every claim).
 
+The slow lane runs the orchestrator's tool-using loop end-to-end: turn 1 emits
+`tool_use` blocks, turn 2 consumes the tool results and emits a final JSON draft,
+turn 3 fires only when the schema retry path triggers (`agent.py:124`). Each turn
+is a separate billable LLM call.
+
 | Component | Tokens | Notes |
 |---|---|---|
-| System prompt (slow) | TBD | Larger than fast — includes synthesis and abstention guidance |
-| Tool schemas | TBD | Same as fast lane |
-| Retrieved context (full chart slice) | TBD | Larger context window; problems + meds + allergies + recent labs + last 1–3 notes |
-| **Total input** | **TBD** | |
-| Output | TBD | Synthesis + claim-level citations; longer than fast lane |
+| System prompt (slow) | ~800 | `system.md` ≈ 3,300 chars; cacheable |
+| Tool schemas (7 tools) | ~2,500 | Cacheable alongside system prompt |
+| Retrieved context (full chart slice) | ~3,000 | 6 tool results: problems + meds + allergies + recent labs + visits + last 1 note |
+| User query | 30–200 | Briefing prompts at the lower end |
+| Assistant turn 1 output (tool_use) | ~150 | Tool decisions, one round |
+| Assistant turn 2 output (final JSON) | ~600–800 | Cards + cited prose |
+| **Per-query input total** | **~10,000** | Sum across the 2 turns; 3,300 of these are cacheable |
+| **Per-query output total** | **~900** | |
+| Schema-retry round (post-3f1249b6b: ≪10% of briefing queries) | +7,000 in / +700 out | Validation error + retry draft |
 
-Sonnet-class ≈ 5× the per-token rate of Haiku-class (rate-dependent — see §3). The
-retrieved context is also typically 3–5× larger. **Slow-lane unit cost is the dominant
-single-request driver** and the reason the slow lane runs as a server-triggered
-pre-warm rather than per-click.
+**Per-request unit cost (Sonnet 4.x):**
+- Cold (no cache): 10,000 × $3/M + 900 × $15/M ≈ **$0.045**
+- Warm (cache active): 6,700 × $3/M + 3,300 × $0.30/M + 900 × $15/M ≈ **$0.034**
+- With one schema retry, cold: ≈ **$0.077**
+- With one schema retry, warm: ≈ **$0.060**
+
+Sonnet ≈ 4× the per-token rate of Haiku (see §3). The retrieved context is also
+~3× larger than fast lane. **Slow-lane unit cost is the dominant single-request
+driver** and the reason the slow lane runs as a server-triggered pre-warm rather
+than per-click.
 
 ### 2.3 Discrepancy worker — background pass
 
@@ -91,18 +108,19 @@ missing data should I verify"), one per patient on the day's panel. Already coun
 
 ## 3. Pinned Rate Card
 
-**Checked on:** TBD (date of Final submission).
-**Source:** [Anthropic Console pricing](https://www.anthropic.com/pricing) — record screenshot in `docs/cost-evidence/`.
+**Checked on:** 2026-05-01 (working figures; re-verify at Final submission).
+**Source:** [Anthropic Console pricing](https://www.anthropic.com/pricing) — record screenshot in `docs/cost-evidence/` at Final.
 
-| Model tier | Input ($/M tokens) | Cached input ($/M) | Output ($/M) |
-|---|---|---|---|
-| Haiku-class (fast lane) | TBD | TBD | TBD |
-| Sonnet-class (slow lane) | TBD | TBD | TBD |
+| Model tier | Input ($/M tokens) | Cached input ($/M) | Cache write ($/M) | Output ($/M) |
+|---|---|---|---|---|
+| Haiku 4.5 (fast lane) | $0.80 | $0.08 | $1.00 | $4.00 |
+| Sonnet 4.x (slow lane) | $3.00 | $0.30 | $3.75 | $15.00 |
 
-Cache reads on Anthropic's prompt cache are priced at a fraction of the base input rate;
+Cache reads on Anthropic's prompt cache are priced at ~10% of the base input rate;
 the system-prompt + tool-schema portion of every request after the first in a session
-hits this rate. The prompt-cache hit rate is the **single largest knob** on per-request
-cost — see §6.
+hits this rate. Cache writes (the first request that establishes the cached prefix) are
+billed at 1.25× the base input rate. The prompt-cache hit rate is the **single largest
+knob** on per-request cost — see §6.
 
 ---
 
@@ -144,14 +162,42 @@ figures and the per-component breakdown the case study explicitly asks for.
 - Audit log retention: 30 days minimum (HIPAA floor; PRD §13).
 - Railway pricing at MVP; AWS/GCP+BAA at 10K+ (HIPAA-eligible).
 
+### Per-user-day building block
+
+Computed from §2.1 and §2.2 unit costs × §4 volume, at the **expected** cache hit
+rate (70% prompt, 90% discrepancy). All figures assume PR 9 prompt caching is
+shipped; pre-PR-9 numbers are ~25% higher across the board.
+
+| Lane | Calls / user-day | Unit cost (warm) | Per user-day |
+|---|---|---|---|
+| Slow (Sonnet 4.x) | ~27 | ~$0.034 | ~$0.92 |
+| Fast (Haiku 4.5) | ~60 | ~$0.0028 | ~$0.17 |
+| **Total LLM cost / user-day** | | | **~$1.10** |
+
+22 user-days/month → **~$24 / user / month** at the 1K+ tier (where caching is
+working at target hit rate). MVP (100-user) tier runs hotter — see the table.
+
 ### Table
+
+All LLM-cost cells derive from the per-user-day building block above × 22 ×
+user count, adjusted down by tier-specific cache and routing improvements.
+Infrastructure cells are order-of-magnitude estimates from Railway / AWS public
+pricing as of 2026-05; verify before quoting in any external context.
 
 | Tier | LLM (Anthropic) | Compute (`agent-service`) | Agent DB (Postgres) | Cache | Observability | Audit log storage | **Monthly total (estimated)** |
 |---|---|---|---|---|---|---|---|
-| **100 users** | TBD | TBD (Railway, single replica) | TBD (Railway managed) | $0 (in-process) | $0 (LangSmith free) | TBD | **TBD** |
-| **1K users** | TBD | TBD (Railway, multi-replica) | TBD (Railway upgrade) | TBD (Redis introduced) | TBD (LangSmith Plus) | TBD | **TBD** |
-| **10K users** | TBD | TBD (AWS+BAA, autoscale) | TBD (RDS Postgres + read replicas) | TBD (ElastiCache) | TBD (Enterprise + retention) | TBD (S3 + Glacier tiering) | **TBD** |
-| **100K users** | TBD | TBD (AWS regional, dedicated) | TBD (Aurora multi-region) | TBD (Redis cluster) | TBD (vendor-flex; possibly self-hosted) | TBD (S3 + retention partitioning) | **TBD** |
+| **100 users** | ~$2,800 | ~$30 (Railway, single replica) | ~$15 (Railway managed) | $0 (in-process) | $0 (LangSmith free) | <$5 | **~$2,850** |
+| **1K users** | ~$24,000 | ~$200 (Railway, multi-replica) | ~$80 (Railway upgrade) | ~$50 (Redis introduced) | ~$300 (LangSmith Plus) | ~$30 | **~$24,700** |
+| **10K users** | ~$190,000 | ~$1,500 (AWS+BAA, autoscale) | ~$800 (RDS + read replicas) | ~$300 (ElastiCache) | ~$2,000 (Enterprise + retention) | ~$300 | **~$195,000** |
+| **100K users** | ~$1,500,000 | ~$10,000 (AWS regional, dedicated) | ~$5,000 (Aurora multi-region) | ~$2,000 (Redis cluster) | ~$10,000 (vendor-flex; possibly self-hosted) | ~$3,000 | **~$1,530,000** |
+
+The 100-user row is **higher per user** ($28.50) than the 1K row ($24.70) because
+session reuse is too sparse to keep the prompt cache warm across users — the
+expected cache hit rate degrades to ~50% at MVP scale. The unit cost crosses
+back below at ~250 active users when the cache stays hot through the clinic
+day. Above the 10K tier, **Anthropic enterprise pricing kicks in** with
+typical 20–35% discounts at sustained volume; the 100K row above does *not*
+yet bake that in (treat it as a ceiling).
 
 **Crossover events** (called out here because they are *not* line items above):
 
@@ -224,9 +270,14 @@ scales from this row using the tier table levers.
 
 | Scenario | Cache hit rate (prompt) | Discrepancy cache hit | Notes | Per user-day cost |
 |---|---|---|---|---|
-| **Worst** | 0% | 0% | Cold deploy, every request goes to base rates, fast lane recomputes flags | TBD |
-| **Expected** | 70% | 90% | Steady-state operation after a normal clinic morning | TBD |
-| **Best** | 90% | 95% | Mature deployment, well-warmed cache, repeat user | TBD |
+| **Worst** | 0% | 0% | Cold deploy, every request goes to base rates, fast lane recomputes flags via Sonnet | ~$3.10 |
+| **Expected** | 70% | 90% | Steady-state operation after a normal clinic morning | ~$1.10 |
+| **Best** | 90% | 95% | Mature deployment, well-warmed cache, repeat user | ~$0.85 |
+
+Headline: a 3.6× spread between worst and best — almost entirely explained by the two
+cache hit rates. Quoting the expected number alone hides the operational risk of a
+cold deploy (every Monday morning if the cache TTL is short) costing ~3× the steady-
+state.
 
 The **range itself is the answer to a hospital CTO question**, not a point estimate.
 Quoting the expected number without the worst-case bound conceals the most important

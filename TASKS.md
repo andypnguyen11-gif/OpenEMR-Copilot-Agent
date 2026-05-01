@@ -186,7 +186,7 @@ nothing deleted from this document — just rescheduled below):
 
 Each block is sized for the constrained day. Stay strict on the cuts.
 
-#### PR M1 — Fixture data + tool layer (~2 hr)
+#### PR M1 — Fixture data + tool layer (~2 hr) — ✅ landed (ead115b65)
 
 - [ ] `agent-service/tests/fixtures/patients.json` — 5 patients covering the four use cases:
   one happy-path, one with missing-data gap, one with med-vs-note conflict, one with
@@ -203,7 +203,7 @@ Each block is sized for the constrained day. Stay strict on the cuts.
 **Acceptance:** tools return typed records with `source_id` per row; RBAC denial writes one
 audit-log row and returns `UNAUTHORIZED`; no tool returns data for an out-of-panel patient.
 
-#### PR M2 — Single-orchestrator agent + verification middleware (~3 hr)
+#### PR M2 — Single-orchestrator agent + verification middleware (~3 hr) — ✅ landed (57fc3b88b)
 
 - [ ] `agent-service/src/clinical_copilot/orchestrator/agent.py` — single-loop tool-use
   orchestrator using Anthropic SDK with prompt caching on system prompt + tool defs
@@ -223,7 +223,7 @@ audit-log row and returns `UNAUTHORIZED`; no tool returns data for an out-of-pan
 invokes `get_problems` → emits structured response → middleware passes → response cards +
 cited prose return; a fabricated `source_id` from the model is rejected.
 
-#### PR M3 — POST `/api/agent/query` endpoint + minimal chat UI (~2 hr)
+#### PR M3 — POST `/api/agent/query` endpoint + minimal chat UI (~2 hr) — ✅ landed (197fd6aad, plus deployment fixes through 1f8a8fc29)
 
 - [ ] `agent-service/src/clinical_copilot/main.py` — register `POST /api/agent/query` route,
   takes JWT (PR 4 verifier dependency), invokes orchestrator, returns structured response
@@ -270,7 +270,7 @@ cost; PHI-leak probe asserts no patient text in the payload.
 **Acceptance:** `make eval` runs end-to-end against the deployed agent, prints pass/fail
 summary; the RBAC case is a hard gate.
 
-#### PR M6 — Deploy + record demo (~3 hr)
+#### PR M6 — Deploy + record demo (~3 hr) — ✅ recorded 2026-05-01
 
 - [ ] `railway up --service agent-service` — push the new code with all the above
 - [ ] Smoke-test all four use cases through the deployed app
@@ -288,13 +288,9 @@ summary; the RBAC case is a hard gate.
 Once the Thursday MVP is in the can, work the original PR 1–27 plan below in priority order.
 Suggested order based on architecture-defense leverage:
 
-1. **PR 5.5** — JWT-bearer `client_assertion` for SMART Backend Services. New PR added
-   tonight after we discovered OpenEMR's confidential-client OAuth2 endpoint requires
-   `jwks` for any registration that includes `system/*` scopes (see
-   `src/RestControllers/AuthorizationController.php` lines 312–317). Generates an RSA
-   keypair, sends the public key as `jwks` at registration time, and rewrites
-   `OAuthClient._fetch_token()` to mint a per-request signed JWT instead of posting
-   `client_id`/`client_secret`. Unblocks live FHIR.
+1. **PR 5.5** — JWT-bearer `client_assertion` for SMART Backend Services. Full block
+   in Milestone 1 above. Unblocks live FHIR by switching to the RS384-signed asymmetric
+   client-auth flow OpenEMR's `system/*` registration requires.
 2. **PR 6** — real FHIR client wrappers, swap fixture reads inside tools for live FHIR
    calls (Tool ABC interface stays unchanged from M1).
 3. **PR 13** — real discrepancy engine + seeded fixtures; `get_flags` switches from reading
@@ -510,6 +506,80 @@ PR 6 starts consuming the token.
 
 **Acceptance:** Agent successfully retrieves a FHIR Patient resource using bearer token;
 OAuth2 token refresh works on expiry.
+
+---
+
+### PR 5.5 — JWT-bearer `client_assertion` for SMART Backend Services
+
+OpenEMR's confidential-client OAuth2 endpoint hard-rejects any registration with
+`system/*` scopes that lacks a `jwks` payload (`src/RestControllers/AuthorizationController.php`
+lines 312–317). PR 5's `client_credentials` + `client_secret` flow works against
+fixtures but fails against real OpenEMR. PR 5.5 swaps to RFC 7523 §2.2 JWT-bearer
+client assertion per the SMART Backend Services profile — what
+`src/Common/Auth/OpenIDConnect/Grant/CustomClientCredentialsGrant.php:151-177` actually
+accepts on a real instance.
+
+**Algorithm: RS384 only.** OpenEMR ships a single signer
+(`src/Common/Auth/OpenIDConnect/JWT/RsaSha384Signer.php` line 42 —
+`ALGORITHM_ID = 'RS384'`) and `sign()` is intentionally a `BadMethodCallException`
+(verification only). Any other algorithm is rejected before the request reaches
+business logic. The JWT header must include a `kid` matching the registered JWK
+(`RsaSha384Signer.php:106` reads it via `$key->getJSONWebKey($kid, 'RS384')`).
+
+- [ ] Generate RSA keypair (one-shot setup; private key into env, public key as JWK
+  posted at registration time)
+- [ ] `agent-service/scripts/generate_client_keypair.py` — outputs `private_key.pem` +
+  a JWK (`{"kty": "RSA", "alg": "RS384", "use": "sig", "kid": "<stable>", ...}`)
+- [ ] `agent-service/src/clinical_copilot/auth/client_assertion.py` — pure JWT minter:
+  takes private key + claims + clock, returns RS384-signed JWT with `kid` header.
+  Per-call `jti` (UUID4) for replay defense; `exp = iat + 5 min`
+- [ ] `agent-service/src/clinical_copilot/auth/oauth_client.py` — `_fetch_token()`
+  swaps the request body from `client_id`/`client_secret` to:
+  `grant_type=client_credentials` + `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` + `client_assertion=<JWT>` + `scope=system/...`. Drop `client_secret` from the constructor; add `private_key_pem` and `key_id`.
+- [ ] `agent-service/scripts/register_oauth_client.py` — POST `jwks: {"keys": [<JWK>]}`
+  at one-shot registration time
+- [ ] **Env var migration in `agent-service/src/clinical_copilot/config.py`:**
+  - **add** `OAUTH_PRIVATE_KEY_PEM` — multi-line PEM (Railway dashboard supports it)
+  - **add** `OAUTH_KEY_ID` — must match the `kid` in both the registered JWK and
+    every minted JWT header
+  - **remove** `OAUTH_CLIENT_SECRET` — unused after this PR; remove from Railway env
+    after deploy succeeds
+  - **keep** `OAUTH_CLIENT_ID` (used as `iss` and `sub` claims),
+    `OAUTH_TOKEN_URL` (used as `aud` claim and POST target)
+- [ ] `agent-service/tests/unit/test_client_assertion.py` — JWT minter unit tests:
+  correct claims (`iss = sub = client_id`, `aud = token_url`, `exp` window), unique
+  `jti` per call, signature verifies against the public JWK with a separate
+  library (e.g. `python-jose`), `alg = RS384` and `kid` round-trip
+- [ ] `agent-service/tests/unit/test_oauth_client.py` — assert request body shape
+  (form-encoded `client_assertion`, mock-transport-decoded JWT has correct
+  alg/kid/claims); drop the `client_secret` assertions
+- [ ] `agent-service/tests/integration/test_oauth_client.py` — env-gated end-to-end
+  test hits real OpenEMR with the JWT-bearer flow, fetches `Patient/$id`
+
+**NEW**
+- `agent-service/src/clinical_copilot/auth/client_assertion.py`
+- `agent-service/scripts/generate_client_keypair.py`
+- `agent-service/tests/unit/test_client_assertion.py`
+
+**EDIT**
+- `agent-service/src/clinical_copilot/auth/oauth_client.py`
+- `agent-service/scripts/register_oauth_client.py`
+- `agent-service/src/clinical_copilot/config.py` (env var migration above)
+- `agent-service/tests/unit/test_oauth_client.py`
+- `agent-service/tests/integration/test_oauth_client.py`
+- `agent-service/pyproject.toml` (add `cryptography` if not already present)
+
+**Operational checklist (after merge, before deploy):**
+1. Run `generate_client_keypair.py` locally; copy `private_key.pem` contents into
+   Railway `OAUTH_PRIVATE_KEY_PEM`; set `OAUTH_KEY_ID` to the chosen kid.
+2. Run `register_oauth_client.py` once against deployed OpenEMR; capture the
+   returned `client_id`, set as `OAUTH_CLIENT_ID` in Railway.
+3. Remove `OAUTH_CLIENT_SECRET` from Railway env.
+4. Redeploy agent-service.
+
+**Acceptance:** Agent successfully retrieves a FHIR Patient resource against a real
+OpenEMR using the RS384-signed JWT-bearer flow; offline `make check` passes;
+`OPENEMR_INTEGRATION=1` integration test round-trips.
 
 ---
 
