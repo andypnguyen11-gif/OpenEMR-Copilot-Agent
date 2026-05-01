@@ -14,6 +14,9 @@ The tests cover the four contract points:
 
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from clinical_copilot.orchestrator.schemas import Card, CitedClaim, ModelDraft
 from clinical_copilot.tools.records import LabRecord, ProblemRecord, ToolResult
 from clinical_copilot.verification.abstention import AbstentionState
@@ -52,6 +55,27 @@ def _lab_result() -> ToolResult:
             ),
         ],
     )
+
+
+def test_partial_field_assertion_rejected_at_schema() -> None:
+    """source_field without expected_value (or vice versa) is a verification
+    bypass: ``field_check.py`` short-circuits when either is None, so a
+    partial assertion would silently skip the field check the model asked
+    for. The schema rejects partial assertions at parse time."""
+
+    with pytest.raises(ValidationError):
+        CitedClaim(
+            text="Most recent A1c is 7.1%.",
+            source_id="Observation/p101-lab-1",
+            source_field="value",
+        )
+
+    with pytest.raises(ValidationError):
+        CitedClaim(
+            text="Most recent A1c is 7.1%.",
+            source_id="Observation/p101-lab-1",
+            expected_value="7.1",
+        )
 
 
 def test_happy_path_passes_draft_through() -> None:

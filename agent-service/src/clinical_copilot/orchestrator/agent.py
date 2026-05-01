@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from clinical_copilot.logging import get_logger
 from clinical_copilot.observability import traceable_orchestrator_run
 from clinical_copilot.orchestrator.llm_gateway import LlmGateway, LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
@@ -46,6 +47,28 @@ if TYPE_CHECKING:
 
 DEFAULT_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system.md"
 DEFAULT_MAX_TURNS = 8
+
+_LOG = get_logger(__name__)
+
+
+def _validation_error_trace(exc: ValidationError) -> list[dict[str, object]]:
+    """Structured validation metadata safe for logs — no ``input`` values."""
+
+    out: list[dict[str, object]] = []
+    for item in exc.errors():
+        loc = item.get("loc")
+        loc_serializable: object
+        if isinstance(loc, tuple):
+            loc_serializable = [str(part) for part in loc]
+        else:
+            loc_serializable = loc if loc is not None else []
+        out.append(
+            {
+                "loc": loc_serializable,
+                "type": item.get("type", "unknown"),
+            },
+        )
+    return out
 
 
 class Orchestrator:
@@ -121,6 +144,11 @@ class Orchestrator:
             try:
                 draft = ModelDraft.model_validate_json(text)
             except ValidationError as exc:
+                _LOG.warning(
+                    "orchestrator.model_draft_schema_validation_failed",
+                    request_id=request_id,
+                    validation_errors=_validation_error_trace(exc),
+                )
                 if retried:
                     return AgentResponse(
                         cards=[],

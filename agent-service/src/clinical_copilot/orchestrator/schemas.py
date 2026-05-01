@@ -11,7 +11,9 @@ outside it.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from clinical_copilot.tools.records import ToolResult
 from clinical_copilot.verification.abstention import Abstention
@@ -60,12 +62,23 @@ class CitedClaim(_Frozen):
     asserting a specific field value. When both are present, the
     field-check layer asserts the record's field equals the value
     (string comparison after trim/lowercase per the field rules in PR 11).
+    Setting only one is rejected at parse time — a half-specified
+    assertion would silently skip field-check (``field_check.py`` short-
+    circuits when either is None), so the schema refuses to accept it.
     """
 
     text: str = Field(min_length=1)
     source_id: str = Field(min_length=1)
     source_field: str | None = None
     expected_value: str | None = None
+
+    @model_validator(mode="after")
+    def _field_assertion_must_be_complete(self) -> Self:
+        if (self.source_field is None) != (self.expected_value is None):
+            raise ValueError(
+                "source_field and expected_value must both be set or both omitted",
+            )
+        return self
 
 
 class ModelDraft(_Frozen):
