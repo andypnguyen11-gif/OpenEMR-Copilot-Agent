@@ -30,9 +30,10 @@
 
 declare(strict_types=1);
 
+use DateTimeZone;
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
-use OpenEMR\BC\ServiceContainer;
+use Lcobucci\Clock\SystemClock;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
@@ -41,6 +42,7 @@ use OpenEMR\Services\Copilot\GatewayController;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\QueryController;
 use OpenEMR\Services\Copilot\SessionMapper;
+use Psr\Log\NullLogger;
 
 return [
     "GET /api/agent/healthz" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
@@ -51,7 +53,7 @@ return [
             'http_errors' => false,
         ]);
         $agentClient = new AgentHttpClient($httpClient, $factory, $config);
-        $controller = new GatewayController($agentClient, ServiceContainer::getLogger());
+        $controller = new GatewayController($agentClient, new NullLogger());
         return $controller->healthz();
     },
     "POST /api/agent/query" => function (HttpRestRequest $request, OEGlobalsBag $globals) {
@@ -66,7 +68,7 @@ return [
         $agentClient = new AgentHttpClient($httpClient, $factory, $config);
         $signer = new JwtSigner(
             $config->getJwtSecret(),
-            ServiceContainer::getClock(),
+            new SystemClock(new DateTimeZone('UTC')),
         );
         // Read the OpenEMR session bag directly rather than calling
         // SessionWrapperFactory — the latter's modern helper methods are
@@ -77,7 +79,7 @@ return [
             $signer,
             $sessionMapper,
             $config,
-            ServiceContainer::getLogger(),
+            new NullLogger(),
         );
         // The HttpRestRequest is OpenEMR's narrowed wrapper; the
         // QueryController wants the raw body which Symfony's Request
