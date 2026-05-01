@@ -41,6 +41,9 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Session\Session;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 
 final class QueryControllerTest extends TestCase
 {
@@ -48,16 +51,10 @@ final class QueryControllerTest extends TestCase
 
     private AgentHttpClient&MockObject $agent;
     private QueryController $controller;
-    /** @var array<array-key, mixed> */
-    private array $savedSession = [];
+    private SessionInterface $session;
 
     protected function setUp(): void
     {
-        /** @var array<array-key, mixed> $existing */
-        $existing = $_SESSION ?? [];
-        $this->savedSession = $existing;
-        $_SESSION = [];
-
         $globals = new OEGlobalsBag([
             'copilot_agent_base_url' => 'http://agent.local:8500',
             'copilot_agent_timeout_seconds' => 5,
@@ -69,25 +66,21 @@ final class QueryControllerTest extends TestCase
             new FrozenClock(new \DateTimeImmutable('2026-04-30T12:00:00Z')),
         );
 
+        $this->session = new Session(new MockArraySessionStorage());
         $this->agent = $this->createMock(AgentHttpClient::class);
         $this->controller = new QueryController(
             $this->agent,
             $signer,
-            new SessionMapper(),
+            new SessionMapper($this->session),
             $config,
             new NullLogger(),
         );
     }
 
-    protected function tearDown(): void
-    {
-        $_SESSION = $this->savedSession;
-    }
-
     public function testHappyPathProxiesAgentBodyAndStatus(): void
     {
-        $_SESSION['authUserID'] = 'dr-patel';
-        // Note: no $_SESSION['pid'] — the chat surface takes patient_id from
+        $this->session->set('authUserID', 'dr-patel');
+        // Note: no 'pid' in session — the chat surface takes patient_id from
         // the request body, not from chart context.
 
         $this->agent->expects($this->once())
@@ -117,7 +110,7 @@ final class QueryControllerTest extends TestCase
 
     public function testBadJsonBodyReturns400AndDoesNotCallAgent(): void
     {
-        $_SESSION['authUserID'] = 'dr-patel';
+        $this->session->set('authUserID', 'dr-patel');
         $this->agent->expects($this->never())->method('post');
 
         $request = Request::create(
@@ -133,7 +126,7 @@ final class QueryControllerTest extends TestCase
 
     public function testMissingPatientIdReturns400AndDoesNotCallAgent(): void
     {
-        $_SESSION['authUserID'] = 'dr-patel';
+        $this->session->set('authUserID', 'dr-patel');
         $this->agent->expects($this->never())->method('post');
 
         $response = $this->controller->query(self::makeRequest([
@@ -158,7 +151,7 @@ final class QueryControllerTest extends TestCase
 
     public function testAgentTransportFailureReturns502WithGenericBody(): void
     {
-        $_SESSION['authUserID'] = 'dr-patel';
+        $this->session->set('authUserID', 'dr-patel');
         $this->agent->method('post')
             ->willThrowException(new AgentServiceException('connection refused'));
 
@@ -173,7 +166,7 @@ final class QueryControllerTest extends TestCase
 
     public function testAgentNon2xxStatusPassesThrough(): void
     {
-        $_SESSION['authUserID'] = 'dr-patel';
+        $this->session->set('authUserID', 'dr-patel');
         // Agent returned an UNAUTHORIZED-state structured response with a
         // non-2xx status — the gateway must surface the agent's view rather
         // than coerce to OK.

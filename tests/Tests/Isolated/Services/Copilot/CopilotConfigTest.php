@@ -21,6 +21,30 @@ use PHPUnit\Framework\TestCase;
 
 final class CopilotConfigTest extends TestCase
 {
+    /** @var list<string> */
+    private const MANAGED_ENV_VARS = [
+        'COPILOT_AGENT_BASE_URL',
+        'COPILOT_AGENT_TIMEOUT_SECONDS',
+        'COPILOT_JWT_SECRET',
+    ];
+
+    protected function setUp(): void
+    {
+        // putenv() persists for the lifetime of the process, so a test that
+        // sets an env var would silently bleed into the next one. Wipe the
+        // copilot env namespace at the start of every case.
+        foreach (self::MANAGED_ENV_VARS as $name) {
+            putenv($name);
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        foreach (self::MANAGED_ENV_VARS as $name) {
+            putenv($name);
+        }
+    }
+
     public function testReadsAgentBaseUrlFromGlobals(): void
     {
         $config = new CopilotConfig(new OEGlobalsBag([
@@ -106,6 +130,89 @@ final class CopilotConfigTest extends TestCase
         $this->expectExceptionMessage('at least 32 bytes');
 
         $config->getJwtSecret();
+    }
+
+    public function testEnvAgentBaseUrlOverridesGlobals(): void
+    {
+        // Env vars are how Railway/Docker deployments configure the gateway.
+        // When both are set, the env var wins so an operator can roll out a
+        // new agent URL without editing sites/default/config.php in the
+        // running container.
+        putenv('COPILOT_AGENT_BASE_URL=https://prod.example.com');
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_agent_base_url' => 'https://stale-globals.example.com',
+        ]));
+
+        self::assertSame('https://prod.example.com', $config->getAgentBaseUrl());
+    }
+
+    public function testEnvAgentBaseUrlStripsTrailingSlash(): void
+    {
+        putenv('COPILOT_AGENT_BASE_URL=https://prod.example.com/');
+        $config = new CopilotConfig(new OEGlobalsBag([]));
+
+        self::assertSame('https://prod.example.com', $config->getAgentBaseUrl());
+    }
+
+    public function testEmptyEnvAgentBaseUrlFallsThroughToGlobals(): void
+    {
+        // putenv("FOO=") on some platforms leaves an empty value visible to
+        // getenv(); treating that as "set" would shadow a perfectly good
+        // globals value. Falling through is the right call.
+        putenv('COPILOT_AGENT_BASE_URL=');
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_agent_base_url' => 'https://from-globals.example.com',
+        ]));
+
+        self::assertSame('https://from-globals.example.com', $config->getAgentBaseUrl());
+    }
+
+    public function testEnvJwtSecretOverridesGlobals(): void
+    {
+        $envSecret = str_repeat('e', 64);
+        $globalsSecret = str_repeat('g', 64);
+        putenv('COPILOT_JWT_SECRET=' . $envSecret);
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_jwt_secret' => $globalsSecret,
+        ]));
+
+        self::assertSame($envSecret, $config->getJwtSecret());
+    }
+
+    public function testEnvJwtSecretStillEnforcesMinimumLength(): void
+    {
+        // The 32-byte minimum is the only guard against an operator setting
+        // a weak secret via env. It must trigger regardless of source.
+        putenv('COPILOT_JWT_SECRET=too-short-env');
+        $config = new CopilotConfig(new OEGlobalsBag([]));
+
+        $this->expectException(CopilotConfigException::class);
+        $this->expectExceptionMessage('at least 32 bytes');
+
+        $config->getJwtSecret();
+    }
+
+    public function testEnvAgentTimeoutOverridesGlobals(): void
+    {
+        putenv('COPILOT_AGENT_TIMEOUT_SECONDS=20');
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_agent_timeout_seconds' => 5,
+        ]));
+
+        self::assertSame(20, $config->getAgentTimeoutSeconds());
+    }
+
+    public function testNonNumericEnvAgentTimeoutFallsThroughToGlobals(): void
+    {
+        // Anything getenv returns is a string. Guard against an operator
+        // typo like ``COPILOT_AGENT_TIMEOUT_SECONDS=fast`` silently zeroing
+        // the timeout — fall through to globals (or the 5s default).
+        putenv('COPILOT_AGENT_TIMEOUT_SECONDS=fast');
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_agent_timeout_seconds' => 12,
+        ]));
+
+        self::assertSame(12, $config->getAgentTimeoutSeconds());
     }
 
     public function testStandardScopesContainsTheMvpReadSurface(): void

@@ -37,40 +37,49 @@ namespace OpenEMR\Services\Copilot;
 
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
 
-final class SessionMapper
+final readonly class SessionMapper
 {
     /**
-     * Build a :class:`ClinicianIdentity` from the current ``$_SESSION``.
+     * The mapper reads from the injected Symfony session rather than the
+     * bare ``$_SESSION`` superglobal because OpenEMR namespaces its session
+     * data under the core AttributeBag (key ``"OpenEMR"``). Reading
+     * ``$_SESSION['authUserID']`` directly hits the wrong nesting level and
+     * always returns null in the API dispatch path.
+     */
+    public function __construct(private SessionInterface $session)
+    {
+    }
+
+    /**
+     * Build a :class:`ClinicianIdentity` from the active OpenEMR session.
      *
      * @throws RuntimeException When the session is unauthenticated or has no
      *                          patient in context.
      */
     public function map(): ClinicianIdentity
     {
-        /** @var array<string, mixed> $session */
-        $session = $_SESSION ?? [];
-
-        $userId = self::scalarToString($session['authUserID'] ?? null);
+        $userId = self::scalarToString($this->session->get('authUserID'));
         if ($userId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called from an unauthenticated session',
             );
         }
-        $patientId = self::scalarToString($session['pid'] ?? null);
+        $patientId = self::scalarToString($this->session->get('pid'));
         if ($patientId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called without a patient context',
             );
         }
 
-        $scopesRaw = $session['copilot_scopes'] ?? [];
+        $scopesRaw = $this->session->get('copilot_scopes', []);
         $scopes = is_array($scopesRaw) ? array_values(array_map(
             self::scalarToString(...),
             $scopesRaw,
         )) : [];
 
-        $roleRaw = $session['copilot_role'] ?? null;
+        $roleRaw = $this->session->get('copilot_role');
         $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'unknown';
 
         return new ClinicianIdentity(
@@ -143,24 +152,21 @@ final class SessionMapper
             );
         }
 
-        /** @var array<string, mixed> $session */
-        $session = $_SESSION ?? [];
-
-        $userId = self::scalarToString($session['authUserID'] ?? null);
+        $userId = self::scalarToString($this->session->get('authUserID'));
         if ($userId === '') {
             throw new RuntimeException(
                 'Co-Pilot gateway called from an unauthenticated session',
             );
         }
 
-        $scopesRaw = $session['copilot_scopes'] ?? null;
+        $scopesRaw = $this->session->get('copilot_scopes');
         if (is_array($scopesRaw) && $scopesRaw !== []) {
             $scopes = array_values(array_map(self::scalarToString(...), $scopesRaw));
         } else {
             $scopes = $fallbackScopes;
         }
 
-        $roleRaw = $session['copilot_role'] ?? null;
+        $roleRaw = $this->session->get('copilot_role');
         $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'physician';
 
         return new ClinicianIdentity(

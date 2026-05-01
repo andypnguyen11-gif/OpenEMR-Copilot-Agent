@@ -28,11 +28,17 @@ final readonly class CopilotConfig
 
     /**
      * Base URL of the agent service (no trailing slash). The gateway prepends
-     * this to relative paths like ``/healthz``.
+     * this to relative paths like ``/healthz``. Reads ``COPILOT_AGENT_BASE_URL``
+     * from the environment first so Railway / Docker deployments can configure
+     * the gateway without writing to ``sites/default/config.php``; falls back
+     * to the ``copilot_agent_base_url`` global for legacy / file-based config.
      */
     public function getAgentBaseUrl(): string
     {
-        $url = $this->globals->getString('copilot_agent_base_url', 'http://localhost:8500');
+        $env = getenv('COPILOT_AGENT_BASE_URL');
+        $url = is_string($env) && $env !== ''
+            ? $env
+            : $this->globals->getString('copilot_agent_base_url', 'http://localhost:8500');
         return rtrim($url, '/');
     }
 
@@ -43,7 +49,12 @@ final readonly class CopilotConfig
      */
     public function getAgentTimeoutSeconds(): int
     {
-        $timeout = $this->globals->getInt('copilot_agent_timeout_seconds', 5);
+        $env = getenv('COPILOT_AGENT_TIMEOUT_SECONDS');
+        if (is_string($env) && $env !== '' && ctype_digit($env)) {
+            $timeout = (int) $env;
+        } else {
+            $timeout = $this->globals->getInt('copilot_agent_timeout_seconds', 5);
+        }
         return $timeout > 0 ? $timeout : 5;
     }
 
@@ -51,7 +62,10 @@ final readonly class CopilotConfig
      * HS256 secret shared with the agent service. The Python verifier on
      * the other side reads the same byte string from ``COPILOT_HMAC_SECRET``;
      * rotation must happen on both sides together (see the agent service
-     * README for the procedure).
+     * README for the procedure). Reads ``COPILOT_JWT_SECRET`` from the
+     * environment first so Railway / Docker deployments can configure the
+     * gateway without writing to ``sites/default/config.php``; falls back
+     * to the ``copilot_jwt_secret`` global for legacy / file-based config.
      *
      * @throws CopilotConfigException When the secret is unset or short
      *                                enough to weaken HS256 below the
@@ -59,7 +73,10 @@ final readonly class CopilotConfig
      */
     public function getJwtSecret(): string
     {
-        $secret = $this->globals->getString('copilot_jwt_secret', '');
+        $env = getenv('COPILOT_JWT_SECRET');
+        $secret = is_string($env) && $env !== ''
+            ? $env
+            : $this->globals->getString('copilot_jwt_secret', '');
         if ($secret === '') {
             throw new CopilotConfigException('copilot_jwt_secret is not configured');
         }

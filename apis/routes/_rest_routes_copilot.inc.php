@@ -34,6 +34,7 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Common\Http\HttpRestRequest;
+use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
@@ -68,7 +69,9 @@ return [
             $config->getJwtSecret(),
             ServiceContainer::getClock(),
         );
-        $sessionMapper = new SessionMapper();
+        $sessionMapper = new SessionMapper(
+            SessionWrapperFactory::getInstance()->getActiveSession(),
+        );
         $controller = new QueryController(
             $agentClient,
             $signer,

@@ -76,6 +76,17 @@ class Orchestrator:
         claims: ClinicianClaims,
         request_id: str,
     ) -> AgentResponse:
+        # The static system prompt declares "the session is bound to one
+        # patient_id" but doesn't carry the value. Append a per-request
+        # session block so the model knows which patient to scope tool
+        # calls to. The tool layer still enforces this at call time —
+        # this just stops the model from asking the user.
+        runtime_system = (
+            self._system_prompt
+            + "\n\n## Session\n"
+            + f"- patient_id: {claims.patient_id}\n"
+            + f"- clinician role: {claims.role}\n"
+        )
         messages: list[dict[str, Any]] = [
             {"role": "user", "content": query},
         ]
@@ -84,7 +95,7 @@ class Orchestrator:
 
         for _ in range(self._max_turns):
             turn = self._llm.complete(
-                system=self._system_prompt,
+                system=runtime_system,
                 tools=self._registry.anthropic_schemas(),
                 messages=messages,
             )
