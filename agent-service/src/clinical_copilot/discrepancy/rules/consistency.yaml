@@ -1,0 +1,31 @@
+# Consistency rule pack — chart entries that contradict each other.
+#
+# Each rule's `id` must have a matching implementation in
+# `clinical_copilot.discrepancy.rules.DEFAULT_REGISTRY`. The `category`
+# field on a rule must match the implementing class's `category` ClassVar
+# — engine.RuleConfigMismatchError fires loudly at construction time
+# otherwise. Disabled rules (`enabled: false`) stay in the file so toggling
+# is a config edit, not a code edit.
+#
+# PR 13c extends this pack with `narrative_only_allergy`,
+# `resolved_problem_still_active`, and the remaining consistency shapes
+# from AUDIT §3.2.
+
+rules:
+- id: med_vs_note_conflict
+  category: consistency
+  description: >-
+    Flags an active medication when one of the most recent notes
+    mentions discontinuation, taper, or hold. The note's primary
+    author intent is not parsed — the rule fires on simple keyword
+    co-occurrence with the drug's primary token.
+  enabled: true
+  params:
+    conflict_keywords:
+    - discontinued
+    - stopped
+    - held
+    - tapered
+    - taper
+    - ceased
+    look_back_notes: 3
