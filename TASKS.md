@@ -1322,27 +1322,46 @@ passing (was 349 — 3 new parity cases). Existing M5 eval still green.
 
 ---
 
-### PR 14 — Cache layer (in-process TTL + Postgres durable)
+### PR 14 — Cache layer (in-process TTL + Postgres durable) — ✅ landed
 
 Two-tier cache per ARCHITECTURE §6 / PRD §8: in-process Python TTL for hot reads, Postgres
 durable for precomputed artifacts. **No Redis.**
 
-- [ ] `cache.py` with combined read-through cache (in-process first, fall through to Postgres)
-- [ ] TTL 15–30 min per ARCHITECTURE §6.4
-- [ ] Write-invalidation hook signature (called by PR 15)
-- [ ] `get_flags` tool now reads from cache (PR 8 placeholder is replaced)
-- [ ] Tests: cache hit, cache miss → recompute, TTL expiry
+- [x] `cache.py` with combined read-through cache (in-process first, fall through to Postgres)
+- [x] TTL 30 min default (ARCHITECTURE §6.4 envelope is 15-30 min); per-instance override
+- [x] Write-invalidation hook (`DiscrepancyCache.invalidate(patient_id)`) — drops both tiers,
+  idempotent on unknown patients (PR 15 wires it up)
+- [x] `get_flags` tool now reads through cache (`tools/impl.py:GetFlagsTool` takes a
+  `DiscrepancyCache` instead of chart_provider+engine; the cache owns those collaborators)
+- [x] Tests: hit (in-process), miss → recompute, TTL expiry, durable-tier hydrate after a
+  cold in-process tier, file-backed restart preserves flags, invalidation drops both
+  tiers, in-process-only mode (`session_factory=None`), empty-flag-list still cached
 
 **NEW**
-- `agent-service/src/clinical_copilot/discrepancy/cache.py`
-- `agent-service/src/clinical_copilot/db/migrations/versions/0002_discrepancy_cache.py`
-- `agent-service/tests/unit/test_discrepancy_cache.py`
+- `agent-service/src/clinical_copilot/discrepancy/cache.py` — read-through `DiscrepancyCache`
+  (in-process dict + optional Postgres) with TTL + invalidate hook
+- `agent-service/src/clinical_copilot/db/migrations/versions/0002_discrepancy_cache.py` —
+  `discrepancy_cache(patient_id, flags_json, computed_at, expires_at)` table; portable
+  across SQLite (dev) and Postgres (prod)
+- `agent-service/tests/unit/test_discrepancy_cache.py` — 12 cases covering the contract above
 
 **EDIT**
-- `agent-service/src/clinical_copilot/tools/flags.py` — read from `cache.py`
+- `agent-service/src/clinical_copilot/tools/impl.py` — `GetFlagsTool` constructor takes a
+  `DiscrepancyCache` (TASKS.md said `flags.py`; the actual file is `impl.py`)
+- `agent-service/src/clinical_copilot/tools/registry.py` — `from_fixture()` builds the
+  cache and forwards the optional `session_factory` from `app_state`
+- `agent-service/src/clinical_copilot/db/models.py` — adds `DiscrepancyCacheRow` ORM model
+- `agent-service/src/clinical_copilot/app_state.py` — hoists session_factory creation so
+  audit + cache share one in production
 
 **Acceptance:** Repeated flag reads within TTL hit in-process cache; restart preserves flags
-via Postgres tier.
+via Postgres tier (verified by `test_durable_row_persists_across_engine_dispose` which
+recreates the SQLAlchemy `Engine` itself between cache instances).
+
+**Out of scope (deferred):** A `FhirChartProvider` so the FHIR-backed registry can wire
+`get_flags` too. The cache layer is the prerequisite (it makes per-request chart rebuilds
+viable); the FHIR provider lands separately. Until then `from_fhir()` still omits
+`get_flags` and only the fixture-backed registry uses the cache.
 
 ---
 

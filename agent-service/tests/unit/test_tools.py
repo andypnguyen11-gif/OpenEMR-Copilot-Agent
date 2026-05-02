@@ -26,6 +26,7 @@ import pytest
 from clinical_copilot.audit.log import AuditLogWriter, hash_patient_id
 from clinical_copilot.audit.models import AuditEvent
 from clinical_copilot.auth.session import ClinicianClaims
+from clinical_copilot.discrepancy.cache import DiscrepancyCache
 from clinical_copilot.discrepancy.chart_provider import FixtureChartProvider
 from clinical_copilot.discrepancy.engine import DiscrepancyEngine
 from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
@@ -170,9 +171,9 @@ def test_get_flags_returns_safety_conflict_for_p104(
 ) -> None:
     chart_provider = FixtureChartProvider(store)
     engine = DiscrepancyEngine.from_yaml(DEFAULT_PACK_PATHS, DEFAULT_REGISTRY)
+    cache = DiscrepancyCache(chart_provider=chart_provider, engine=engine)
     tool = GetFlagsTool(
-        chart_provider=chart_provider,
-        engine=engine,
+        cache=cache,
         audit=audit,
         audit_salt=AUDIT_SALT,
     )

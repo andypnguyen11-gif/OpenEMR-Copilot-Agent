@@ -13,15 +13,14 @@ to OpenEMR with the union of those scopes; the per-clinician RBAC check
 that runs *here* uses the JWT from the gateway, not the OAuth token —
 the two layers are intentionally separate (ARCHITECTURE §4).
 
-PR 13d note on ``get_flags`` — the flags tool no longer reads
-hand-encoded conflicts off the fixture; it builds a
-:class:`~clinical_copilot.discrepancy.engine.PatientChart` via a
-:class:`~clinical_copilot.discrepancy.chart_provider.ChartProvider` and
-runs the discrepancy engine. The Tool I/O schema is unchanged
-(``record_kind="Flag"``, returns ``FlagRecord``) so call sites and the
-verification middleware do not need to change. The registry wires the
-chart provider + engine in :meth:`ToolRegistry.from_fixture` (and the
-parallel FHIR factory once PR 14 ships ``FhirChartProvider``).
+PR 14 note on ``get_flags`` — the flags tool reads through
+:class:`~clinical_copilot.discrepancy.cache.DiscrepancyCache`. The cache
+owns the chart provider + engine and adds an in-process TTL on top of an
+optional Postgres durable tier. The Tool I/O schema is unchanged
+(``record_kind="Flag"``, returns ``FlagRecord``) — the cache is a swap
+behind the same surface, so call sites and the verification middleware
+do not change. The registry wires the cache in
+:meth:`ToolRegistry.from_fixture`.
 """
 
 from __future__ import annotations
@@ -30,8 +29,7 @@ from collections.abc import Sequence
 from typing import ClassVar
 
 from clinical_copilot.audit.log import AuditLogWriter
-from clinical_copilot.discrepancy.chart_provider import ChartProvider
-from clinical_copilot.discrepancy.engine import DiscrepancyEngine
+from clinical_copilot.discrepancy.cache import DiscrepancyCache
 from clinical_copilot.tools.base import Tool
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.records import AnyRecord
@@ -142,12 +140,13 @@ class GetNotesTool(_FixtureTool):
 
 
 class GetFlagsTool(Tool):
-    """Discrepancy flags surface — engine output, not hand-encoded data.
+    """Discrepancy flags surface — read-through cache over the engine.
 
     Sits outside :class:`_FixtureTool` because the M1 store is no longer
-    its data source: the tool composes a chart via :class:`ChartProvider`
-    and hands it to :class:`DiscrepancyEngine`. The verification
-    middleware sees the same :class:`FlagRecord` shape it always did
+    its data source: the tool delegates to :class:`DiscrepancyCache`,
+    which owns the chart provider + engine and adds the two-tier TTL
+    cache on top. The verification middleware sees the same
+    :class:`FlagRecord` shape it always did
     (``rule_id`` / ``category`` / ``referenced_source_ids``), so the
     only call-site impact of the swap is constructor wiring.
     """
@@ -162,25 +161,22 @@ class GetFlagsTool(Tool):
     )
     # The flags surface is read-only and not 1:1 with a FHIR resource;
     # we reuse the Encounter scope here as a coarse "needs chart access"
-    # gate. PR 14 lifts this onto a dedicated scope.
+    # gate. A dedicated scope can land alongside the FHIR-backed wiring.
     required_scope: ClassVar[str] = "system/Encounter.read"
     record_kind: ClassVar[str] = "Flag"
 
     def __init__(
         self,
         *,
-        chart_provider: ChartProvider,
-        engine: DiscrepancyEngine,
+        cache: DiscrepancyCache,
         audit: AuditLogWriter,
         audit_salt: str,
     ) -> None:
         super().__init__(audit=audit, audit_salt=audit_salt)
-        self._chart_provider = chart_provider
-        self._engine = engine
+        self._cache = cache
 
     def _run(self, *, patient_id: str) -> Sequence[AnyRecord]:
-        chart = self._chart_provider.load_chart(patient_id)
-        return list(self._engine.evaluate(chart))
+        return list(self._cache.get_flags(patient_id))
 
 
 # The retrieval tools all share the (store, audit, audit_salt) constructor

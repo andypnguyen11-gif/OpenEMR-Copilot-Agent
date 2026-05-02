@@ -137,9 +137,14 @@ def build_app_state(
         replay_store=nonce_store,
     )
 
+    # The session factory feeds both the audit writer and the durable
+    # tier of :class:`DiscrepancyCache` (PR 14). Build it once if either
+    # collaborator needs it; tests overriding ``audit`` get None here
+    # and the cache falls back to in-process-only.
+    session_factory = None
     if audit is None:
-        engine = create_engine_from_url(settings.database_url)
-        session_factory = create_session_factory(engine)
+        db_engine = create_engine_from_url(settings.database_url)
+        session_factory = create_session_factory(db_engine)
         audit = AuditLogWriter(session_factory=session_factory)
 
     bridge: AsyncBridge | None
@@ -149,6 +154,7 @@ def build_app_state(
             store=fixture_store,
             audit=audit,
             audit_salt=settings.audit_salt,
+            session_factory=session_factory,
         )
     elif not settings.oauth_client_id:
         # Dev / test fallback. ``Settings`` lets ``oauth_client_id`` be
@@ -161,6 +167,7 @@ def build_app_state(
             store=FixtureStore.from_file(),
             audit=audit,
             audit_salt=settings.audit_salt,
+            session_factory=session_factory,
         )
     else:
         bridge = AsyncBridge()

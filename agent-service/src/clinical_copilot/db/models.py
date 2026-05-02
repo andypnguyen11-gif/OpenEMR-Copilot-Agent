@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for the agent metadata DB.
 
-Three tables, each per ARCHITECTURE §8:
+Tables, per ARCHITECTURE §6 / §8:
 
 * ``agent_traces`` — one row per agent request. Powers offline analysis when
   LangSmith is unavailable or when joining trace data with eval results.
@@ -10,8 +10,11 @@ Three tables, each per ARCHITECTURE §8:
 * ``audit_log`` — append-only HIPAA-relevant log. Every PHI access writes one
   row. Patient IDs are stored only as HMAC-SHA256 hashes (see
   :mod:`clinical_copilot.audit.log`); raw IDs never land here.
+* ``discrepancy_cache`` — durable tier of the two-tier flag cache (PR 14).
+  One row per patient_id; the JSON blob is the ``FlagRecord`` list the engine
+  emitted last, with ``expires_at`` as the TTL boundary.
 
-The audit log is the load-bearing table; the other two are operational.
+The audit log is the load-bearing table; the others are operational.
 """
 
 from __future__ import annotations
@@ -97,3 +100,30 @@ class AuditLog(Base):
     resource_type: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(32))
     request_id: Mapped[str] = mapped_column(String(64), index=True)
+
+
+class DiscrepancyCacheRow(Base):
+    """Durable tier of the two-tier flag cache (PR 14).
+
+    Sits behind :class:`clinical_copilot.discrepancy.cache.DiscrepancyCache`;
+    nothing else touches this table. ``flags_json`` is the JSON-serialized
+    ``FlagRecord`` list the engine emitted, kept opaque so adding fields to
+    ``FlagRecord`` doesn't require a migration. ``expires_at`` is the TTL
+    boundary — a row whose ``expires_at`` is in the past is treated as
+    absent on read and overwritten on the next recompute.
+    """
+
+    __tablename__ = "discrepancy_cache"
+
+    patient_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    flags_json: Mapped[str] = mapped_column(Text)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        index=True,
+    )

@@ -9,10 +9,10 @@ ABC keeps :class:`~clinical_copilot.tools.impl.GetFlagsTool` agnostic to
 the source — same rule logic, same flag shape, same verification
 contract regardless of where the chart records originated.
 
-Today only :class:`FixtureChartProvider` ships. PR 14 (cache layer)
-adds ``FhirChartProvider`` so the FHIR-backed registry can wire
-``get_flags`` too; the registry's current ``from_fhir`` entry-point
-deliberately omits ``get_flags`` until that lands.
+Today only :class:`FixtureChartProvider` ships. A FHIR-backed sibling
+will let the FHIR registry wire ``get_flags`` (now that PR 14's cache
+makes per-request rebuilds viable); the registry's current ``from_fhir``
+entry-point deliberately omits ``get_flags`` until that lands.
 """
 
 from __future__ import annotations

@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from clinical_copilot.discrepancy.cache import DiscrepancyCache
 from clinical_copilot.discrepancy.chart_provider import (
     ChartProvider,
     FixtureChartProvider,
@@ -29,6 +30,9 @@ from clinical_copilot.tools.problems import GetProblemsFhirTool
 from clinical_copilot.tools.visits import GetVisitsFhirTool
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session as SqlSession
+    from sqlalchemy.orm import sessionmaker
+
     from clinical_copilot.audit.log import AuditLogWriter
     from clinical_copilot.auth.session import ClinicianClaims
     from clinical_copilot.data.fhir_client import FhirClient
@@ -76,14 +80,30 @@ class ToolRegistry:
         audit_salt: str,
         chart_provider: ChartProvider | None = None,
         engine: DiscrepancyEngine | None = None,
+        cache: DiscrepancyCache | None = None,
+        session_factory: sessionmaker[SqlSession] | None = None,
     ) -> ToolRegistry:
         """Fixture-backed registry — six retrieval tools + ``get_flags``.
 
         ``chart_provider`` and ``engine`` default to a
         :class:`FixtureChartProvider` over ``store`` and the production
-        :data:`DEFAULT_PACK_PATHS` rule packs. Tests override either
-        when they want to pin a specific chart shape or rule set.
+        :data:`DEFAULT_PACK_PATHS` rule packs. ``cache`` is the read-
+        through :class:`DiscrepancyCache` ``get_flags`` reads from; if
+        not supplied, one is built around the chart provider + engine,
+        with the optional ``session_factory`` enabling the durable
+        Postgres tier (omit it for in-process-only tests).
         """
+
+        resolved_chart_provider = chart_provider or FixtureChartProvider(store)
+        resolved_engine = engine or DiscrepancyEngine.from_yaml(
+            DEFAULT_PACK_PATHS,
+            DEFAULT_REGISTRY,
+        )
+        resolved_cache = cache or DiscrepancyCache(
+            chart_provider=resolved_chart_provider,
+            engine=resolved_engine,
+            session_factory=session_factory,
+        )
 
         instances: dict[str, Tool] = {}
         for tool_cls in retrieval_tool_classes():
@@ -93,12 +113,7 @@ class ToolRegistry:
                 audit_salt=audit_salt,
             )
         instances[GetFlagsTool.name] = GetFlagsTool(
-            chart_provider=chart_provider or FixtureChartProvider(store),
-            engine=engine
-            or DiscrepancyEngine.from_yaml(
-                DEFAULT_PACK_PATHS,
-                DEFAULT_REGISTRY,
-            ),
+            cache=resolved_cache,
             audit=audit,
             audit_salt=audit_salt,
         )
@@ -115,12 +130,11 @@ class ToolRegistry:
     ) -> ToolRegistry:
         """Production wiring — every tool reads from the live FHIR server.
 
-        ``get_flags`` is intentionally absent until PR 14 ships
-        ``FhirChartProvider``: building a chart per request would mean
-        six FHIR round-trips for the flags surface alone, which only
-        pays off behind the cache layer PR 14 introduces. Until then,
-        the FHIR-backed registry exposes only the six retrieval tools
-        listed in PR 8 / ARCHITECTURE §1.
+        ``get_flags`` is intentionally absent here: PR 14 shipped the
+        cache layer that makes a FHIR-backed flags surface viable, but
+        the FHIR-backed ``ChartProvider`` itself lands in a follow-up.
+        Until then the FHIR-backed registry exposes only the six
+        retrieval tools listed in PR 8 / ARCHITECTURE §1.
         """
 
         instances: dict[str, Tool] = {}
