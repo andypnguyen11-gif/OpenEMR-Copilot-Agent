@@ -870,29 +870,75 @@ the chat-session UX layer.
 
 ---
 
-### PR 10 — Two-lane configuration (fast lane + Haiku)
+### PR 10 — Two-lane configuration (fast lane + Haiku) — ✅ landed (e9453e11f)
 
 Add the fast lane as a separate configuration of the same orchestrator. Smaller tool surface,
 Haiku candidate model, leaner prompt. ARCHITECTURE §2.
 
-- [ ] Lane enum (`SLOW` | `FAST`) on the request
-- [ ] Per-lane model tier (env-configurable so eval can A/B Sonnet vs Haiku without redeploy)
-- [ ] Fast-lane system prompt in `prompts/system_fast.md` — compressed; instructs the model to
-  prefer cached flags over recomputation
-- [ ] Fast lane tool subset: `get_flags` (cache), `get_problems`, `get_meds`, `get_visits`
-  (last 1–2)
-- [ ] Latency assertion in test: fast lane p50 ≤ 5s on warm cache (PRD §13)
+- [x] Lane enum (`SLOW` | `FAST`) on the request — `orchestrator/lanes.py` `Lane(StrEnum)`;
+  string-backed because it crosses the JSON wire (`QueryRequest.lane` defaults to
+  `Lane.SLOW` so existing PHP-gateway clients land on the same path they've always used)
+- [x] Per-lane model tier (env-configurable so eval can A/B Sonnet vs Haiku without
+  redeploy) — `Settings.MODEL_SLOW` / `Settings.MODEL_FAST` env vars (defaults
+  `claude-sonnet-4-6` / `claude-haiku-4-5-20251001`); each lane holds its own
+  `AnthropicLlmGateway` instance bound to its own model id, so prompt-cache state never
+  crosses lanes and a model swap takes effect on next deploy without touching the other
+  lane
+- [x] Fast-lane system prompt in `prompts/system_fast.md` — compressed; flag-first guidance,
+  ≤2 tool-call guideline, the same five hard rules carried over from the slow lane
+- [x] Fast lane tool subset: `get_flags`, `get_problems`, `get_meds`, `get_visits` —
+  enforced at two layers: `ToolRegistry.anthropic_schemas(allowed_names=...)` filters the
+  defs handed to the model, and `Orchestrator._dispatch_tools` rejects any out-of-subset
+  `tool_use` with `TOOL_FAILURE`. Either layer alone would let a malformed model output
+  reach the tool layer
+- [x] Latency assertion in test: fast lane p50 ≤ 5s on warm cache (PRD §13) —
+  `tests/integration/test_lane_latency.py` primes Anthropic prompt cache with one warm-up
+  turn, measures five fast-lane turns, asserts `statistics.median ≤ 5.0`, prints
+  per-sample timings so a flake stands out as one bad run vs systemic. Skipped without
+  `ANTHROPIC_API_KEY` (CI-safe); marked `@pytest.mark.integration` so `make check` skips it
 
 **NEW**
-- `agent-service/src/clinical_copilot/orchestrator/prompts/system_fast.md`
-- `agent-service/tests/integration/test_lane_latency.py`
+- `agent-service/src/clinical_copilot/orchestrator/lanes.py` — `Lane(StrEnum)` and
+  `LaneConfig` (frozen slots dataclass bundling `llm` / `system_prompt` / `tool_names`).
+  `tool_names=None` is the "all tools" sentinel used by the slow lane; fast lane pins it to
+  the four-tool subset
+- `agent-service/src/clinical_copilot/orchestrator/prompts/system_fast.md` — compressed
+  fast-lane prompt; explicitly enumerates the four available tools and tells the model to
+  emit an empty response (→ `NO_DATA`) for questions only slow-lane tools can answer
+- `agent-service/tests/integration/test_lane_latency.py` — real-Anthropic verification of
+  the ≤5s p50 budget with cache warm-up; CI-safe via env-gate
+- `agent-service/tests/unit/test_orchestrator_lane.py` — 5 cases pinning slow-lane
+  routing (full tool set, slow gateway), fast-lane routing (fast gateway + four-tool
+  subset + fast prompt), defense-in-depth (fast lane refuses out-of-subset `tool_use`
+  with `TOOL_FAILURE`), `UnknownLaneError` when a request asks for an unconfigured lane,
+  and the constructor rejecting a missing `Lane.SLOW`
 
-**EDIT**
-- `agent-service/src/clinical_copilot/orchestrator/agent.py` — lane parameter
-- `agent-service/src/clinical_copilot/config.py` — `MODEL_SLOW`, `MODEL_FAST` env vars
+**Modified**
+- `agent-service/src/clinical_copilot/orchestrator/agent.py` — `Orchestrator.__init__`
+  takes `lanes: dict[Lane, LaneConfig]` (slow required, fast optional); `run` resolves the
+  lane once and pulls llm/system_prompt/tool_names from the resolved config, so the loop
+  body branches on nothing lane-specific. New `UnknownLaneError` surfaces as 400 from the
+  route — a request that explicitly asked for fast and got slow would silently miss its
+  latency budget, so we'd rather fail loudly. `_dispatch_tools` accepts `allowed_names`
+  and short-circuits to `TOOL_FAILURE` on out-of-subset names
+- `agent-service/src/clinical_copilot/config.py` — `MODEL_SLOW` / `MODEL_FAST` env vars
+  with canonical-pair defaults
+- `agent-service/src/clinical_copilot/app_state.py` — builds both lane configs from
+  settings, instantiates one gateway per lane, and hands the dict to the orchestrator
+- `agent-service/src/clinical_copilot/main.py` — `QueryRequest` accepts optional `lane`
+  (defaults `slow`); route translates `UnknownLaneError` to HTTP 400
+- `agent-service/src/clinical_copilot/tools/registry.py` — `anthropic_schemas` accepts
+  `allowed_names` (lane-scoped subset; `None` = full registry); the matching
+  dispatch-time check lives in the orchestrator
+- `agent-service/tests/unit/test_orchestrator_slow.py` — 12 existing constructor sites
+  migrated to `lanes={Lane.SLOW: LaneConfig(...)}` via a `_slow_only` test helper
+- `agent-service/tests/unit/test_query_route.py` — adds `model_slow` / `model_fast` to
+  the test `Settings` factory
 
-**Acceptance:** Same orchestrator code path, different lane configs; fast lane meets ≤5s on a
-patient whose flags are precomputed.
+**Acceptance:** ✅ Same orchestrator code path, different lane configs; fast lane meets
+≤5s on a patient whose flags are precomputed
+(`test_lane_latency.py::test_fast_lane_p50_under_budget`). 240 unit tests pass; 9
+integration tests gated behind `ANTHROPIC_API_KEY` / `OPENEMR_INTEGRATION` env vars.
 
 ---
 
