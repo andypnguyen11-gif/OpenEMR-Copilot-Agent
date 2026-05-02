@@ -944,32 +944,69 @@ integration tests gated behind `ANTHROPIC_API_KEY` / `OPENEMR_INTEGRATION` env v
 
 ## Milestone 4 — Verification Middleware
 
-### PR 11 — Citation existence + field-level check
+### PR 11 — Citation existence + field-level check — ✅ landed
 
 The keystone of the trust story (ARCHITECTURE §3 layers 3 and 4). Middleware sits between
 agent draft and UI.
 
-- [ ] `middleware.py` orchestrates: citation check → field check → flag enrichment → granularity
-  rule
-- [ ] `citation_check.py` — every `source_id` in `prose[]` resolves to a record fetched in
-  `tool_results`
-- [ ] `field_check.py` — claim-type-aware checks per ARCHITECTURE §3 layer 4:
-  - structured-fact: exact equality or allowed-value-set membership
-  - temporal: exact match with tolerance window
-  - categorical: enum membership
+- [x] `middleware.py` orchestrates: citation check → field check → flag enrichment →
+  granularity rule. Flag enrichment + per-lane granularity policy land in PRs 12–13;
+  M2 shipped the citation→field composition and PR 11 extended the field comparator
+  beneath it (no middleware change required)
+- [x] `citation_check.py` — every `source_id` in `prose[]` and `cards[].source_ids`
+  resolves to a record in the union of `tool_results[*].records`. Unresolved ids preserve
+  claim-before-card order and de-dupe so the abstention reason names each fabrication once
+- [x] `field_check.py` — claim-type-aware checks per ARCHITECTURE §3 layer 4, dispatched
+  per `(record_class, field_name)` by `resolve_field_kind`:
+  - structured-fact: trim+casefold equality (default for any field not in the registry)
+  - temporal: ISO-date parse + ±1-day tolerance window for "yesterday"-style phrasing;
+    unparsable expected values fail conservatively so a free-form temporal can't hide
+    what was actually claimed
+  - categorical: must (a) casefold-equal the record's actual *and* (b) be a member of
+    the field's enum vocabulary — vocab declared in `_CATEGORICAL_VOCAB` (FHIR vocab for
+    status/severity, fixture-aligned for `encounter_type` / `FlagRecord.category`).
+    A categorical field declared with no vocab raises `FieldCheckError` (programming
+    error — fail loudly)
   - mismatch is conservative — any failure → `VERIFICATION_FAILED`
-- [ ] No "infer support from partial match" — that's explicitly rejected
-- [ ] Unit tests covering each claim type's pass and fail cases
+- [x] No "infer support from partial match" — `_matches` is an exhaustive `match` with
+  no `default` arm; mismatches accumulate, never coerced to passes
+- [x] Unit tests covering each claim type's pass and fail cases — see `test_field_check.py`
+  (19 cases) and `test_citation_check.py` (8 cases). Existing `test_verification.py`
+  retained as the middleware-level integration test (7 cases)
 
 **NEW**
+- `agent-service/tests/unit/test_field_check.py` — 19 cases: dispatch table classifies
+  known TEMPORAL/CATEGORICAL fields and falls through to STRUCTURED_FACT; structured-fact
+  match / mismatch / casefold; temporal exact / one-day-tolerance / outside-tolerance /
+  unparsable / actual-None; categorical match-in-vocab / wrong-value / invented-value
+  (out-of-vocab) / capital-case fixture handling; existence-only claim skipped;
+  unresolved source_id skipped (citation_check owns it); unknown field name raises
+  FieldCheckError; CATEGORICAL field with absent vocab raises FieldCheckError
+- `agent-service/tests/unit/test_citation_check.py` — 8 cases pinning
+  `collect_source_ids` dedupe across results, empty inputs → empty unresolved, resolved
+  claim returns empty, fabricated claim/card source_ids returned, claim-before-card
+  ordering, duplicate id listed once, partial-resolution drafts only leak the unresolved
+
+**Modified**
+- `agent-service/src/clinical_copilot/verification/field_check.py` — adds
+  `FieldKind(StrEnum)`, `_FIELD_KINDS` dispatch table, `_CATEGORICAL_VOCAB`,
+  `resolve_field_kind`, `_matches` exhaustive dispatcher, and
+  `_temporal_within_tolerance` / `_categorical_in_vocab` comparators alongside the
+  existing `_structured_fact_equivalent`. `find_field_mismatches` now picks the
+  comparator per `(record_class, field_name)` instead of hardcoded string equality
+
+**Already shipped in PR M2** (so no change needed in PR 11)
 - `agent-service/src/clinical_copilot/verification/middleware.py`
 - `agent-service/src/clinical_copilot/verification/citation_check.py`
-- `agent-service/src/clinical_copilot/verification/field_check.py`
-- `agent-service/tests/unit/test_field_check.py`
-- `agent-service/tests/unit/test_citation_check.py`
+- `agent-service/src/clinical_copilot/verification/abstention.py`
 
-**Acceptance:** A draft with a fabricated `source_id` is rejected; a draft citing a real record
-but misstating the field value is rejected.
+**Acceptance:** ✅ A draft with a fabricated `source_id` is rejected
+(`test_citation_check.py::test_fabricated_claim_source_id_is_returned`); a draft citing
+a real record but misstating the field value is rejected
+(`test_field_check.py::test_structured_fact_value_mismatch_returns_mismatch`,
+`::test_temporal_outside_tolerance_returns_mismatch`,
+`::test_categorical_wrong_value_returns_mismatch`). 267 unit tests pass; 9 integration
+tests gated behind env vars.
 
 ---
 
