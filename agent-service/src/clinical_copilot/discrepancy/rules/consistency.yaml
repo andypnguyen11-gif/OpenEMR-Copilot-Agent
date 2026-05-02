@@ -7,10 +7,6 @@
 # otherwise. Disabled rules (`enabled: false`) stay in the file so toggling
 # is a config edit, not a code edit.
 #
-# PR 13c extends this pack with `narrative_only_allergy`,
-# `resolved_problem_still_active`, and the remaining consistency shapes
-# from AUDIT §3.2.
-
 rules:
 - id: med_vs_note_conflict
   category: consistency
@@ -28,4 +24,25 @@ rules:
     - tapered
     - taper
     - ceased
+    look_back_notes: 3
+
+- id: narrative_only_allergy
+  category: consistency
+  description: >-
+    Flags an allergen mentioned in a recent note but absent from the
+    structured allergy list. Surfacing the gap is the clinician's cue
+    to add the row before prescribing — the safety rule that
+    cross-references medications cannot fire against a missing entry.
+  enabled: true
+  params:
+    allergen_keywords:
+    - sulfa
+    - penicillin
+    - peanut
+    - latex
+    - shellfish
+    - egg
+    marker_words:
+    - allergy
+    - allergic
     look_back_notes: 3

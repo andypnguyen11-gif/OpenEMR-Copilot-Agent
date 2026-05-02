@@ -1,0 +1,28 @@
+# Value-sanity rule pack — labs whose result lands outside any
+# physiologically reasonable window.
+#
+# MVP scope is intentionally narrow: the seeded HbA1c at 7.8 is high
+# but clinically plausible, and we do not want to add it to the seeded
+# fixture's expected flag set. The default ``abnormal_severities``
+# match only the panic / critical / extreme codes a lab uses for
+# results out of any reasonable physiological window — those are the
+# bands that warrant a same-day callback regardless of context.
+#
+# PR 13d extends the rule (numeric range parsing, code-keyed plausible
+# windows) once eval cases identify the value bands worth catching.
+
+rules:
+- id: lab_out_of_plausible_range
+  category: value_sanity
+  description: >-
+    Flags labs whose ``abnormal`` severity matches one of the
+    configured panic-class codes. Today the rule is data-light — the
+    LabRecord schema does not yet carry ``abnormal``, so the rule
+    no-ops on production charts and only fires when an extended record
+    type populates the field.
+  enabled: true
+  params:
+    abnormal_severities:
+    - panic
+    - critical
+    - extreme

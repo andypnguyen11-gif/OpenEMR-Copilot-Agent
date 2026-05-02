@@ -174,10 +174,11 @@ def test_rule_construction_accepts_matching_config() -> None:
 
 def test_engine_loads_consistency_pack_with_default_registry() -> None:
     engine = DiscrepancyEngine.from_yaml([CONSISTENCY_PACK], DEFAULT_REGISTRY)
-    assert len(engine.rules) == 1
-    rule = engine.rules[0]
-    assert isinstance(rule, MedVsNoteConflictRule)
-    assert rule.rule_id == "med_vs_note_conflict"
+    rule_classes = {type(rule) for rule in engine.rules}
+    # PR 13c added narrative_only_allergy alongside med_vs_note_conflict;
+    # both must instantiate cleanly from the consistency pack.
+    assert MedVsNoteConflictRule in rule_classes
+    assert all(rule.category == "consistency" for rule in engine.rules)
 
 
 def test_engine_skips_disabled_rules(tmp_path: Path) -> None:

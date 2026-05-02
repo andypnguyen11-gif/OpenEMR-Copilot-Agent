@@ -1,0 +1,53 @@
+# Data-quality rule pack — chart entries that are stale or out of date
+# relative to the most recent clinical activity.
+#
+# AUDIT §3.2 calls out two MVP shapes covered here:
+#   1. resolved_problem_still_active — the structured problem-list row
+#      lags the note record (active=1 with no enddate, but a recent note
+#      documents resolution).
+#   2. stale_chronic_lab — a chronic problem (T2DM today; PR 13d may
+#      extend) without a recent monitoring lab on file. The expectation
+#      table is data, not code, so adding a new chronic-condition pair
+#      is a YAML edit.
+
+rules:
+- id: resolved_problem_still_active
+  category: data_quality
+  description: >-
+    Flags an active problem when one of the most recent notes mentions
+    resolution / taper completion / remission. The structured row
+    remains active=1 even though the narrative documents otherwise.
+  enabled: true
+  params:
+    resolution_keywords:
+    - resolved
+    - resolution
+    - tapering complete
+    - in remission
+    - remission
+    - no longer active
+    look_back_notes: 3
+
+- id: stale_chronic_lab
+  category: data_quality
+  description: >-
+    Flags a chronic problem when no recent monitoring lab is on file.
+    Each expectation maps a problem (matched against display label or
+    ICD code substring) to the LOINC codes the chart should carry, plus
+    a max-age threshold in months. ``as_of`` is left unset in the
+    default pack so production resolves to today; tests pin a fixed
+    value via ``DiscrepancyEngine`` config overrides.
+  enabled: true
+  params:
+    expectations:
+    - problem_keywords:
+      - type 2 diabetes
+      - type ii diabetes
+      - diabetes mellitus
+      - t2dm
+      - e11
+      expected_lab_codes:
+      - 4548-4
+      - hemoglobin a1c
+      - hba1c
+      max_age_months: 12

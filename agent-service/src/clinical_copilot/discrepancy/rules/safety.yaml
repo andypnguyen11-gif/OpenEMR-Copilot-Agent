@@ -1,0 +1,33 @@
+# Safety rule pack — patient-safety conflicts the chart must surface.
+#
+# These rules are the most consequential in the engine; they flag
+# clinical contradictions that a glance at the medication list alone
+# might miss. Engine ordering today is by registry / pack-load order,
+# so safety rules sit ahead of data-quality and consistency. PR 13d may
+# add an explicit severity gradient.
+#
+# The cross-reactivity table is config, not code: extend the
+# ``med_to_allergen_class`` mapping to add an antibiotic family or
+# ADE-correlated pair without editing rule logic.
+
+rules:
+- id: allergen_med_safety_conflict
+  category: safety
+  description: >-
+    Flags an active medication when the patient's allergy list carries
+    a substance the medication overlaps with (direct match or via the
+    cross-reactivity table). Penicillin allergy + active Amoxicillin is
+    the canonical case.
+  enabled: true
+  params:
+    med_to_allergen_class:
+      amoxicillin: penicillin
+      ampicillin: penicillin
+      augmentin: penicillin
+      dicloxacillin: penicillin
+      penicillin: penicillin
+      bactrim: sulfa
+      sulfamethoxazole: sulfa
+      trimethoprim: sulfa
+      cephalexin: cephalosporin
+      keflex: cephalosporin

@@ -6,6 +6,7 @@ abd
 aci
 ane
 ans
+augmentin
 ehr
 hsa
 inactivate
