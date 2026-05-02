@@ -31,6 +31,7 @@ from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.schemas import AgentResponse
+from clinical_copilot.tools.records import FlagRecord
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -68,6 +69,33 @@ class WarmResponse(BaseModel):
 
     warmed: int
     failed: list[WarmFailureBody]
+
+
+class FlagsResponse(BaseModel):
+    """Body returned by ``GET /api/agent/internal/flags/{patient_id}``.
+
+    The Daily Brief page (PR 16b) renders one card per panel patient
+    and needs the discrepancy flag list inline — without round-tripping
+    through the chat orchestrator and without the LLM authoring card
+    text. Warm fills the cache; this route reads what warm or an
+    earlier ``get_flags`` already materialized, with the same cold-path
+    behaviour (recompute on miss) the in-process tool sees.
+
+    The flag content is engine output, not LLM output: ``rationale``
+    strings are deterministic templates over chart records (e.g.
+    ``"Active medication 'X' conflicts with charted 'Y' allergy"``),
+    so the same content is already visible to the same authenticated
+    clinician through the chat surface. Gating the route behind the
+    ``X-Internal-Token`` (server-to-server only, never browser-direct)
+    keeps the trust boundary identical to warm and invalidate.
+
+    ``patient_id`` is echoed back so the caller can confirm it asked
+    about the patient it expected — the same defensive shape the
+    orchestrator's :class:`AgentResponse` uses.
+    """
+
+    patient_id: str
+    flags: list[FlagRecord]
 
 
 class QueryRequest(BaseModel):
@@ -236,6 +264,27 @@ def create_app(
         # for the gateway it can't action.
         resolved_state.discrepancy_cache.invalidate(patient_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get(
+        "/api/agent/internal/flags/{patient_id}",
+        tags=["internal"],
+        response_model=FlagsResponse,
+    )
+    async def flags_route(
+        patient_id: str = Path(min_length=1, max_length=64),
+        _: None = internal_dep,
+    ) -> FlagsResponse:
+        # Reads the same cache the chat-side ``get_flags`` tool reads,
+        # so a prior warm or chat turn for the same patient hits the
+        # in-process tier here. ``ChartProvider`` documents the
+        # unknown-patient contract: empty chart, zero flags — not an
+        # error — so the route returns 200 + ``flags=[]`` rather than
+        # 404. Surfacing 404 would conflict with the M1 tool layer's
+        # treatment of unknown == empty and would also leak existence
+        # information to a caller that already proved possession of
+        # the internal token.
+        flags = resolved_state.discrepancy_cache.get_flags(patient_id)
+        return FlagsResponse(patient_id=patient_id, flags=flags)
 
     @app.delete(
         "/api/agent/session/{session_id}",

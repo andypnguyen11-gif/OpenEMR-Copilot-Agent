@@ -1,19 +1,24 @@
-"""End-to-end tests for the PR 15 internal warm + invalidate routes.
+"""End-to-end tests for the PR 15 + PR 16a internal cache routes.
 
 Exercises the routes through ``create_app`` so the wiring between the
 internal-token dep, the :class:`AppState`-owned :class:`DiscrepancyCache`,
 and the :class:`BackgroundRunner` is what's actually under test. The
-contract that matters across this PR:
+contract that matters across these PRs:
 
-* warm and invalidate share the *same* cache instance the
+* warm, invalidate, and flags-read share the *same* cache instance the
   ``get_flags`` tool reads through (asserted by warming a patient,
-  then reading flags via the cache directly and confirming no second
-  recompute happens);
-* both routes are unreachable without the matching ``X-Internal-Token``
-  header — the user-JWT bearer doesn't satisfy this gate;
+  then reading flags via the cache directly and via the flags route
+  and confirming all three return the same content);
+* all three routes are unreachable without the matching
+  ``X-Internal-Token`` header — the user-JWT bearer doesn't satisfy
+  this gate;
 * warm returns a JSON summary (no flag content);
 * invalidate returns 204 even when the patient has no cached entry
-  (idempotent contract from PR 14).
+  (idempotent contract from PR 14);
+* flags-read returns 200 + ``{patient_id, flags: []}`` for an unknown
+  patient (the M1 chart contract treats unknown ids as empty charts,
+  so 404 would be a different shape than what the cache itself reports
+  — and would also leak existence information).
 """
 
 from __future__ import annotations
@@ -179,3 +184,96 @@ def test_invalidate_route_rejects_missing_internal_token() -> None:
     response = client.post("/api/agent/internal/invalidate/101")
 
     assert response.status_code == 401
+
+
+def test_flags_route_returns_flags_for_known_patient() -> None:
+    # Patient "103" carries the med-vs-note conflict in the M1 fixture
+    # set, so the engine produces at least one flag. The test pins the
+    # response *shape* (FlagRecord fields), not specific rule ids — the
+    # latter would couple this gateway test to engine-rule churn.
+    client, _ = _client_and_state()
+
+    response = client.get(
+        "/api/agent/internal/flags/103",
+        headers={INTERNAL_TOKEN_HEADER: INTERNAL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["patient_id"] == "103"
+    flags = body["flags"]
+    assert isinstance(flags, list)
+    for flag in flags:
+        # Match FlagRecord — keep this in sync if records.py changes.
+        assert set(flag.keys()) >= {
+            "source_id",
+            "rule_id",
+            "category",
+            "rationale",
+            "referenced_source_ids",
+        }
+        assert isinstance(flag["referenced_source_ids"], list)
+
+
+def test_flags_route_returns_empty_list_for_unknown_patient() -> None:
+    # ChartProvider's documented contract: unknown patient → empty chart
+    # → zero flags. Surfacing 404 here would conflict with the M1 tool
+    # layer (which treats unknown == empty) and would also leak
+    # existence info to a caller that already proved possession of the
+    # internal token. 200 + empty flags is the safer shape.
+    client, _ = _client_and_state()
+
+    response = client.get(
+        "/api/agent/internal/flags/unknown-patient",
+        headers={INTERNAL_TOKEN_HEADER: INTERNAL_TOKEN},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"patient_id": "unknown-patient", "flags": []}
+
+
+def test_flags_route_rejects_missing_internal_token() -> None:
+    client, _ = _client_and_state()
+
+    response = client.get("/api/agent/internal/flags/103")
+
+    assert response.status_code == 401
+
+
+def test_flags_route_rejects_user_bearer_jwt_in_authorization_header() -> None:
+    # Same threat-model separation as warm/invalidate: the user-JWT
+    # bearer header must not satisfy the internal gate even if a caller
+    # forwards a valid-shape token in the wrong slot.
+    client, _ = _client_and_state()
+
+    response = client.get(
+        "/api/agent/internal/flags/103",
+        headers={"Authorization": f"Bearer {INTERNAL_TOKEN}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_flags_route_reads_from_same_cache_as_warm() -> None:
+    # Cache-identity contract: warming a patient through one internal
+    # route and reading the flags through the other route must hit the
+    # exact same in-process tier the get_flags tool reads. The direct
+    # cache call is the third witness — if any of the three diverged
+    # we'd be running multiple caches in production by accident.
+    client, state = _client_and_state()
+    cache = state.discrepancy_cache  # type: ignore[attr-defined]
+
+    client.post(
+        "/api/agent/internal/warm",
+        headers={INTERNAL_TOKEN_HEADER: INTERNAL_TOKEN},
+        json={"patient_ids": ["103"]},
+    )
+
+    flags_via_route = client.get(
+        "/api/agent/internal/flags/103",
+        headers={INTERNAL_TOKEN_HEADER: INTERNAL_TOKEN},
+    ).json()["flags"]
+
+    flags_via_cache = [flag.model_dump(mode="json") for flag in cache.get_flags("103")]
+
+    assert flags_via_route == flags_via_cache
