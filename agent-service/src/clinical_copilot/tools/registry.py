@@ -9,6 +9,7 @@ name the registry doesn't know about, even by accident.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from clinical_copilot.observability import traceable_tool_dispatch
@@ -113,14 +114,31 @@ class ToolRegistry:
         except KeyError as exc:
             raise UnknownToolError(name) from exc
 
-    def anthropic_schemas(self) -> list[dict[str, object]]:
+    def anthropic_schemas(
+        self,
+        *,
+        allowed_names: Iterable[str] | None = None,
+    ) -> list[dict[str, object]]:
         """List of tool definitions in Anthropic SDK format.
 
         Returned in registry-name order so the prompt-cache key over the
         tool-defs block stays stable across requests.
+
+        ``allowed_names`` is the per-lane subset filter. ``None`` returns
+        every registered tool (slow lane). Otherwise the result is the
+        intersection of the registry and the allowed set, still in
+        registry-name order. An ``allowed_names`` entry that the
+        registry doesn't know is silently dropped — the lane config is
+        a request for "the subset of these tools that exist," not a
+        contract that every name resolves. Wiring failures (an unknown
+        name in a lane) surface at registry-build time, not on every
+        request.
         """
 
-        return [self._tools[name].anthropic_schema() for name in self.names()]
+        if allowed_names is None:
+            return [self._tools[name].anthropic_schema() for name in self.names()]
+        allowed = set(allowed_names)
+        return [self._tools[name].anthropic_schema() for name in self.names() if name in allowed]
 
     @traceable_tool_dispatch
     def dispatch(

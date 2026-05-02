@@ -35,12 +35,28 @@ from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.audit.models import AuditEvent
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.agent import Orchestrator
+from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import LlmTurn, ToolUse
 from clinical_copilot.orchestrator.sessions import SessionStore
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.registry import ToolRegistry
 from clinical_copilot.verification.abstention import AbstentionState
 from clinical_copilot.verification.middleware import VerificationMiddleware
+
+
+def _slow_only(gateway: object) -> dict[Lane, LaneConfig]:
+    """Build a slow-only lanes mapping for tests that drive a single
+    scripted gateway. The fast lane is intentionally absent — these
+    tests exercise the slow-lane code path and don't care which model
+    the production wiring would route to.
+    """
+
+    return {
+        Lane.SLOW: LaneConfig(
+            llm=gateway,  # type: ignore[arg-type]  # _ScriptedGateway implements LlmGateway
+            system_prompt="(test prompt)",
+        ),
+    }
 
 
 class _RecordingAudit(AuditLogWriter):
@@ -154,11 +170,10 @@ def test_happy_path_returns_verified_response(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(
@@ -188,11 +203,10 @@ def test_out_of_panel_tool_call_returns_unauthorized_abstention(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(query="evil cross-patient query", claims=claims, request_id="r2")
@@ -216,11 +230,10 @@ def test_unknown_tool_returns_tool_failure_abstention(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(query="anything", claims=claims, request_id="r3")
@@ -247,11 +260,10 @@ def test_fabricated_source_id_in_draft_yields_verification_failed(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(query="anything", claims=claims, request_id="r4")
@@ -275,11 +287,10 @@ def test_schema_violation_retries_once_then_aborts(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(query="anything", claims=claims, request_id="r5")
@@ -305,11 +316,10 @@ def test_max_turns_exceeded_returns_tool_failure(
     ]
     gateway = _ScriptedGateway(looping_turns)
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
         max_turns=2,
     )
 
@@ -345,11 +355,10 @@ def test_response_carries_canonical_session_id_when_none_supplied(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     response = orch.run(query="problems?", claims=claims, request_id="r-canonical")
@@ -378,11 +387,10 @@ def test_multi_turn_continues_session(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     first = orch.run(query="active problems?", claims=claims, request_id="r-1")
@@ -429,11 +437,10 @@ def test_schema_retry_traffic_does_not_persist_into_session_history(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     first = orch.run(query="anything", claims=claims, request_id="r-retry-1")
@@ -478,11 +485,10 @@ def test_cross_principal_session_id_replay_returns_empty_history(
         ]
     )
     orch = Orchestrator(
-        llm=gateway,
+        lanes=_slow_only(gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     first = orch.run(query="dr-patel question", claims=claims, request_id="r-iso-1")
@@ -533,11 +539,10 @@ def test_session_lock_dropped_on_uncaught_exception(
             raise RuntimeError("simulated SDK failure")
 
     orch = Orchestrator(
-        llm=_ExplodingGateway(),
+        lanes=_slow_only(_ExplodingGateway()),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
 
     sid_seed, _ = sessions.get_or_create(claims, None)
@@ -551,11 +556,10 @@ def test_session_lock_dropped_on_uncaught_exception(
     # that succeeds — if we can complete the run, the lock dropped.
     recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[],"prose":[]}')])
     orch_recover = Orchestrator(
-        llm=recovery_gateway,
+        lanes=_slow_only(recovery_gateway),
         registry=registry,
         verifier=verifier,
         sessions=sessions,
-        system_prompt="(test prompt)",
     )
     response = orch_recover.run(
         query="recovery",

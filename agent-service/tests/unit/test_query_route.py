@@ -78,6 +78,8 @@ def _settings() -> Settings:
         oauth_private_key_pem=b"",
         oauth_key_id="",
         oauth_token_url="http://localhost:0/token",
+        model_slow="test-model-slow",
+        model_fast="test-model-fast",
     )
 
 

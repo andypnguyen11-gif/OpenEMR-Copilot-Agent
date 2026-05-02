@@ -26,6 +26,8 @@ from clinical_copilot.audit.log import AuditLogWriteError
 from clinical_copilot.auth.jwt_verifier import require_clinician_claims
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.logging import configure_logging, get_logger
+from clinical_copilot.orchestrator.agent import UnknownLaneError
+from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.schemas import AgentResponse
 
 if TYPE_CHECKING:
@@ -37,12 +39,16 @@ if TYPE_CHECKING:
 class QueryRequest(BaseModel):
     """Body of ``POST /api/agent/query``.
 
-    Two fields. ``query`` is the user's natural-language question.
+    Three fields. ``query`` is the user's natural-language question.
     ``session_id`` is an optional client-supplied id from a prior turn's
-    response, used to continue a multi-turn conversation. The patient-id,
-    user-id, role, and scopes are *not* in the body — they come from
-    the JWT (verified by the FastAPI dependency) so a malicious client
-    can't rebind any of them per request.
+    response, used to continue a multi-turn conversation. ``lane``
+    selects between the slow (Daily Brief / reconciliation) and fast
+    (in-chart side panel, ≤5s budget) configurations; defaults to slow
+    so older clients that predate the field land on the same path
+    they've always used. The patient-id, user-id, role, and scopes are
+    *not* in the body — they come from the JWT (verified by the FastAPI
+    dependency) so a malicious client can't rebind any of them per
+    request.
 
     A ``session_id`` that doesn't resolve under the JWT's principal is
     silently replaced with a fresh server-minted id (see
@@ -56,6 +62,7 @@ class QueryRequest(BaseModel):
         max_length=64,
         pattern=r"^[A-Za-z0-9-]+$",
     )
+    lane: Lane = Field(default=Lane.SLOW)
 
 
 @asynccontextmanager
@@ -128,7 +135,18 @@ def create_app(
                 claims=claims,
                 request_id=request_id,
                 session_id=body.session_id,
+                lane=body.lane,
             )
+        except UnknownLaneError as exc:
+            # Pydantic constrained ``lane`` to the Lane enum already, so
+            # this only fires when the deployed orchestrator hasn't been
+            # wired with the requested lane (e.g. a fast-lane request
+            # against an older deploy). 400 is the right shape — the
+            # client can fall back to slow.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"lane {exc.lane.value!r} is not configured",
+            ) from exc
         except AuditLogWriteError as exc:
             # Fail-closed: an audit write failure inside a tool denial
             # path means the trail couldn't persist. We must not return

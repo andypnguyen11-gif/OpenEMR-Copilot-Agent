@@ -24,11 +24,28 @@ Two tool-layer wirings:
   without an Anthropic key, a database, or a real OpenEMR. None of the
   test bindings construct an :class:`AsyncBridge`, so no daemon thread
   leaks per test.
+
+Two lanes (PR 10):
+
+* **Slow lane** — full tool surface, ``settings.model_slow``,
+  ``system_slow.md``. Default for every request that doesn't pin a lane.
+* **Fast lane** — four-tool subset (``get_flags``, ``get_problems``,
+  ``get_meds``, ``get_visits``), ``settings.model_fast``,
+  ``system_fast.md``. Driven by the in-chart side panel that has a ≤5s
+  p50 budget per PRD §13.
+
+Each lane holds its own :class:`AnthropicLlmGateway` instance so its
+prompt-cache key is bound to a single (model, tool-defs, system-prompt)
+triple — slow-lane traffic and fast-lane traffic never share cache
+state. A test passing ``llm=`` applies that single stub to both lanes;
+the unit-test surface only exercises one lane at a time and asserts on
+``gateway.calls[i]["system"]`` to confirm the right prompt was used.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
@@ -42,6 +59,7 @@ from clinical_copilot.data.fhir_client import FhirClient
 from clinical_copilot.db.engine import create_engine_from_url, create_session_factory
 from clinical_copilot.observability import configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
+from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
 from clinical_copilot.orchestrator.sessions import SessionStore
 from clinical_copilot.runtime.async_bridge import AsyncBridge
@@ -52,8 +70,18 @@ from clinical_copilot.verification.middleware import VerificationMiddleware
 if TYPE_CHECKING:
     from clinical_copilot.config import Settings
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
 NONCE_TTL_SECONDS = 600
+
+_PROMPTS_DIR = Path(__file__).resolve().parent / "orchestrator" / "prompts"
+_SYSTEM_SLOW_PATH = _PROMPTS_DIR / "system_slow.md"
+_SYSTEM_FAST_PATH = _PROMPTS_DIR / "system_fast.md"
+
+# Fast lane tool subset per ARCHITECTURE §2 / PR 10. Slow lane gets the
+# registry's full set (passed as ``tool_names=None``). The set is
+# ``frozenset`` so :class:`LaneConfig` can stay frozen-dataclass.
+_FAST_LANE_TOOLS: frozenset[str] = frozenset(
+    {"get_flags", "get_problems", "get_meds", "get_visits"}
+)
 
 # Bound on the shared httpx.AsyncClient. PR 25 owns the request-level
 # timeout / circuit-breaker policy; this ceiling is the outer envelope
@@ -152,14 +180,42 @@ def build_app_state(
 
     verifier_mw = VerificationMiddleware()
 
-    if llm is None:
+    # Lane gateways: when ``llm`` is supplied (test path), the same
+    # stub drives both lanes — unit tests assert on which prompt /
+    # tool subset was sent rather than which model. Production builds
+    # one gateway per lane so each gets its own prompt-cache key and
+    # an env var bump (MODEL_FAST=...) takes effect on next deploy
+    # without touching the slow lane.
+    slow_llm: LlmGateway
+    fast_llm: LlmGateway
+    if llm is not None:
+        slow_llm = llm
+        fast_llm = llm
+    else:
         client = Anthropic(api_key=settings.llm_api_key)
-        llm = AnthropicLlmGateway(client=client, model=DEFAULT_MODEL)
+        slow_llm = AnthropicLlmGateway(client=client, model=settings.model_slow)
+        fast_llm = AnthropicLlmGateway(client=client, model=settings.model_fast)
+
+    system_slow = _SYSTEM_SLOW_PATH.read_text(encoding="utf-8")
+    system_fast = _SYSTEM_FAST_PATH.read_text(encoding="utf-8")
+
+    lanes: dict[Lane, LaneConfig] = {
+        Lane.SLOW: LaneConfig(
+            llm=slow_llm,
+            system_prompt=system_slow,
+            tool_names=None,
+        ),
+        Lane.FAST: LaneConfig(
+            llm=fast_llm,
+            system_prompt=system_fast,
+            tool_names=_FAST_LANE_TOOLS,
+        ),
+    }
 
     session_store = SessionStore()
 
     orchestrator = Orchestrator(
-        llm=llm,
+        lanes=lanes,
         registry=registry,
         verifier=verifier_mw,
         sessions=session_store,

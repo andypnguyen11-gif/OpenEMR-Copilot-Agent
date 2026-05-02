@@ -6,14 +6,19 @@ ARCHITECTURE §1.2. The flow per request is:
    prior ``messages`` and ``tool_results`` so multi-turn continuity
    works. The store also acquires a per-key lock for the duration of
    this run, dropped on update or release in the ``try / finally``.
-2. Send the user query + system prompt + tool defs to the LLM.
-3. While the LLM emits ``tool_use`` blocks, dispatch each through
+2. Look the request's :class:`Lane` up in ``self._lanes`` once and pull
+   ``llm`` / ``system_prompt`` / ``tool_names`` from the resolved
+   :class:`LaneConfig`. Nothing further in the loop branches on lane —
+   this keeps the contract crisp: same code path, different config.
+3. Send the user query + lane's system prompt + lane-filtered tool
+   defs to the lane's LLM gateway.
+4. While the LLM emits ``tool_use`` blocks, dispatch each through
    :class:`ToolRegistry` (which performs the per-tool RBAC check) and
    feed the typed results back as ``tool_result`` blocks.
-4. When the LLM emits a final text turn, parse it as
+5. When the LLM emits a final text turn, parse it as
    :class:`ModelDraft`. One schema-violation retry; a second failure
    becomes a ``VERIFICATION_FAILED`` whole-response abstention.
-5. Run the draft through :class:`VerificationMiddleware`. The middleware
+6. Run the draft through :class:`VerificationMiddleware`. The middleware
    either passes the draft through or replaces it with an abstention.
 
 Failure modes mapped to abstention states:
@@ -21,6 +26,9 @@ Failure modes mapped to abstention states:
 * RBAC denial from any tool → ``UNAUTHORIZED`` (audit row already
   written by the tool layer — see ``Tool._enforce_rbac``).
 * Tool raised any other error → ``TOOL_FAILURE``.
+* Tool name outside the lane's allowed subset → ``TOOL_FAILURE``. The
+  prompt already advertises only the subset; this is defense-in-depth
+  against a malformed model output reaching the tool layer.
 * Loop exceeded ``max_turns`` → ``TOOL_FAILURE`` ("agent could not
   converge"); shielding against runaway tool loops.
 * Final JSON failed schema validation twice → ``VERIFICATION_FAILED``.
@@ -41,14 +49,14 @@ record.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
 from clinical_copilot.logging import get_logger
 from clinical_copilot.observability import traceable_orchestrator_run
-from clinical_copilot.orchestrator.llm_gateway import LlmGateway, LlmTurn
+from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
+from clinical_copilot.orchestrator.llm_gateway import LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
 from clinical_copilot.orchestrator.sessions import SessionState, SessionStore
 from clinical_copilot.tools.base import (
@@ -63,10 +71,25 @@ if TYPE_CHECKING:
     from clinical_copilot.auth.session import ClinicianClaims
     from clinical_copilot.tools.registry import ToolRegistry
 
-DEFAULT_SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "system_slow.md"
 DEFAULT_MAX_TURNS = 8
 
 _LOG = get_logger(__name__)
+
+
+class UnknownLaneError(Exception):
+    """Raised when ``Orchestrator.run`` is asked for a lane that wasn't
+    wired into the constructor.
+
+    Surfaced as a 400 by the FastAPI route — the deployed surface only
+    asks for lanes it knows are configured, so this is reachable only
+    via a malformed/forged client request. We surface it instead of
+    silently falling back to slow because a request that explicitly
+    asked for fast and got slow would silently miss its latency budget.
+    """
+
+    def __init__(self, lane: Lane) -> None:
+        super().__init__(f"lane {lane.value!r} is not configured on this orchestrator")
+        self.lane = lane
 
 
 def _validation_error_trace(exc: ValidationError) -> list[dict[str, object]]:
@@ -90,25 +113,32 @@ def _validation_error_trace(exc: ValidationError) -> list[dict[str, object]]:
 
 
 class Orchestrator:
-    """One orchestrator per app, configured at startup."""
+    """One orchestrator per app, configured at startup.
+
+    Holds one :class:`LaneConfig` per :class:`Lane`. The slow lane is
+    required (every deployed surface that calls the orchestrator falls
+    back to slow when the request omits a lane); the fast lane is
+    optional today because PR 13's flag rules engine has to land before
+    the fast lane has anything cached to surface — until then a request
+    asking for ``Lane.FAST`` raises ``UnknownLaneError`` so the caller
+    can decide whether to retry on the slow lane or surface the failure.
+    """
 
     def __init__(
         self,
         *,
-        llm: LlmGateway,
+        lanes: dict[Lane, LaneConfig],
         registry: ToolRegistry,
         verifier: VerificationMiddleware,
         sessions: SessionStore,
-        system_prompt: str | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
     ) -> None:
-        self._llm = llm
+        if Lane.SLOW not in lanes:
+            raise ValueError("orchestrator requires a SLOW lane configuration")
+        self._lanes = dict(lanes)
         self._registry = registry
         self._verifier = verifier
         self._sessions = sessions
-        self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT_PATH.read_text(
-            encoding="utf-8"
-        )
         self._max_turns = max_turns
 
     @traceable_orchestrator_run
@@ -119,7 +149,12 @@ class Orchestrator:
         claims: ClinicianClaims,
         request_id: str,
         session_id: str | None = None,
+        lane: Lane = Lane.SLOW,
     ) -> AgentResponse:
+        try:
+            config = self._lanes[lane]
+        except KeyError as exc:
+            raise UnknownLaneError(lane) from exc
         canonical_id, prior_state = self._sessions.get_or_create(claims, session_id)
         try:
             response, persisted_messages, persisted_tool_results = self._execute(
@@ -127,6 +162,7 @@ class Orchestrator:
                 claims=claims,
                 request_id=request_id,
                 prior_state=prior_state,
+                config=config,
             )
             self._sessions.update(
                 claims,
@@ -151,6 +187,7 @@ class Orchestrator:
         claims: ClinicianClaims,
         request_id: str,
         prior_state: SessionState,
+        config: LaneConfig,
     ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult]]:
         """Run one user turn against the LLM tool-use loop.
 
@@ -169,11 +206,16 @@ class Orchestrator:
         # calls to. The tool layer still enforces this at call time —
         # this just stops the model from asking the user.
         runtime_system = (
-            self._system_prompt
+            config.system_prompt
             + "\n\n## Session\n"
             + f"- patient_id: {claims.patient_id}\n"
             + f"- clinician role: {claims.role}\n"
         )
+
+        # Lane-filtered tool defs (and the matching dispatch-time
+        # allowed-set used as defense-in-depth in :meth:`_dispatch_tools`).
+        # ``None`` here means "all tools" — slow lane keeps the full set.
+        tool_schemas = self._registry.anthropic_schemas(allowed_names=config.tool_names)
 
         # ``persisted_messages`` is what turn N+1 will inherit from the
         # store. ``working_messages`` is what we hand to the LLM each
@@ -187,9 +229,9 @@ class Orchestrator:
         retried = False
 
         for _ in range(self._max_turns):
-            turn = self._llm.complete(
+            turn = config.llm.complete(
                 system=runtime_system,
-                tools=self._registry.anthropic_schemas(),
+                tools=tool_schemas,
                 messages=working_messages,
             )
 
@@ -199,6 +241,7 @@ class Orchestrator:
                     claims=claims,
                     request_id=request_id,
                     tool_results=tool_results,
+                    allowed_names=config.tool_names,
                 )
                 if abstention is not None:
                     response = AgentResponse(
@@ -281,6 +324,7 @@ class Orchestrator:
         claims: ClinicianClaims,
         request_id: str,
         tool_results: list[ToolResult],
+        allowed_names: frozenset[str] | None,
     ) -> tuple[list[dict[str, Any]], Abstention | None]:
         """Run every tool the model called this turn, build the next
         user message containing matching ``tool_result`` blocks, and
@@ -291,10 +335,24 @@ class Orchestrator:
         retrying. Other tool errors collapse into ``TOOL_FAILURE`` for
         the same reason: a partial answer with one tool missing risks
         looking complete when it isn't.
+
+        ``allowed_names`` (when not ``None``) is the lane's tool subset.
+        A model ``tool_use`` for a name outside the set short-circuits
+        to ``TOOL_FAILURE`` — same posture as an unknown tool name. The
+        prompt already advertises only the subset; this is defense-in-
+        depth against a malformed model output reaching the tool layer.
         """
 
         result_blocks: list[dict[str, Any]] = []
         for tool_use in turn.tool_uses:
+            if allowed_names is not None and tool_use.name not in allowed_names:
+                return [], Abstention(
+                    state=AbstentionState.TOOL_FAILURE,
+                    reason=(
+                        f"tool {tool_use.name!r} is not available on this lane; "
+                        "model emitted an out-of-subset tool call"
+                    ),
+                )
             patient_id = str(tool_use.input.get("patient_id", ""))
             try:
                 result = self._registry.dispatch(

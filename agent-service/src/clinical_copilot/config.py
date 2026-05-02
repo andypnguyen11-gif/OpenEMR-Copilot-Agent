@@ -6,11 +6,12 @@ deploy never silently runs with defaults that look like production.
 
 Settings grow per PR as new code paths arrive. Currently carries the four
 boundary settings from PR 1 (HMAC secret, LLM API key, FHIR base URL, Postgres
-DSN), the audit-log patient-ID hashing salt added in PR 2, and the OAuth2
+DSN), the audit-log patient-ID hashing salt added in PR 2, the OAuth2
 JWT-bearer client-assertion settings (PR 5 originally as ``client_secret``,
 migrated to RS384 private key + kid in PR 5.5 to match what OpenEMR's
-confidential-client OAuth2 endpoint actually accepts for ``system/*`` scopes).
-Lane/model/cache settings land in later PRs.
+confidential-client OAuth2 endpoint actually accepts for ``system/*`` scopes),
+and per-lane model tiers added in PR 10 (``MODEL_SLOW`` / ``MODEL_FAST`` so
+eval can A/B Sonnet vs Haiku without redeploy). Cache settings land in PR 14.
 """
 
 from __future__ import annotations
@@ -35,6 +36,16 @@ def _optional(name: str, default: str) -> str:
     return os.environ.get(name) or default
 
 
+# Default model ids. Override via env vars in any environment; the
+# defaults below match the versions we eval against today (Sonnet 4.6
+# for the slow lane's full reconciliation work, Haiku 4.5 for the
+# in-chart side panel's ≤5s budget per PRD §13). Bump these on a
+# deliberate model upgrade so an env that doesn't set the var still
+# tracks the current canonical pair.
+DEFAULT_MODEL_SLOW = "claude-sonnet-4-6"
+DEFAULT_MODEL_FAST = "claude-haiku-4-5-20251001"
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Immutable runtime settings.
@@ -55,6 +66,8 @@ class Settings:
     oauth_private_key_pem: bytes
     oauth_key_id: str
     oauth_token_url: str
+    model_slow: str
+    model_fast: str
 
     @property
     def is_production(self) -> bool:
@@ -64,6 +77,13 @@ class Settings:
 def _load() -> Settings:
     env = _optional("APP_ENV", "development")
     log_level = _optional("LOG_LEVEL", "INFO").upper()
+
+    # Lane model tiers default to the canonical pair in every env so
+    # an undeclared MODEL_SLOW / MODEL_FAST never falls back to a
+    # placeholder string that would 404 on the Anthropic API at first
+    # request. Eval can override either to A/B without code changes.
+    model_slow = _optional("MODEL_SLOW", DEFAULT_MODEL_SLOW)
+    model_fast = _optional("MODEL_FAST", DEFAULT_MODEL_FAST)
 
     if env in {"development", "test"}:
         hmac_secret = _optional("COPILOT_HMAC_SECRET", "dev-insecure-hmac-secret")
@@ -98,6 +118,8 @@ def _load() -> Settings:
         oauth_private_key_pem=oauth_private_key_pem,
         oauth_key_id=oauth_key_id,
         oauth_token_url=oauth_token_url,
+        model_slow=model_slow,
+        model_fast=model_fast,
     )
 
 
