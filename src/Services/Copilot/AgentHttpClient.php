@@ -139,4 +139,53 @@ readonly class AgentHttpClient
         /** @var array<string, mixed> $decoded */
         return new AgentResponse($response->getStatusCode(), $decoded);
     }
+
+    /**
+     * DELETE ``$path`` on the agent service with an HS256 bearer token.
+     *
+     * No body, no Content-Type. Used by :class:`SessionDeleteController`
+     * for ``DELETE /api/agent/session/{id}``. Non-2xx HTTP statuses are
+     * returned in the :class:`AgentResponse` rather than thrown — the
+     * 404 case is a normal product-level signal (caller's session not
+     * found under the JWT's principal), not a transport error.
+     *
+     * @throws AgentServiceException When the transport fails or a non-empty
+     *                               response body is not decodable JSON.
+     */
+    public function delete(string $path, string $bearerToken): AgentResponse
+    {
+        if (!str_starts_with($path, '/')) {
+            throw new AgentServiceException('agent path must start with /');
+        }
+        if ($bearerToken === '') {
+            throw new AgentServiceException('agent delete called without a bearer token');
+        }
+
+        $url = $this->config->getAgentBaseUrl() . $path;
+        $request = $this->requestFactory->createRequest('DELETE', $url)
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('Authorization', 'Bearer ' . $bearerToken);
+
+        try {
+            $response = $this->httpClient->sendRequest($request);
+        } catch (ClientExceptionInterface $e) {
+            throw new AgentServiceException('agent service transport failure', 0, $e);
+        }
+
+        $rawBody = (string) $response->getBody();
+        $decoded = [];
+        if ($rawBody !== '') {
+            try {
+                $decoded = json_decode($rawBody, true, flags: JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                throw new AgentServiceException('agent service returned invalid JSON', 0, $e);
+            }
+            if (!is_array($decoded)) {
+                throw new AgentServiceException('agent service returned non-object JSON');
+            }
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return new AgentResponse($response->getStatusCode(), $decoded);
+    }
 }

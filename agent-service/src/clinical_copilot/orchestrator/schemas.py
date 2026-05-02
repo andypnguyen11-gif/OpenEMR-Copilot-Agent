@@ -101,9 +101,23 @@ class AgentResponse(_Frozen):
     None; otherwise it renders the abstention state. ``tool_results``
     are returned for traceability — the side panel uses them to build
     the "show source" hover.
+
+    ``session_id`` is the server's canonical id for the conversation
+    this response belongs to. The client echoes it on the next turn to
+    continue the session; an unknown/foreign id at the next turn is
+    silently replaced with a fresh one (see :class:`SessionStore`).
+
+    The field defaults to an empty string so that intermediate
+    construction sites (the verification middleware, the orchestrator's
+    abstention paths) don't need to thread the canonical id all the way
+    down. :meth:`Orchestrator.run` is responsible for stamping the real
+    id via ``model_copy`` before the response leaves the service —
+    every wire response carries a non-empty id by that contract. A
+    response leaking with ``session_id=""`` is a bug.
     """
 
     cards: list[Card]
     prose: list[CitedClaim]
     tool_results: list[ToolResult]
     abstention: Abstention | None = None
+    session_id: str = Field(default="", max_length=64)

@@ -91,10 +91,15 @@ final readonly class QueryController
 
         $token = $this->signer->sign($identity, $this->sessionMapper->generateNonce());
 
+        $payload = ['query' => $body->query];
+        if ($body->sessionId !== null) {
+            $payload['session_id'] = $body->sessionId;
+        }
+
         try {
             $response = $this->client->post(
                 '/api/agent/query',
-                ['query' => $body->query],
+                $payload,
                 $token,
             );
         } catch (AgentServiceException $e) {

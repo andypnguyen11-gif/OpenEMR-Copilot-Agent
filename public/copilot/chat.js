@@ -1,12 +1,19 @@
 /**
- * Clinical Co-Pilot — chat-page client (M3 MVP).
+ * Clinical Co-Pilot — chat-page client (M3 MVP, PR 9 multi-turn).
  *
  * Vanilla JS, no framework. Posts the user's query + selected patient_id
- * to the OpenEMR-side gateway at /apis/default/api/agent/query and renders
- * the structured AgentResponse (cards, prose, abstention) into the thread.
+ * (+ optional session_id continuation) to the OpenEMR-side gateway at
+ * /apis/default/api/agent/query and renders the structured AgentResponse
+ * (cards, prose, abstention) into the thread.
  *
- * The thread is in-memory only — switching patients or hitting "Clear chat"
- * drops it (PRD §3 / M3 acceptance criterion).
+ * Session lifecycle:
+ *   - First turn: client omits session_id; server mints + returns one.
+ *   - Subsequent turns: client echoes the server's id back.
+ *   - "Clear chat" or patient switch: fire-and-forget DELETE of the active
+ *     session_id, then null it out so the next turn starts fresh.
+ *   - The agent's composite-key store also handles patient-switch isolation
+ *     server-side (the new JWT's patient_id won't match the stale session
+ *     entry), so the DELETE is belt-and-suspenders.
  */
 
 (function () {
@@ -14,7 +21,27 @@
 
     const config = window.__copilotConfig || {};
     const queryUrl = config.queryUrl;
-    const csrfToken = config.csrfToken || "";
+    const sessionDeleteUrl = config.sessionDeleteUrl || "";
+    // Prefer the parent OpenEMR window's freshly-minted api csrf token
+    // (set by ``interface/main/tabs/main.php`` line 134) over chat.php's
+    // own render. chat.php is loaded inside an iframe and its rendered
+    // HTML is cached across session rotations; a CSRF failure on the
+    // gateway path rotates the OpenEMR cookie, leaving the iframe's
+    // baked-in token referencing a now-dead private_key. Reading from
+    // ``window.top`` walks up to the live frame where the token is
+    // regenerated on every navigation.
+    let csrfToken = "";
+    try {
+        if (window.top && typeof window.top.api_csrf_token_js === "string"
+            && window.top.api_csrf_token_js !== "") {
+            csrfToken = window.top.api_csrf_token_js;
+        }
+    } catch (e) {
+        // Cross-origin parent window — fall back to local config.
+    }
+    if (!csrfToken) {
+        csrfToken = config.csrfToken || "";
+    }
 
     const shell = document.querySelector("[data-copilot-shell]");
     if (!shell) {
@@ -28,16 +55,23 @@
     const resetBtn = shell.querySelector("[data-copilot-reset]");
 
     let lastPatientId = patientSelect.value;
+    let currentSessionId = null;
 
     patientSelect.addEventListener("change", function () {
-        // PRD §3: history drops on patient switch.
         if (patientSelect.value !== lastPatientId) {
+            // PRD §3: history drops on patient switch. The DELETE must
+            // bind to the OUTGOING patient_id (the one the session
+            // belongs to under the JWT principal it was created with),
+            // so snapshot it before mutating lastPatientId.
+            const previousPatientId = lastPatientId;
             lastPatientId = patientSelect.value;
-            clearThread();
+            clearThread(previousPatientId);
         }
     });
 
-    resetBtn.addEventListener("click", clearThread);
+    resetBtn.addEventListener("click", function () {
+        clearThread(lastPatientId);
+    });
 
     form.addEventListener("submit", function (event) {
         event.preventDefault();
@@ -49,7 +83,28 @@
         input.value = "";
     });
 
-    function clearThread() {
+    function clearThread(patientIdForDelete) {
+        // Server-side state cleanup. Fire-and-forget: failure to reach
+        // the gateway here is non-fatal — the agent's TTL eviction
+        // bounds orphaned sessions, and the next request from this
+        // tab will mint a fresh session_id anyway because we drop
+        // currentSessionId below.
+        if (currentSessionId && sessionDeleteUrl && patientIdForDelete) {
+            const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
+                + "?patient_id=" + encodeURIComponent(patientIdForDelete);
+            fetch(url, {
+                method: "DELETE",
+                credentials: "same-origin",
+                headers: {
+                    "Accept": "application/json",
+                    "apicsrftoken": csrfToken
+                }
+            }).catch(function () {
+                // Intentional swallow — TTL covers us.
+            });
+        }
+        currentSessionId = null;
+
         thread.innerHTML = '<div class="copilot-empty">' +
             'Pick a patient and ask a question.' +
             '</div>';
@@ -61,6 +116,14 @@
         const spinner = appendSpinner();
         submitBtn.disabled = true;
 
+        const body = {
+            patient_id: patientId,
+            query: text
+        };
+        if (currentSessionId) {
+            body.session_id = currentSessionId;
+        }
+
         fetch(queryUrl, {
             method: "POST",
             credentials: "same-origin",
@@ -69,10 +132,7 @@
                 "Accept": "application/json",
                 "apicsrftoken": csrfToken
             },
-            body: JSON.stringify({
-                patient_id: patientId,
-                query: text
-            })
+            body: JSON.stringify(body)
         }).then(function (resp) {
             return resp.json().then(function (body) {
                 return { status: resp.status, body: body };
@@ -82,6 +142,9 @@
         }).then(function (result) {
             spinner.remove();
             if (result.status >= 200 && result.status < 300 && result.body) {
+                if (typeof result.body.session_id === "string" && result.body.session_id !== "") {
+                    currentSessionId = result.body.session_id;
+                }
                 renderAgentResponse(result.body);
             } else {
                 renderError(result);

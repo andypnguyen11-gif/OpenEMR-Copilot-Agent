@@ -169,6 +169,98 @@ final class QueryControllerTest extends TestCase
         self::assertStringNotContainsString('connection refused', (string) $response->getContent());
     }
 
+    public function testSessionIdRoundTripsToAgentBody(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+
+        $this->agent->expects($this->once())
+            ->method('post')
+            ->with(
+                '/api/agent/query',
+                ['query' => 'follow-up', 'session_id' => 'abc-123'],
+                $this->callback(static fn (string $token): bool => $token !== ''),
+            )
+            ->willReturn(new AgentResponse(
+                Response::HTTP_OK,
+                ['cards' => [], 'prose' => [], 'tool_results' => [], 'session_id' => 'abc-123'],
+            ));
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'follow-up',
+            'session_id' => 'abc-123',
+        ]));
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testSessionIdOmittedFromAgentBodyWhenNotProvided(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+
+        // Agent body must NOT carry session_id when client didn't supply
+        // one — agent-side QueryRequest treats absent and explicit-null
+        // the same, but staying minimal on the wire keeps test failures
+        // sharper.
+        $this->agent->expects($this->once())
+            ->method('post')
+            ->with(
+                '/api/agent/query',
+                ['query' => 'first turn'],
+                $this->callback(static fn (string $token): bool => $token !== ''),
+            )
+            ->willReturn(new AgentResponse(Response::HTTP_OK, ['session_id' => 'srv-1']));
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'first turn',
+        ]));
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testInvalidSessionIdCharacterReturns400AndDoesNotCallAgent(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+            'session_id' => 'not allowed!',
+        ]));
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testOversizedSessionIdReturns400AndDoesNotCallAgent(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+            'session_id' => str_repeat('a', 65),  // 1 over the 64-char cap
+        ]));
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testNonStringSessionIdReturns400AndDoesNotCallAgent(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+            'session_id' => 12345,  // not a string
+        ]));
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
     public function testAgentNon2xxStatusPassesThrough(): void
     {
         $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);

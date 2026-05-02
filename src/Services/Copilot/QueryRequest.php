@@ -25,10 +25,13 @@ use InvalidArgumentException;
 final readonly class QueryRequest
 {
     public const QUERY_MAX_LENGTH = 4000;
+    public const SESSION_ID_MAX_LENGTH = 64;
+    public const SESSION_ID_PATTERN = '/^[A-Za-z0-9-]+$/';
 
     public function __construct(
         public string $patientId,
         public string $query,
+        public ?string $sessionId = null,
     ) {
         if ($patientId === '') {
             throw new InvalidArgumentException('patient_id must be non-empty');
@@ -40,6 +43,24 @@ final readonly class QueryRequest
             throw new InvalidArgumentException(
                 'query exceeds ' . self::QUERY_MAX_LENGTH . '-character limit',
             );
+        }
+        if ($sessionId !== null) {
+            if ($sessionId === '') {
+                throw new InvalidArgumentException('session_id must be non-empty when present');
+            }
+            if (strlen($sessionId) > self::SESSION_ID_MAX_LENGTH) {
+                throw new InvalidArgumentException(
+                    'session_id exceeds ' . self::SESSION_ID_MAX_LENGTH . '-character limit',
+                );
+            }
+            if (preg_match(self::SESSION_ID_PATTERN, $sessionId) !== 1) {
+                // Tight charset enforced gateway-side so the agent never has
+                // to validate URL-unsafe / control characters that would
+                // need escaping in path positions later.
+                throw new InvalidArgumentException(
+                    'session_id contains characters outside [A-Za-z0-9-]',
+                );
+            }
         }
     }
 
@@ -64,6 +85,10 @@ final readonly class QueryRequest
         if (!is_string($query)) {
             throw new InvalidArgumentException('query must be a string');
         }
-        return new self($patientId, $query);
+        $sessionId = $payload['session_id'] ?? null;
+        if ($sessionId !== null && !is_string($sessionId)) {
+            throw new InvalidArgumentException('session_id must be a string when present');
+        }
+        return new self($patientId, $query, $sessionId);
     }
 }

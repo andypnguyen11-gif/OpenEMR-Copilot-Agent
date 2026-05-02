@@ -74,7 +74,17 @@ final readonly class JwtSigner
      */
     public function sign(ClinicianIdentity $identity, string $nonce): string
     {
-        $now = $this->clock->now()->setTimezone(new DateTimeZone('UTC'));
+        // Floor to integer seconds before signing. lcobucci/jwt preserves
+        // microsecond precision from a DateTimeImmutable, encoding iat/exp
+        // as fractional NumericDate values (e.g. 1777693112.077479). PyJWT's
+        // verifier on the agent service rejects fractional NumericDates as
+        // malformed tokens; the verifier returns 401 "invalid token" with
+        // no further diagnostic. Anchoring to ``@<unix-timestamp>`` builds
+        // a microsecond-zero DateTimeImmutable so the encoded values are
+        // plain integers and round-trip cleanly across the boundary.
+        $nowUtc = $this->clock->now()->setTimezone(new DateTimeZone('UTC'));
+        $now = (new \DateTimeImmutable('@' . $nowUtc->getTimestamp()))
+            ->setTimezone(new DateTimeZone('UTC'));
         $expiresAt = $now->add(new DateInterval('PT' . self::TOKEN_LIFETIME_SECONDS . 'S'));
 
         $token = $this->config->builder()

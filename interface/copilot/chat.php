@@ -124,6 +124,7 @@ $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
     <script>
         window.__copilotConfig = {
             queryUrl: <?php echo json_encode($webroot . '/apis/default/api/agent/query'); ?>,
+            sessionDeleteUrl: <?php echo json_encode($webroot . '/apis/default/api/agent/session'); ?>,
             csrfToken: <?php echo json_encode($apiCsrfToken); ?>
         };
     </script>

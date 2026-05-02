@@ -17,7 +17,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Path, Response, status
 from pydantic import BaseModel, Field
 
 from clinical_copilot import __version__
@@ -37,13 +37,25 @@ if TYPE_CHECKING:
 class QueryRequest(BaseModel):
     """Body of ``POST /api/agent/query``.
 
-    Just the user's natural-language query. The patient-id, user-id,
-    role, and scopes are *not* in the body — they come from the JWT
-    (verified by the FastAPI dependency) so a malicious client can't
-    rebind any of them per request.
+    Two fields. ``query`` is the user's natural-language question.
+    ``session_id`` is an optional client-supplied id from a prior turn's
+    response, used to continue a multi-turn conversation. The patient-id,
+    user-id, role, and scopes are *not* in the body — they come from
+    the JWT (verified by the FastAPI dependency) so a malicious client
+    can't rebind any of them per request.
+
+    A ``session_id`` that doesn't resolve under the JWT's principal is
+    silently replaced with a fresh server-minted id (see
+    :class:`SessionStore`); the response always carries the canonical
+    server id.
     """
 
     query: str = Field(min_length=1, max_length=4000)
+    session_id: str | None = Field(
+        default=None,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9-]+$",
+    )
 
 
 @asynccontextmanager
@@ -85,6 +97,7 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.jwt_verifier = resolved_state.jwt_verifier
     app.state.orchestrator = resolved_state.orchestrator
+    app.state.session_store = resolved_state.session_store
 
     claims_dep = require_clinician_claims(resolved_state.jwt_verifier)
 
@@ -114,6 +127,7 @@ def create_app(
                 query=body.query,
                 claims=claims,
                 request_id=request_id,
+                session_id=body.session_id,
             )
         except AuditLogWriteError as exc:
             # Fail-closed: an audit write failure inside a tool denial
@@ -129,6 +143,27 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="audit log unavailable",
             ) from exc
+
+    @app.delete(
+        "/api/agent/session/{session_id}",
+        tags=["agent"],
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_session_route(
+        session_id: str = Path(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$"),
+        claims: ClinicianClaims = claims_dep,
+    ) -> Response:
+        # Composite-key miss returns 404 — a different principal calling
+        # with the same id cannot tell us whether the id exists somewhere
+        # else. 401 would be misleading (the JWT itself is fine) and
+        # would leak existence information.
+        existed = resolved_state.session_store.delete(claims, session_id)
+        if not existed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="session not found",
+            )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return app
 

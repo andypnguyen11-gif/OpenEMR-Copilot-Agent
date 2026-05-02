@@ -43,6 +43,7 @@ use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\GatewayController;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\QueryController;
+use OpenEMR\Services\Copilot\SessionDeleteController;
 use OpenEMR\Services\Copilot\SessionMapper;
 use Psr\Log\LoggerInterface;
 
@@ -100,5 +101,33 @@ return [
         // exposes via ``getContent``. They share the same parent, so a
         // direct pass-through works here.
         return $controller->query($request);
+    },
+    "DELETE /api/agent/session/:session_id" => function (
+        string $sessionId,
+        HttpRestRequest $request,
+        OEGlobalsBag $globals,
+    ) use ($copilotLogger) {
+        $config = new CopilotConfig($globals);
+        $factory = new HttpFactory();
+        // DELETE traffic is small and infrequent; reuse the short
+        // timeout from healthz rather than the long query timeout.
+        $httpClient = new GuzzleClient([
+            'timeout' => $config->getAgentTimeoutSeconds(),
+            'http_errors' => false,
+        ]);
+        $agentClient = new AgentHttpClient($httpClient, $factory, $config);
+        $signer = new JwtSigner(
+            $config->getJwtSecret(),
+            new SystemClock(new DateTimeZone('UTC')),
+        );
+        $sessionMapper = SessionMapper::fromGlobalSession();
+        $controller = new SessionDeleteController(
+            $agentClient,
+            $signer,
+            $sessionMapper,
+            $config,
+            $copilotLogger(),
+        );
+        return $controller->delete($request, $sessionId);
     },
 ];

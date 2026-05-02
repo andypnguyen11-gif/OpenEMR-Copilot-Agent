@@ -43,6 +43,7 @@ from clinical_copilot.db.engine import create_engine_from_url, create_session_fa
 from clinical_copilot.observability import configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
+from clinical_copilot.orchestrator.sessions import SessionStore
 from clinical_copilot.runtime.async_bridge import AsyncBridge
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.registry import ToolRegistry
@@ -77,6 +78,7 @@ class AppState:
     settings: Settings
     jwt_verifier: JwtVerifier
     orchestrator: Orchestrator
+    session_store: SessionStore
     bridge: AsyncBridge | None
 
 
@@ -154,16 +156,20 @@ def build_app_state(
         client = Anthropic(api_key=settings.llm_api_key)
         llm = AnthropicLlmGateway(client=client, model=DEFAULT_MODEL)
 
+    session_store = SessionStore()
+
     orchestrator = Orchestrator(
         llm=llm,
         registry=registry,
         verifier=verifier_mw,
+        sessions=session_store,
     )
 
     return AppState(
         settings=settings,
         jwt_verifier=jwt_verifier,
         orchestrator=orchestrator,
+        session_store=session_store,
         bridge=bridge,
     )
 
