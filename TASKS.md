@@ -676,32 +676,100 @@ branches. `make check` green at 169 tests (lint + ruff format + mypy + pytest).
 
 ---
 
-### PR 8 — Tools: get_meds / get_allergies / get_labs / get_problems / get_visits / get_notes
+### PR 8 — Tools: get_meds / get_allergies / get_labs / get_problems / get_visits / get_notes — ✅ landed
 
 Implement the six retrieval tools listed in ARCHITECTURE §1. Each one is thin: validate
-patient_id is in session scope → call FHIR client → return typed response.
+patient_id is in session scope (PR 7's Tool ABC handles this) → call FHIR client → project
+the parsed FHIR resource into the existing typed `*Record` shape → return.
 
-- [ ] `get_meds` (MedicationRequest + MedicationStatement)
-- [ ] `get_allergies` (AllergyIntolerance)
-- [ ] `get_labs` (Observation, lab category, optional time range)
-- [ ] `get_problems` (Condition, active)
-- [ ] `get_visits` (Encounter)
-- [ ] `get_notes` (DocumentReference + ClinicalNotes if needed)
-- [ ] Each tool's response is a typed Pydantic model with `source_id` per row (drives citation
-  layer downstream)
-- [ ] Each tool emits a span (placeholder; LangSmith wiring lands in PR 16)
+- [x] `get_meds` (MedicationRequest — see below for why `MedicationStatement` is deferred)
+- [x] `get_allergies` (AllergyIntolerance)
+- [x] `get_labs` (Observation, `category=laboratory`)
+- [x] `get_problems` (Condition; status flattened from `clinicalStatus`)
+- [x] `get_visits` (Encounter)
+- [x] `get_notes` (DocumentReference; base64 attachment data decoded to body text)
+- [x] Each tool's response is a typed Pydantic model with `source_id` per row (drives citation
+  layer downstream) — uses the existing PR 6 `*Record` schemas, unchanged
+- [x] Each tool emits a span via the existing `traceable_tool_dispatch` decorator on the
+  registry (placeholder; full LangSmith wiring lands in PR 20)
+
+**Sync ⇆ async hand-off.** `Tool.execute` (PR 7) is sync; `FhirClient` (PR 6) is async.
+`runtime/async_bridge.py` owns one long-lived asyncio loop on a daemon thread; every
+FHIR-backed tool routes its async fetch through it via `tools/fhir_base.py::FhirBackedTool`.
+This keeps a single shared `httpx.AsyncClient` connection pool across tools without forcing
+the orchestrator (sync) to become async right now. Full async refactor (`Orchestrator.run`,
+`Tool.execute`, `ToolRegistry.dispatch`) deferred — none of this PR's contracts change when
+that lands.
+
+**FHIR ACL → UNAUTHORIZED.** A 401 / 403 from the FHIR server now travels as
+`FhirError(status_code=401|403)` (added in PR 8); `FhirBackedTool._run` catches it and
+re-raises as `FhirAuthorizationDeniedError`, which the existing PR 7 base catches and
+translates to the same `UnauthorizedToolCallError` + UNAUTHORIZED audit row the JWT-side
+denial emits. Cause chain preserved so the orchestrator's logger can surface the upstream
+diagnostic without leaking it to the user. Both branches share `_unauthorized_event()` so
+the audit shape is identical.
+
+**Drop-on-malformed.** Each projection drops FHIR rows that can't anchor a citation — a
+Condition without a code/display, an Observation without a value or `effectiveDateTime`, an
+Encounter without `period.start`, a DocumentReference without inline data or with malformed
+base64. The alternative (surfacing empty-string fields) would invite the model to fabricate
+display text; better to lose the row than mis-cite it.
+
+**Production wiring landed.** `app_state.build_app_state` defaults to FHIR-backed tools:
+constructs the `AsyncBridge`, builds the shared `httpx.AsyncClient` + `OAuthClient` +
+`FhirClient` *inside the bridge loop* (so the AsyncClient's internal locks bind to that
+loop), and dispatches via `ToolRegistry.from_fhir`. The bridge is held on `AppState` so it
+can't be GC'd while the route is live. Three branches:
+
+* `fixture_store=` override → fixture path (test_query_route, eval harness)
+* `settings.oauth_client_id` empty → fixture path (dev/test fallback; prod fails fast at
+  config load via `_require`, so this branch never fires there)
+* otherwise → live FHIR stack
+
+Live-verified end-to-end via `tests/integration/test_tools_fhir.py` — one parametrised case
+per tool, sharing one OAuth token cache so all six dispatches stay under a few seconds.
+
+**MedicationStatement deferred.** OpenEMR doesn't populate `MedicationStatement` today; PR 13
+revisits whether to merge it in once the discrepancy engine cares about reconciliation.
 
 **NEW**
+- `agent-service/src/clinical_copilot/tools/fhir_base.py` — shared base for FHIR-backed tools
+  (sync→async bridge, 401/403 → `FhirAuthorizationDeniedError`, `reference_id` helper)
 - `agent-service/src/clinical_copilot/tools/meds.py`
 - `agent-service/src/clinical_copilot/tools/allergies.py`
 - `agent-service/src/clinical_copilot/tools/labs.py`
 - `agent-service/src/clinical_copilot/tools/problems.py`
 - `agent-service/src/clinical_copilot/tools/visits.py`
 - `agent-service/src/clinical_copilot/tools/notes.py`
-- `agent-service/tests/unit/test_tools_*.py` (one per tool)
+- `agent-service/src/clinical_copilot/runtime/__init__.py` + `async_bridge.py` — long-lived
+  asyncio loop on daemon thread; one `httpx.AsyncClient` connection pool process-wide
+- `agent-service/tests/unit/test_tools_problems.py`
+- `agent-service/tests/unit/test_tools_meds.py`
+- `agent-service/tests/unit/test_tools_allergies.py`
+- `agent-service/tests/unit/test_tools_labs.py`
+- `agent-service/tests/unit/test_tools_visits.py`
+- `agent-service/tests/unit/test_tools_notes.py`
+- `agent-service/tests/unit/_fhir_tool_helpers.py` — shared `StubFhirClient`,
+  `RecordingAuditWriter`, `expect_record` narrowing helper, `claims_for`
+- `agent-service/tests/unit/conftest.py` — `bridge` (module-scoped) + `audit` fixtures
 
-**Acceptance:** Each tool returns typed records for a known demo patient; each record carries a
-stable `source_id` usable for citation.
+**Modified**
+- `agent-service/src/clinical_copilot/data/fhir_client.py` — `FhirError` carries optional
+  `status_code` so the tool layer can map 401 / 403 structurally instead of string-matching
+- `agent-service/src/clinical_copilot/tools/registry.py` — adds
+  `ToolRegistry.from_fhir(fhir, bridge, audit, audit_salt)` for production wiring; the
+  existing `from_fixture` path is unchanged
+- `agent-service/src/clinical_copilot/app_state.py` — production default flipped to
+  FHIR-backed tools; `AppState` now holds an optional `bridge: AsyncBridge | None` so the
+  daemon-thread loop survives for the lifetime of the process
+- `agent-service/tests/integration/test_tools_fhir.py` — one parametrised case per tool
+  exercising the live OAuth + FHIR + AsyncBridge + projection round-trip
+
+**Acceptance:** ✅ Per-tool unit tests cover the happy projection, the 401/403 → UNAUTHORIZED
++ audit-row contract, drop-on-malformed for every kind-specific guard, and the JWT-side
+short-circuit (problems test). 52 new tests; full suite at 221 passed / 2 skipped (integration).
+`make check` green (lint + ruff format + mypy + pytest). Records carry the same
+`<ResourceType>/<id>` `source_id` shape PR 11 will join citations against.
 
 ---
 
