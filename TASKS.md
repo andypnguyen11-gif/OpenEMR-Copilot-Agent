@@ -1168,28 +1168,49 @@ Live DB gates (PHPUnit round-trip + `mysql <` smoke load) deferred — both need
 MySQL running and follow the same pattern as `FixtureManagerTest::testInstallAndRemovePatientFixtures`
 which is already covered by the existing test suite.
 
-#### PR 13b — Engine core + normalizer + YAML loader
+#### PR 13b — Engine core + normalizer + YAML loader — ✅ landed
 
 Engine skeleton with one rule pack to prove the path. Parallelizable with 13a.
 
-- [ ] `engine.py` with rule type ABC and result schema
-  `{patient_id, rule_id, category, source_records[], rationale}`.
-- [ ] `normalize.py` — free-text code normalization (lowercase + trim + dose-strip +
-  optional `list_option_id` / `rxnorm_drugcode` cross-ref). AUDIT D-02 flags this as
-  table-stakes against false-negative dominance.
-- [ ] YAML loader for rule packs; rules are config, not code (PRD §8 / ARCHITECTURE §6.5).
-- [ ] `rules/consistency.yaml` — just `med_vs_note_conflict` to exercise the loader path.
+- [x] `engine.py` with `DiscrepancyRule` ABC and `PatientChart` input model.
+  Output is `FlagRecord` from existing `tools.records` (no new schema —
+  PR 13d's `get_flags` swap reuses it unchanged). Adds
+  `flag_source_id(rule_id, patient_id, referenced_source_ids)` for
+  deterministic ids across runs.
+- [x] `normalize.py` — `normalize_drug_name` (lowercase + dose-strip + collapse
+  whitespace), `primary_drug_token` (leading generic stem for note-body
+  matching), `normalize_code` (RxNorm/ICD/SNOMED/LOINC prefix
+  canonicalization), `text_contains` (case-insensitive substring with
+  whitespace collapse). AUDIT D-02 table-stakes shipped.
+- [x] YAML loader for rule packs (`DiscrepancyEngine.from_yaml(paths, registry)`).
+  Skips `enabled: false` rows; raises `UnknownRuleError` for unmapped ids
+  and `RuleConfigMismatchError` if a rule class's category disagrees
+  with its YAML category — both at engine-construction time, never silent
+  at evaluate.
+- [x] `rules/consistency.yaml` — just `med_vs_note_conflict` to exercise the
+  loader path; PR 13c appends the rest.
 
 **NEW**
+- `agent-service/src/clinical_copilot/discrepancy/__init__.py`
 - `agent-service/src/clinical_copilot/discrepancy/engine.py`
 - `agent-service/src/clinical_copilot/discrepancy/normalize.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/__init__.py`
+  (`DEFAULT_REGISTRY`, `DEFAULT_PACK_PATHS` for callers)
+- `agent-service/src/clinical_copilot/discrepancy/rules/med_vs_note.py`
 - `agent-service/src/clinical_copilot/discrepancy/rules/consistency.yaml` (one rule only)
-- `agent-service/tests/unit/test_rules_engine.py`
-- `agent-service/tests/unit/test_normalize.py`
+- `agent-service/tests/unit/test_rules_engine.py` (22 cases)
+- `agent-service/tests/unit/test_normalize.py` (27 cases)
 
-**Acceptance:** engine loads `consistency.yaml`, evaluates `med_vs_note_conflict` against
-in-memory test input, returns correctly-shaped result; normalizer unit tests cover
-dose-strip + RxNorm cross-ref paths.
+**EDIT**
+- `agent-service/pyproject.toml` — `types-pyyaml` added to dev group so
+  mypy stays clean on `yaml.safe_load`
+
+**Acceptance:** engine loads `consistency.yaml`, evaluates `med_vs_note_conflict`
+against in-memory test input, returns a correctly-shaped `FlagRecord`; normalizer
+unit tests cover dose-strip / primary-token / code-prefix / text-contains paths;
+loader paths (enabled / disabled / unknown-id / malformed YAML / missing file)
+each pinned by a test. Full `make check` green: ruff lint + format, mypy strict,
+326 tests passing.
 
 #### PR 13c — Remaining rule packs + seeded-fixture integration test
 
