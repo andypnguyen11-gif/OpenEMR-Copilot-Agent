@@ -1118,70 +1118,131 @@ subclass):
 | **Layer 1 — demo install** | `sql/example_discrepancy_data.sql` (generated) | Railway demo, architecture-defense walkthrough, Python eval suite (loaded via `mysql <`) | Matches `example_patient_data.sql` convention; visible in phpMyAdmin; loads at install. |
 | **Layer 2 — PHP test fixtures** | `tests/Tests/Fixtures/DiscrepancyFixtureManager.php` (extends `BaseFixtureManager`) | PHPUnit integration tests (PR 15 invalidation hooks, PR 18 role enforcement, PR 19 audit-log) | `installFixtures()` / `removeFixtures()` cycle via `QueryUtils` + `UuidRegistry` so UUIDs and ACL semantics match production writes; schema migrations break the fixture (which is what you want). |
 
-Sub-tasks:
+**Staged into PR 13a–d** to keep each ship-window small and the parity gate at the end.
+Each sub-PR has its own acceptance; the headline acceptance (identical flag set from both
+load paths) lives in 13d.
 
-- [ ] **`tests/Tests/Fixtures/discrepancy-scenarios.php`** — typed PHP array with the five
+#### PR 13a — Scenarios SoT + PHP fixture manager + generated SQL — ✅ landed
+
+Data layer only. No engine yet. Demoable in phpMyAdmin once loaded.
+
+- [x] **`tests/Tests/Fixtures/discrepancy-scenarios.php`** — typed PHP array with the five
   conflict shapes from AUDIT §3.2:
   - `med_vs_note_conflict` — active metoprolol in `lists`; "discontinued" in `pnotes.body`
   - `narrative_only_allergy` — sulfa allergy in intake-form text; no row in `lists`
   - `resolved_problem_still_active` — `active=1, no enddate`; recent note says "tapering"
   - `allergen_med_safety_conflict` — `lists` allergy "Penicillin" + active "Amoxicillin"
   - `stale_chronic_lab` — Type 2 Diabetes problem; last HbA1c >12 months
-- [ ] **`DiscrepancyFixtureManager`** extending `BaseFixtureManager` — `installFixtures()`,
+- [x] **`DiscrepancyFixtureManager`** extending `BaseFixtureManager` — `installFixtures()`,
   `removeFixtures()`, scenario-name accessors. Uses `QueryUtils` and `UuidRegistry`. Records
   prefixed `test-fixture-discrepancy-*` for clean teardown.
-- [ ] **`bin/generate-discrepancy-sql.php`** — small generator that reads
-  `discrepancy-scenarios.php` and emits `sql/example_discrepancy_data.sql`. Run at build
-  time + checked-in output (so demo deploys don't need PHP at install time). A pre-merge
-  local check verifies the file is up-to-date (`generate` then `git diff --exit-code`),
-  wired into `make check` and the pre-commit hook.
-- [ ] **`sql/example_discrepancy_data.sql`** is the **generated artifact** — never
-  hand-edited. Header comment reads: "Generated from
-  `tests/Tests/Fixtures/discrepancy-scenarios.php` — do not edit; run
-  `bin/generate-discrepancy-sql.php`."
-- [ ] Loader script wired into demo install path so the SQL runs *after*
-  `example_patient_data.sql`.
-- [ ] Free-text-code normalization helper (lowercase + trim + dose-strip + optional
-  `list_option_id` / `rxnorm_drugcode` cross-ref) — AUDIT D-02 calls this out as
-  table-stakes for avoiding false-negative dominance.
-- [ ] Orphan-tolerant queries (no FKs in OpenEMR; AUDIT D-03).
-- [ ] `engine.py` with rule type ABC and result schema.
+- [x] **`bin/generate-discrepancy-sql.php`** — generator that reads
+  `discrepancy-scenarios.php` and emits `sql/example_discrepancy_data.sql`. `--check`
+  mode renders the file in-memory and compares to disk (no temp file / git diff needed).
+- [x] **`sql/example_discrepancy_data.sql`** — generated artifact, never hand-edited.
+  Header: "Generated from `tests/Tests/Fixtures/discrepancy-scenarios.php` — do not edit;
+  run `bin/generate-discrepancy-sql.php`."
+- [x] Drift check wired into `composer fixture-check` (also part of `composer code-quality`)
+  and `.pre-commit-config.yaml` (triggers when scenarios, generator, or SQL file changes).
+- [ ] ~~Loader script wired into demo install path~~ — `example_patient_data.sql` itself
+  has no automated loader (Installer.class.php only loads core schema, not demo data).
+  Generated SQL header documents the manual `mysql <` load pattern; matches existing
+  convention.
+
+**NEW**
+- `tests/Tests/Fixtures/discrepancy-scenarios.php`
+- `tests/Tests/Fixtures/DiscrepancyFixtureManager.php`
+- `tests/Tests/Fixtures/DiscrepancyFixtureManagerTest.php` (asserts install/remove cycle)
+- `bin/generate-discrepancy-sql.php`
+- `sql/example_discrepancy_data.sql` (generated)
+
+**EDIT**
+- `composer.json` — add `fixture-check` and `fixture-generate` scripts; wire
+  `fixture-check` into `code-quality`
+- `.pre-commit-config.yaml` — `discrepancy-fixture-check` hook on the three trigger paths
+
+**Acceptance:** Static gates green at landing — phpcs, PHPStan level 10, rector all clean
+on the four new PHP files; `composer fixture-check` passes; drift detection verified
+(intentional `MedNoteOne` → `MedNoteX` edit in scenarios → check exits 1; reset → exits 0).
+Live DB gates (PHPUnit round-trip + `mysql <` smoke load) deferred — both need Docker
+MySQL running and follow the same pattern as `FixtureManagerTest::testInstallAndRemovePatientFixtures`
+which is already covered by the existing test suite.
+
+#### PR 13b — Engine core + normalizer + YAML loader
+
+Engine skeleton with one rule pack to prove the path. Parallelizable with 13a.
+
+- [ ] `engine.py` with rule type ABC and result schema
+  `{patient_id, rule_id, category, source_records[], rationale}`.
+- [ ] `normalize.py` — free-text code normalization (lowercase + trim + dose-strip +
+  optional `list_option_id` / `rxnorm_drugcode` cross-ref). AUDIT D-02 flags this as
+  table-stakes against false-negative dominance.
 - [ ] YAML loader for rule packs; rules are config, not code (PRD §8 / ARCHITECTURE §6.5).
+- [ ] `rules/consistency.yaml` — just `med_vs_note_conflict` to exercise the loader path.
+
+**NEW**
+- `agent-service/src/clinical_copilot/discrepancy/engine.py`
+- `agent-service/src/clinical_copilot/discrepancy/normalize.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/consistency.yaml` (one rule only)
+- `agent-service/tests/unit/test_rules_engine.py`
+- `agent-service/tests/unit/test_normalize.py`
+
+**Acceptance:** engine loads `consistency.yaml`, evaluates `med_vs_note_conflict` against
+in-memory test input, returns correctly-shaped result; normalizer unit tests cover
+dose-strip + RxNorm cross-ref paths.
+
+#### PR 13c — Remaining rule packs + seeded-fixture integration test
+
+Depends on 13a + 13b. Completes the four rule categories and validates against the
+real fixture.
+
 - [ ] Categorized rule types per ARCHITECTURE §3 / §6:
-  - `consistency` (med list ↔ note disagreement, allergy table mismatch)
   - `data_quality` (missing fields, stale labs, active-but-resolved)
   - `safety` (allergy ↔ active med, encoded interaction flags)
   - `value_sanity` (lab values outside plausible ranges)
+  - `consistency` extended to cover allergy-table mismatch
 - [ ] Note-side checks scoped to keyword presence on the most recent note(s) only — AUDIT
   §3.3 explicitly down-scopes regex/NLP for MVP.
-- [ ] Rule output: `{patient_id, rule_id, category, source_records[], rationale}`.
+- [ ] Orphan-tolerant queries (no FKs in OpenEMR; AUDIT D-03).
 - [ ] **No** treatment-recommendation logic (out of scope per PRD §5 / USERS §6).
 
 **NEW**
-- `tests/Tests/Fixtures/discrepancy-scenarios.php` (single source of truth — typed PHP array)
-- `tests/Tests/Fixtures/DiscrepancyFixtureManager.php` (extends `BaseFixtureManager`)
-- `tests/Tests/Fixtures/DiscrepancyFixtureManagerTest.php` (asserts install/remove cycle)
-- `bin/generate-discrepancy-sql.php` (generator script)
-- `sql/example_discrepancy_data.sql` (generated artifact, checked in)
-- `agent-service/src/clinical_copilot/discrepancy/engine.py`
-- `agent-service/src/clinical_copilot/discrepancy/normalize.py` (free-text code normalizer)
-- `agent-service/src/clinical_copilot/discrepancy/rules/consistency.yaml`
 - `agent-service/src/clinical_copilot/discrepancy/rules/data_quality.yaml`
 - `agent-service/src/clinical_copilot/discrepancy/rules/safety.yaml`
 - `agent-service/src/clinical_copilot/discrepancy/rules/value_sanity.yaml`
-- `agent-service/tests/unit/test_rules_engine.py`
 - `agent-service/tests/integration/test_seeded_fixture.py`
 
 **EDIT**
-- `agent-service/Makefile` (or `scripts/check.sh`) — add `fixture-check` target running
-  `bin/generate-discrepancy-sql.php` then `git diff --exit-code sql/example_discrepancy_data.sql`
-- `.pre-commit-config.yaml` — wire the same check as a hook
+- `agent-service/src/clinical_copilot/discrepancy/rules/consistency.yaml` — add
+  allergy-table-mismatch rule
 
-**Acceptance:** The rules engine evaluates the five seeded scenarios loaded **either**
-through `DiscrepancyFixtureManager::installFixtures()` (PHP integration tests) **or**
-through `mysql < sql/example_discrepancy_data.sql` (Python eval / demo install) and
-produces an **identical expected flag set** with correct categories and source attribution
-in both paths. Drift between the two paths fails the local pre-merge check.
+**Acceptance:** engine produces all five expected flags from the SQL-loaded fixture with
+correct categories and source attribution.
+
+#### PR 13d — Wire `get_flags` to engine + cross-path parity
+
+The swap and the headline acceptance gate.
+
+- [ ] `get_flags` tool reads from engine output instead of hand-encoded `patients.json`
+  conflicts (Tool I/O schema unchanged from PR M1 — no call-site churn).
+- [ ] Cross-language parity test: PHP `installFixtures()` path and Python
+  `mysql < sql/example_discrepancy_data.sql` path produce **identical flag sets** with
+  identical categories and source attribution.
+- [ ] Update affected eval cases / unit tests that depended on the hand-encoded path.
+
+**EDIT**
+- `agent-service/src/clinical_copilot/tools/flags.py` — swap fixture read for engine call
+- `agent-service/tests/eval/cases/conflicting/01_med_vs_note.json` — flow through engine
+- any existing tests whose assertions referenced the hand-encoded conflict shape
+
+**NEW**
+- `agent-service/tests/integration/test_cross_path_parity.py`
+
+**Acceptance:** PR 13's headline acceptance — the rules engine evaluates the five seeded
+scenarios loaded **either** through `DiscrepancyFixtureManager::installFixtures()` (PHP
+integration tests) **or** through `mysql < sql/example_discrepancy_data.sql` (Python eval
+/ demo install) and produces an **identical expected flag set** with correct categories
+and source attribution in both paths. Existing M5 eval still green.
 
 ---
 
