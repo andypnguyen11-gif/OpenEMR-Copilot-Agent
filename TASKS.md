@@ -1010,7 +1010,7 @@ tests gated behind env vars.
 
 ---
 
-### PR 12 — Abstention taxonomy + per-lane granularity
+### PR 12 — Abstention taxonomy + per-lane granularity — ✅ landed
 
 Implement the four-state enum (`NO_DATA`, `VERIFICATION_FAILED`, `TOOL_FAILURE`,
 `UNAUTHORIZED`) and the **per-lane granularity rule** (PRD §5 / ARCHITECTURE §3):
@@ -1018,20 +1018,80 @@ Implement the four-state enum (`NO_DATA`, `VERIFICATION_FAILED`, `TOOL_FAILURE`,
 - Fast lane → whole-response abstain on any verification failure
 - Slow lane → per-claim marking
 
-- [ ] `Abstention` enum + per-claim and per-response marker types
-- [ ] Granularity policy applied based on the request's lane
-- [ ] `UNAUTHORIZED` always writes an audit-log row (mandatory per ARCHITECTURE §3 table)
-- [ ] Tests for each state's behavior on fast vs slow lane
+- [x] `Abstention` enum + per-claim and per-response marker types — the four-state
+  `AbstentionState` and response-level `Abstention` already shipped in PR M2; PR 12
+  adds the sidecar `ClaimAbstention` type keyed by `(source_id, source_field)` —
+  `source_field` is `None` for cards and existence-only citations, set for field-
+  mismatch drops so the UI can render the precise reason
+- [x] Granularity policy applied based on the request's lane — `VerificationMiddleware
+  .verify(..., lane=Lane.SLOW)` plumbs through `Orchestrator.run` → `_execute` →
+  verifier. Fast lane returns one whole-response abstention; slow lane filters offending
+  claims/cards and emits one `ClaimAbstention` per drop into `AgentResponse
+  .dropped_claims`. When the slow lane filters everything, it escalates to a response-
+  level abstention so the UI never gets an empty body with no explanation
+- [x] `UNAUTHORIZED` always writes an audit-log row (mandatory per ARCHITECTURE §3
+  table) — already enforced by the tool layer (`tools/base.py::Tool._enforce_rbac`
+  writes the row before raising `UnauthorizedToolCallError`); PR 12 leaves that path
+  untouched. The orchestrator maps the raised exception to an `UNAUTHORIZED`
+  response-level abstention on either lane (per-claim doesn't apply — RBAC denial is
+  per-tool-call, not per-claim)
+- [x] Tests for each state's behavior on fast vs slow lane — see `test_abstention
+  _granularity.py` (10 cases)
 
 **NEW**
-- `agent-service/src/clinical_copilot/verification/abstention.py`
-- `agent-service/tests/unit/test_abstention_granularity.py`
+- `agent-service/tests/unit/test_abstention_granularity.py` — 10 cases:
+  - `test_slow_lane_drops_offending_claim_keeps_others` and matching `test_fast_lane_one
+    _bad_claim_abstains_whole_response` use the same input and verify the lane-specific
+    outcome called out in Acceptance
+  - `test_slow_lane_field_mismatch_drops_only_offending_claim` pins the (source_id,
+    source_field, expected_value) triple keying — without `expected_value` in the key,
+    a passing claim sharing field+source with a failing sibling would be co-dropped
+  - `test_fast_lane_field_mismatch_abstains_whole_response`
+  - `test_slow_lane_all_claims_dropped_escalates_to_response_abstention` covers the
+    "nothing to render" escalation
+  - `test_slow_lane_drops_card_with_unresolved_source` and matching fast-lane case
+    verify per-card (not per-source-id-within-a-card) granularity for cards
+  - `test_unknown_field_collapses_on_either_lane` — `FieldCheckError` (programming
+    error: model invented a field name) collapses on both lanes, defensible per-lane
+    semantics without refactoring `find_field_mismatches` to skip-and-collect
+  - `test_happy_path_passes_on_either_lane` — `dropped_claims` stays empty when
+    nothing fails
+  - `test_slow_lane_mixed_failures_drops_both_keeps_clean_claim` — three claims, two
+    different failure modes, one clean; verifies independent attribution in
+    `dropped_claims` so the audit trail captures each failure's reason separately
 
 **EDIT**
-- `agent-service/src/clinical_copilot/verification/middleware.py` — apply granularity rule
+- `agent-service/src/clinical_copilot/verification/abstention.py` — module already
+  shipped in PR M2 with the four-state enum + response-level `Abstention`. PR 12 adds
+  the sidecar `ClaimAbstention` type and rewrites the docstring to spell out the
+  per-lane granularity contract
+- `agent-service/src/clinical_copilot/verification/middleware.py` — `verify()` now
+  takes `lane: Lane = Lane.SLOW`. Branches between `_whole_response_abstain` (fast
+  lane) and `_slow_lane_partial` (slow lane) after the citation + field checks run.
+  Card granularity is per-card not per-source-id within a card — a partially-trimmed
+  problems card would let a fabricated source quietly steer the trim
+- `agent-service/src/clinical_copilot/orchestrator/schemas.py` — `AgentResponse` gains
+  `dropped_claims: list[ClaimAbstention]` (default empty). Wire-compatible additive
+  change; M2 clients ignore the field
+- `agent-service/src/clinical_copilot/orchestrator/agent.py` — threads `lane` through
+  `Orchestrator.run` → `_execute` → `verifier.verify(..., lane=lane)`. The orchestrator's
+  own abstention paths (RBAC denial, tool error, max-turns, schema-violation retry-then-
+  fail) stay whole-response on both lanes — they fire before any draft exists, so
+  per-claim doesn't apply
 
-**Acceptance:** Fast-lane response with one bad claim → whole response abstained; slow-lane
-same input → bad claim marked, others render.
+**Already shipped in PR M2 (no PR 12 change needed)**
+- `AbstentionState` four-state enum + response-level `Abstention` model
+- `VerificationMiddleware` orchestration of citation → field check
+- Tool-layer UNAUTHORIZED audit write (PR 7's `Tool._enforce_rbac`); the row is
+  written before the exception is raised, so an attacker hitting an RBAC denial
+  cannot get an UNAUTHORIZED response without a logged row
+
+**Acceptance:** ✅ Fast-lane response with one bad claim → whole response abstained;
+slow-lane same input → bad claim marked, others render. Pinned by paired tests
+`test_fast_lane_one_bad_claim_abstains_whole_response` and
+`test_slow_lane_drops_offending_claim_keeps_others` in
+`test_abstention_granularity.py`. 277 unit tests green at landing; ruff/mypy clean;
+2811 PHP isolated tests green (no PHP-side changes in PR 12).
 
 ---
 
