@@ -1482,6 +1482,71 @@ against `interface/patient_file/`).
 
 ## Milestone 7 — Roles, Sessions & Audit
 
+### PR 17.5 — Gateway-side patient access gate (security hotfix) — ✅ landed
+
+External review flagged that the chat route trusted the body's `patient_id` blindly.
+Tracing the flow end-to-end confirmed the bug: gateway minted the JWT with whatever
+patient_id the browser sent, the agent's tool-layer "RBAC" only re-compared
+`request.patient_id == claims.patient_id` (both user-controlled), and the FHIR
+fallback didn't engage because the agent calls FHIR with a `system/*` OAuth2
+client-credentials token — not a per-clinician identity. Net effect: an authenticated
+clinician could ask about any other clinician's patient.
+
+The fix lives at the only layer that has both the authenticated `authUserID` and the
+target `patient_id` in scope: the PHP gateway. PR 18's role/panel work will expand
+the gate to cross-coverage panels; until then we accept the tighter "assigned
+provider only" rule because the alternative is a known leak.
+
+- [x] `PatientAccessCheckerInterface` + `DatabasePatientAccessChecker` — checker
+  returns true iff `patient_data.providerID = authUserID`. `ctype_digit` guards
+  reject malformed inputs before they reach MySQL (so `"abc"` doesn't coerce to 0
+  and match unassigned rows).
+- [x] `QueryController` and `SessionDeleteController` call the gate after session
+  mapping but before `JwtSigner::sign` — denied requests return 403
+  `{"error":"patient_access_denied"}` and never produce a signed token.
+- [x] Wired into `apis/routes/_rest_routes_copilot.inc.php` for both routes.
+
+**NEW**
+- `src/Services/Copilot/Auth/PatientAccessCheckerInterface.php`
+- `src/Services/Copilot/Auth/DatabasePatientAccessChecker.php`
+- `tests/Tests/Isolated/Services/Copilot/Auth/DatabasePatientAccessCheckerTest.php`
+
+**EDIT**
+- `src/Services/Copilot/QueryController.php` — gate before JWT mint
+- `src/Services/Copilot/SessionDeleteController.php` — same gate
+- `apis/routes/_rest_routes_copilot.inc.php` — inject `DatabasePatientAccessChecker`
+- `tests/Tests/Isolated/Services/Copilot/QueryControllerTest.php` — deny-path test +
+  pin that the checker receives `(authUserID, body.patient_id)`
+- `tests/Tests/Isolated/Services/Copilot/SessionDeleteControllerTest.php` — deny-path test
+- `ARCHITECTURE.md` §4, §10 — document the gate; correct the OAuth2 scope claim
+
+**Acceptance:** Clinician A asking the chat route about clinician B's assigned
+patient gets 403 + no JWT minted + no agent call. Clinician A asking about their
+own assigned patient works as before.
+
+**Empirical verification (2026-05-02, against dev DB):**
+After backfilling `patient_data.providerID = 1` for fixture patients 90001–90003,
+`DatabasePatientAccessChecker::canAccess` returned the expected verdict on 9/9
+cases: admin → assigned patient = allow; admin → NULL-provider patient = deny;
+admin → nonexistent patient = deny; **user-id 2 → admin's patient = deny**
+(the cross-clinician case the external review flagged); 4 input-guard cases all
+deny. Run against the real `openemr` DB inside `development-easy-openemr-1`.
+
+**Demo-data caveat:** Stock fixture patients in `development-easy` ship with
+`providerID = NULL`, which 403s every request under the strict assigned-provider
+rule. Before any chat-route smoke against the dev DB:
+```sql
+UPDATE patient_data SET providerID = <user_id> WHERE pid IN (...);
+```
+The MVP demo data needs this assignment baked in. Tracked in this block; PR 18's
+panel work will broaden the gate so an admin auto-assignment isn't load-bearing.
+
+**Known limitation, intentional:** The strict `providerID` check rejects covering
+attendings until PR 18 lands the panel data model. The MVP demo uses a single
+provider per fixture patient, so this is fine for now.
+
+---
+
 ### PR 18 — Roles (physician / resident / supervisor) + session lifecycle
 
 PRD §6 / ARCHITECTURE §4.4. Three MVP roles. Supervisor expands **audit visibility, not PHI
@@ -1495,6 +1560,11 @@ permissions** (USERS §1.4).
 - [ ] Resident role: every action audit-logged (already true; assert via test)
 - [ ] Supervisor role: read endpoint for supervised resident's audit log entries (the supervisor
   audit-trail viewer UI is **out of scope per PRD §11** — endpoint only, no viewer)
+- [ ] **Expand `PatientAccessCheckerInterface` to cover cross-coverage panels.** PR 17.5
+  shipped the strict `patient_data.providerID = authUserID` rule as a security hotfix;
+  PR 18 needs a panel-aware implementation that also allows covering attendings (per
+  PRD §6 — "physician — full read on assigned cross-coverage panel"). The interface
+  already exists; only the implementation expands.
 
 **NEW**
 - `src/Services/Copilot/Auth/Role.php` (enum)
@@ -1503,10 +1573,13 @@ permissions** (USERS §1.4).
 
 **EDIT**
 - `src/Services/Copilot/SessionMapper.php` — populate role claim
+- `src/Services/Copilot/Auth/DatabasePatientAccessChecker.php` — broaden to panel/coverage
 - `agent-service/src/clinical_copilot/tools/base.py` — role-aware scope checks
 
 **Acceptance:** A resident's request writes audit rows; supervisor request to read another
 clinician's audit log is rejected; supervisor reading their assigned resident's log succeeds.
+A covering attending can chat about a patient in their coverage panel even when the
+patient's assigned `providerID` is the primary attending.
 
 ---
 

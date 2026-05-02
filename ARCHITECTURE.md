@@ -309,7 +309,7 @@ Verification is a Python module *inside the same process* as the orchestrator �
 
 1. **Browser → PHP Gateway** — OpenEMR session cookie. PHP gateway is the only thing that reads `$_SESSION`. The browser never holds patient_id-scoped tokens directly.
 2. **PHP Gateway → Agent Service** — HMAC-signed JWT (HS256), 5-min expiry, claims `{user_id, role, patient_id, scopes, nonce}`. The agent service does not trust anything else from the request. **Why HS256 (and not RS256):** this token authenticates a controlled internal boundary between two services we operate, using a shared secret managed alongside service config. RS256 (asymmetric keys) is appropriate when token issuers and verifiers are separate trust domains — third-party identity federation, public-client tokens, multi-tenant isolation. None apply here. HS256 is the simpler, lower-operational-overhead choice for service-to-service trust within one administrative boundary.
-3. **Agent Service → OpenEMR FHIR/REST** — **OAuth2 bearer token** (NOT the internal HMAC JWT — see "Two trust layers" below). The agent service holds a pre-registered OAuth2 client with minimum scopes (`patient/Patient.read`, `patient/Condition.read`, `patient/MedicationRequest.read`, etc.) and presents a bearer token on every FHIR/REST call. AUDIT.md §1.3 confirmed every FHIR R4 route re-checks ACL via `RestConfig::request_authorization_check()` or patient-context filtering — so OpenEMR's existing ACL is the source of truth for this boundary, not the agent service.
+3. **Agent Service → OpenEMR FHIR/REST** — **OAuth2 bearer token** (NOT the internal HMAC JWT — see "Two trust layers" below). The agent service holds a pre-registered OAuth2 client and presents a bearer token on every FHIR/REST call. The token uses **SMART Backend Services `system/*` scopes** (e.g. `system/Patient.read`, `system/Condition.read`, `system/MedicationRequest.read`) — service-to-service identity, not per-clinician identity. AUDIT.md §1.3 confirmed every FHIR R4 route re-checks ACL via `RestConfig::request_authorization_check()` or patient-context filtering. Under `system/*` scopes the patient-context branch does not engage: the route enforces resource-type scope (can the agent read MedicationRequest at all?) but cannot enforce per-clinician panel membership (can *this* clinician read *this* patient?), because that information isn't on the token. **The per-patient gate therefore lives at the PHP gateway**, not at the FHIR endpoint — see §4.5 below.
 
 ### Two trust layers, two tokens
 
@@ -318,7 +318,7 @@ A reviewer asks: "are there two tokens?" Yes. Each authenticates a different bou
 | Token | Boundary | Issuer | Lifetime | Carries | Why it exists |
 |---|---|---|---|---|---|
 | **HMAC JWT (HS256)** | PHP Gateway → Agent Service (internal) | PHP gateway, signs with shared secret | 5 min | `{user_id, role, patient_id, scopes, nonce}` | Per-request user identity. The agent's tool layer needs to know *which clinician is asking and which patient is in scope* on every call. OAuth2 client credentials alone don't carry per-request user/patient context — they identify the agent service, not the human behind it. |
-| **OAuth2 bearer** | Agent Service → OpenEMR FHIR/REST (cross-service) | OpenEMR `/oauth2/.../token` endpoint | OpenEMR config (typically ~1 hour) | OAuth2 standard claims + frozen scopes (e.g., `patient/Patient.read`) | Authenticates the agent service to OpenEMR's existing FHIR/REST surface. ACL is then re-checked at every endpoint per audit finding S-07. |
+| **OAuth2 bearer** | Agent Service → OpenEMR FHIR/REST (cross-service) | OpenEMR `/oauth2/.../token` endpoint | OpenEMR config (typically ~1 hour) | OAuth2 standard claims + frozen `system/*` scopes (e.g., `system/Patient.read`) | Authenticates the **agent service** to OpenEMR's existing FHIR/REST surface. Resource-type scope is re-checked at every endpoint per audit finding S-07; per-clinician patient access is not — that gate lives at the PHP gateway (§4.5). |
 
 **Request flow showing both tokens compose:**
 
@@ -340,6 +340,33 @@ Two boundaries with different requirements; two tokens are the correct shape, no
 A check at the orchestrator layer is wrong because the orchestrator sees only the user's question, not the data being touched. By the time you decide "this user shouldn't have seen patient_id 999," you've already read patient_id 999's data into memory. Authorization belongs at the data-access boundary, in each tool, before fetch.
 
 **If JWT claims and OpenEMR ACL disagree, OpenEMR ACL wins — deny by default.** The HMAC JWT carries the *clinician's per-request identity* (who is asking, for which patient, with what role); OpenEMR's ACL is the *source of truth for whether that identity is authorized to see the data.* The agent's tool layer pre-filters with JWT scopes, but the FHIR endpoint re-checks ACL on every call (audit finding S-07). Any divergence — JWT says "yes," ACL says "no" — resolves in favor of ACL, surfaced as `UNAUTHORIZED` to the user with a mandatory audit-log entry. The reverse case (ACL says "yes," JWT scopes say "no") cannot occur because JWT scopes are issued *from* the clinician's session role, not granted independently.
+
+### 4.5 Gateway-side per-patient access gate
+
+The HMAC JWT minted by the PHP gateway carries a `patient_id` claim. The
+agent's tool layer pre-checks that the *tool-call's* `patient_id` argument
+matches the JWT's claim (`base.py::_enforce_rbac`) — but both sides trace
+back to the same untrusted browser-supplied value, so that check is a
+prompt-injection defense (catching a model that emits a foreign id
+mid-conversation), not a clinician-vs-patient access check.
+
+The FHIR endpoint cannot fill that gap either: under `system/*` scopes the
+patient-context filter does not engage (boundary §3 above), so OpenEMR's
+ACL only enforces resource-type scope, not panel membership.
+
+**The gateway is the only layer that has both the authenticated `authUserID`
+and the target `patient_id` in scope, so the per-patient gate lives there.**
+`PatientAccessCheckerInterface` runs after `SessionMapper::mapWithPatient`
+returns and *before* `JwtSigner::sign`. A denied request returns 403
+`{"error":"patient_access_denied"}` and never produces a signed token, so
+the agent service is never asked to trust a claim that the gateway hasn't
+verified.
+
+The MVP rule (`DatabasePatientAccessChecker`) is `patient_data.providerID =
+authUserID` — strict assigned-provider match. Cross-coverage panels (PRD
+§6 — "physician — full read on assigned cross-coverage panel") are out
+of scope until PR 18 lands the panel data model and broadens the
+implementation. The interface stays stable; only the rule expands.
 
 ### Patient context binding
 
@@ -602,7 +629,7 @@ These are assumptions *now*. The audit either confirms them or kills them; archi
 
 1. **OpenEMR FHIR API covers use cases 1–4.** *If gaps:* custom PHP gateway endpoints expand to cover them; data-access section grows but trust boundaries hold.
 2. **OpenEMR FHIR/REST handlers enforce ACL consistently with the PHP UI.** *If not:* FHIR can't be trusted; everything routes through PHP gateway endpoints that re-implement ACL there.
-3. **OpenEMR session identity can be safely mapped to short-lived signed claims** without privilege escalation. Specifically: PHP gateway can read session role/scope without spoofing risk; FHIR endpoints re-check scope (a token claiming `patient_id=123` shouldn't read `patient_id=456`); tokens can't be replayed (short expiry + nonce or session-bound).
+3. **OpenEMR session identity can be safely mapped to short-lived signed claims** without privilege escalation. Specifically: PHP gateway can read session role/scope without spoofing risk; tokens can't be replayed (short expiry + nonce or session-bound). **Partially confirmed, with a caveat that drove §4.5.** The original assumption that "FHIR endpoints re-check scope (a token claiming `patient_id=123` shouldn't read `patient_id=456`)" only holds for `patient/*`-scoped tokens. The agent uses `system/*` SMART Backend Services scopes (PR 5.5 — required for `client_credentials` grant), which carry no `patient_id` for FHIR to filter against. The per-patient access decision therefore must be made *before* the FHIR call, at the only layer that knows both the authenticated clinician and the target patient — the PHP gateway. Implemented in PR 17.5 via `PatientAccessCheckerInterface` (§4.5).
 4. **Discrepancy invalidation hooks** are reachable in OpenEMR's write paths (med save, lab post, allergy update, note sign). *If not:* fall back to TTL-only freshness with longer windows, or lightweight polling.
 5. **Sample data is rich enough for use case 3.** *If not:* hand-craft adversarial conflicting records as a data fixture for demo + eval.
 6. **Smarty injection points** allow adding side-panel partials without forking core templates. *If not:* add a small set of template overlays in the fork; document the touched files for upstream-merge concerns.

@@ -32,6 +32,7 @@ use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentResponse;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\QueryController;
@@ -59,10 +60,16 @@ final class QueryControllerTest extends TestCase
      * (mapper is readonly), so each test calls this with whatever
      * authUserID / role / scopes setup it needs.
      *
-     * @param array<string, mixed> $session
+     * @param array<string, mixed>             $session
+     * @param PatientAccessCheckerInterface|null $accessChecker Optional gate
+     *        — defaults to allow-all so the existing happy-path expectations
+     *        keep working. Pass an explicit deny mock to exercise the 403
+     *        path.
      */
-    private function controllerWithSession(array $session): QueryController
-    {
+    private function controllerWithSession(
+        array $session,
+        ?PatientAccessCheckerInterface $accessChecker = null,
+    ): QueryController {
         $globals = new OEGlobalsBag([
             'copilot_agent_base_url' => 'http://agent.local:8500',
             'copilot_agent_timeout_seconds' => 5,
@@ -76,9 +83,30 @@ final class QueryControllerTest extends TestCase
             $this->agent,
             $signer,
             new SessionMapper($session),
+            $accessChecker ?? self::allowAllAccessChecker(),
             new CopilotConfig($globals),
             new NullLogger(),
         );
+    }
+
+    private static function allowAllAccessChecker(): PatientAccessCheckerInterface
+    {
+        return new class implements PatientAccessCheckerInterface {
+            public function canAccess(string $userId, string $patientId): bool
+            {
+                return true;
+            }
+        };
+    }
+
+    private static function denyAllAccessChecker(): PatientAccessCheckerInterface
+    {
+        return new class implements PatientAccessCheckerInterface {
+            public function canAccess(string $userId, string $patientId): bool
+            {
+                return false;
+            }
+        };
     }
 
     public function testHappyPathProxiesAgentBodyAndStatus(): void
@@ -259,6 +287,51 @@ final class QueryControllerTest extends TestCase
         ]));
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testDeniedPatientAccessReturns403AndDoesNotCallAgent(): void
+    {
+        // Authenticated session, well-formed body — but the access checker
+        // says this clinician is not authorised for the requested patient.
+        // The gateway must refuse before any JWT is minted; otherwise the
+        // signed claim would carry the foreign patient_id straight to the
+        // agent, which only checks request==claim.
+        $controller = $this->controllerWithSession(
+            ['authUserID' => 'dr-patel'],
+            self::denyAllAccessChecker(),
+        );
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '999',  // pretend this is another clinician's panel
+            'query' => 'show me their meds',
+        ]));
+
+        self::assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        self::assertSame(
+            ['error' => 'patient_access_denied'],
+            json_decode((string) $response->getContent(), true),
+        );
+    }
+
+    public function testAccessCheckerReceivesSessionUserAndBodyPatient(): void
+    {
+        // Pin the (user_id, patient_id) pair the controller hands the gate:
+        // user_id is the session's authUserID, patient_id is the body's
+        // patient_id verbatim. A regression where the controller passed,
+        // say, a stale chart pid would silently broaden access.
+        $checker = $this->createMock(PatientAccessCheckerInterface::class);
+        $checker->expects($this->once())
+            ->method('canAccess')
+            ->with('42', '101')
+            ->willReturn(true);
+        $controller = $this->controllerWithSession(['authUserID' => '42'], $checker);
+        $this->agent->method('post')->willReturn(new AgentResponse(Response::HTTP_OK, []));
+
+        $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+        ]));
     }
 
     public function testAgentNon2xxStatusPassesThrough(): void

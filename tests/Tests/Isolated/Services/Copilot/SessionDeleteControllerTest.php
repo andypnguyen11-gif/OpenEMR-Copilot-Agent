@@ -27,6 +27,7 @@ use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentResponse;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\SessionDeleteController;
@@ -49,10 +50,14 @@ final class SessionDeleteControllerTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $session
+     * @param array<string, mixed>             $session
+     * @param PatientAccessCheckerInterface|null $accessChecker Defaults to
+     *        allow-all so the original test cases keep working unchanged.
      */
-    private function controllerWithSession(array $session): SessionDeleteController
-    {
+    private function controllerWithSession(
+        array $session,
+        ?PatientAccessCheckerInterface $accessChecker = null,
+    ): SessionDeleteController {
         $globals = new OEGlobalsBag([
             'copilot_agent_base_url' => 'http://agent.local:8500',
             'copilot_agent_timeout_seconds' => 5,
@@ -66,9 +71,30 @@ final class SessionDeleteControllerTest extends TestCase
             $this->agent,
             $signer,
             new SessionMapper($session),
+            $accessChecker ?? self::allowAllAccessChecker(),
             new CopilotConfig($globals),
             new NullLogger(),
         );
+    }
+
+    private static function allowAllAccessChecker(): PatientAccessCheckerInterface
+    {
+        return new class implements PatientAccessCheckerInterface {
+            public function canAccess(string $userId, string $patientId): bool
+            {
+                return true;
+            }
+        };
+    }
+
+    private static function denyAllAccessChecker(): PatientAccessCheckerInterface
+    {
+        return new class implements PatientAccessCheckerInterface {
+            public function canAccess(string $userId, string $patientId): bool
+            {
+                return false;
+            }
+        };
     }
 
     public function testHappyPathProxiesAgent204AsEmptyResponse(): void
@@ -171,6 +197,29 @@ final class SessionDeleteControllerTest extends TestCase
         $response = $controller->delete($request, 'abc-123');
 
         self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testDeniedPatientAccessReturns403AndDoesNotCallAgent(): void
+    {
+        // Same gate as QueryController: an authenticated clinician asking
+        // to clear a session for a patient they don't own must be refused
+        // before the JWT is minted. Otherwise the agent's lookup tuple
+        // (user_id, patient_id, session_id) would resolve under the
+        // attacker's user_id and let them sever sessions they shouldn't see.
+        $controller = $this->controllerWithSession(
+            ['authUserID' => 'dr-patel'],
+            self::denyAllAccessChecker(),
+        );
+        $this->agent->expects($this->never())->method('delete');
+
+        $request = self::makeRequest(['patient_id' => '999']);
+        $response = $controller->delete($request, 'abc-123');
+
+        self::assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        self::assertSame(
+            ['error' => 'patient_access_denied'],
+            json_decode((string) $response->getContent(), true),
+        );
     }
 
     public function testAgentTransportFailureReturns502WithGenericBody(): void

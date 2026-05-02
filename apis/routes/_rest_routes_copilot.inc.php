@@ -55,6 +55,7 @@ use Monolog\Logger;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
+use OpenEMR\Services\Copilot\Auth\DatabasePatientAccessChecker;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\Config\CopilotConfigException;
 use OpenEMR\Services\Copilot\GatewayController;
@@ -160,6 +161,7 @@ return [
             $agentClient,
             $signer,
             $sessionMapper,
+            new DatabasePatientAccessChecker(),
             $config,
             $copilotLogger(),
         );
@@ -265,6 +267,7 @@ return [
             $agentClient,
             $signer,
             $sessionMapper,
+            new DatabasePatientAccessChecker(),
             $config,
             $copilotLogger(),
         );

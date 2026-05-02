@@ -23,6 +23,10 @@
  * * Session unauthenticated → 400, no agent call. (Same rationale as
  *   :class:`QueryController` — 401 would be misleading; the OAuth2
  *   session is fine, the gateway's per-request precondition isn't.)
+ * * Per-patient access denied → 403, no agent call. Mirrors the gate
+ *   in :class:`QueryController`: the gateway will not mint a JWT whose
+ *   ``patient_id`` claim could let a clinician sever another clinician's
+ *   session.
  * * Agent transport error → 502.
  * * Agent 404 (session not found under principal) → 404 passthrough.
  * * Agent 204 (deleted) → 204 to client.
@@ -38,6 +42,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Services\Copilot;
 
+use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -54,6 +59,7 @@ final readonly class SessionDeleteController
         private AgentHttpClient $client,
         private JwtSigner $signer,
         private SessionMapper $sessionMapper,
+        private PatientAccessCheckerInterface $accessChecker,
         private CopilotConfig $config,
         private LoggerInterface $logger,
     ) {
@@ -95,6 +101,16 @@ final readonly class SessionDeleteController
             return new JsonResponse(
                 ['error' => 'bad_request'],
                 Response::HTTP_BAD_REQUEST,
+            );
+        }
+
+        if (!$this->accessChecker->canAccess($identity->userId, $identity->patientId)) {
+            $this->logger->warning('Co-Pilot session delete rejected: patient access denied', [
+                'user_id' => $identity->userId,
+            ]);
+            return new JsonResponse(
+                ['error' => 'patient_access_denied'],
+                Response::HTTP_FORBIDDEN,
             );
         }
 

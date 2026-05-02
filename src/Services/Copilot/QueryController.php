@@ -23,6 +23,10 @@
  * * Session unauth → 400 (generic message). 401 would be misleading here —
  *   the OAuth2 session is fine; the gateway's per-request precondition is
  *   what failed.
+ * * Per-patient access denied → 403 (generic message). The clinician is
+ *   authenticated but not authorised for the requested patient; minting a
+ *   JWT here would let the agent layer trust the caller's claim, so the
+ *   gate refuses before any signature is produced.
  * * Agent transport error → 502 (per the healthz precedent in
  *   :class:`GatewayController`).
  * * Agent returns 4xx/5xx → status code passes through; body is the
@@ -40,6 +44,7 @@ declare(strict_types=1);
 namespace OpenEMR\Services\Copilot;
 
 use InvalidArgumentException;
+use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -54,6 +59,7 @@ final readonly class QueryController
         private AgentHttpClient $client,
         private JwtSigner $signer,
         private SessionMapper $sessionMapper,
+        private PatientAccessCheckerInterface $accessChecker,
         private CopilotConfig $config,
         private LoggerInterface $logger,
     ) {
@@ -86,6 +92,20 @@ final readonly class QueryController
             return new JsonResponse(
                 ['error' => 'bad_request'],
                 Response::HTTP_BAD_REQUEST,
+            );
+        }
+
+        // Per-patient access gate. Without this the JWT's patient_id claim
+        // would be whatever the browser asked for, which the downstream
+        // tool-layer "RBAC" check (request.patient_id == claims.patient_id)
+        // can't catch — both sides trace back to the same untrusted body.
+        if (!$this->accessChecker->canAccess($identity->userId, $identity->patientId)) {
+            $this->logger->warning('Co-Pilot query rejected: patient access denied', [
+                'user_id' => $identity->userId,
+            ]);
+            return new JsonResponse(
+                ['error' => 'patient_access_denied'],
+                Response::HTTP_FORBIDDEN,
             );
         }
 

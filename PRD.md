@@ -468,8 +468,10 @@
   trusted; everything routes through PHP gateway.
   3. OpenEMR session identity can be safely mapped to short-lived signed claims without privilege
    escalation. Specifically: (a) PHP gateway can read session role/scope without spoofing risk;
-  (b) FHIR endpoints re-check scope (a token claiming patient_id=123 shouldn't read
-  patient_id=456); (c) tokens can't be replayed (short expiry + nonce or session-bound).
+  (b) FHIR endpoints re-check resource-type scope; (c) tokens can't be replayed (short expiry +
+  nonce or session-bound). Note: per-patient access (a clinician asking for a patient outside
+  their panel) is **not** caught at the FHIR layer because the agent uses `system/*` SMART
+  Backend Services scopes — that gate lives at the PHP gateway. See ARCHITECTURE.md §4.5.
   4. Discrepancy invalidation hooks are reachable in OpenEMR's write paths. If not, fall back to
   TTL-only freshness with longer windows.
   5. Sample data is rich enough for use case 3. If too sterile, hand-craft adversarial
