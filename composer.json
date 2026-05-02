@@ -275,6 +275,7 @@
         "code-quality": [
             "@codespell",
             "@conventional-commits:check",
+            "@fixture-check",
             "@php-syntax-check",
             "@phpcbf",
             "@phpcs",
@@ -284,6 +285,8 @@
         ],
         "codespell": "command -v codespell >/dev/null 2>&1 && codespell || echo 'codespell not found. Install with: brew install codespell OR pipx install codespell' >&2",
         "conventional-commits:check": "./vendor/bin/conventional-commits validate",
+        "fixture-check": "php bin/generate-discrepancy-sql.php --check",
+        "fixture-generate": "php bin/generate-discrepancy-sql.php",
         "php-syntax-check": "git ls-files -z '*.php' | xargs -0 php -l | grep -vF 'No syntax errors detected in'",
         "phpcbf": "phpcbf",
         "phpcs": "phpcs",

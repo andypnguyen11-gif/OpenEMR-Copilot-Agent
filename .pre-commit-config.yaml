@@ -143,6 +143,13 @@ repos:
     files: ^(composer\.json|.*\.php)$
     pass_filenames: false
 
+  - id: discrepancy-fixture-check
+    name: Discrepancy Fixture Drift Check
+    entry: composer fixture-check
+    language: system
+    files: ^(tests/Tests/Fixtures/discrepancy-scenarios\.php|sql/example_discrepancy_data\.sql|bin/generate-discrepancy-sql\.php)$
+    pass_filenames: false
+
   - id: conventional-commits
     name: Conventional Commits
     entry: bash -c 'composer conventional-commits:check -- "$(<"$1")"' --
