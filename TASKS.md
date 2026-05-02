@@ -637,25 +637,42 @@ path for PR 22-23 is OpenEMR's CCDA import service (`ccdaservice/`) which Synthe
 
 ---
 
-### PR 7 — Tool layer base + per-tool RBAC
+### PR 7 — Tool layer base + per-tool RBAC — ✅ landed
 
 Implement the `Tool` ABC with the **per-tool authorization check** (ARCHITECTURE §4 — "verify
 JWT → check claims has scope for this resource → fetch"). Order matters: never fetch then check.
 
-- [ ] `Tool` ABC: `name`, `input_schema`, `output_schema`, `required_scope`, `execute()`
-- [ ] RBAC check happens in `Tool.execute` before any FHIR call
-- [ ] If JWT claims and FHIR ACL response disagree → ACL wins → return `UNAUTHORIZED` +
-  audit-log entry (ARCHITECTURE §4)
-- [ ] Tool registry and dispatch
-- [ ] Unit tests: mismatched scope → denied; out-of-panel patient_id → denied with audit row
+- [x] `Tool` ABC: `name`, `description`, `required_scope`, `record_kind`, `execute()` — input
+  schema is produced by `anthropic_schema()` from class metadata; output shape is the typed
+  `ToolResult` over `record_kind`-tagged Pydantic records (`tools/records.py`).
+- [x] RBAC check happens in `Tool.execute` before any FHIR call (`base.py::_enforce_rbac`,
+  invoked before `_run`)
+- [x] If JWT claims and FHIR ACL response disagree → ACL wins → return `UNAUTHORIZED` +
+  audit-log entry (ARCHITECTURE §4) — wired via `FhirAuthorizationDeniedError`: subclasses
+  raise it from `_run` when FHIR returns 401/403, the base catches it, writes the same
+  UNAUTHORIZED audit row the JWT-side path writes, and re-raises as
+  `UnauthorizedToolCallError` chained from the original. Both branches share
+  `_unauthorized_event()` so the audit shape is identical. PR 8's FHIR-backed tools are the
+  first concrete callers.
+- [x] Tool registry and dispatch (`tools/registry.py::ToolRegistry` — `from_fixture`,
+  `dispatch`, `anthropic_schemas`, `UnknownToolError`)
+- [x] Unit tests: mismatched scope → denied; out-of-panel patient_id → denied with audit row;
+  FHIR-ACL denial → UNAUTHORIZED + audit row + cause-chain preserved; happy path unaffected
+  by new try/except; non-RBAC `_run` exceptions propagate untouched (no audit row written for
+  faults).
 
 **NEW**
-- `agent-service/src/clinical_copilot/tools/base.py`
-- `agent-service/src/clinical_copilot/tools/registry.py`
-- `agent-service/tests/unit/test_tool_rbac.py`
+- `agent-service/src/clinical_copilot/tools/base.py` — Tool ABC, both denial branches,
+  `FhirAuthorizationDeniedError`
+- `agent-service/src/clinical_copilot/tools/registry.py` — process-local registry + dispatch
+- `agent-service/tests/unit/test_tool_rbac.py` — focused contract test for both denial layers
+  using stub Tool subclasses
+- (Per-tool happy/denial coverage lives in `tests/unit/test_tools.py` from the PR 6
+  scaffolding wave; not re-created here to avoid duplication.)
 
-**Acceptance:** Tool with insufficient scope denies before fetch; audit-log row exists for
-denial.
+**Acceptance:** ✅ Tool with insufficient scope denies before fetch (`test_tools.py` +
+`test_tool_rbac.py`); audit-log row exists for denial in both the JWT-side and FHIR-ACL-side
+branches. `make check` green at 169 tests (lint + ruff format + mypy + pytest).
 
 ---
 

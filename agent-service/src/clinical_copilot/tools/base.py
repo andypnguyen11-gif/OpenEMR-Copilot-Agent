@@ -1,19 +1,30 @@
 """Tool ABC + RBAC enforcement + UNAUTHORIZED audit hook.
 
 Every PHI fetch routes through :meth:`Tool.execute`. The base class enforces
-two checks before letting the subclass touch data:
+two layers of authorization:
 
-1. ``patient_id`` requested in the call equals ``claims.patient_id`` (the
-   session-bound patient pinned by the gateway JWT).
-2. The tool's ``required_scope`` is in ``claims.scopes``.
+1. **JWT-side, before fetch.** ``patient_id`` requested in the call must
+   equal ``claims.patient_id`` (the session-bound patient pinned by the
+   gateway JWT) and the tool's ``required_scope`` must be in
+   ``claims.scopes``. Either miss → UNAUTHORIZED audit row →
+   :class:`UnauthorizedToolCallError`, *before* ``_run`` is invoked.
 
-Either failure produces an ``UNAUTHORIZED`` audit-log row (fail-closed via
-:class:`AuditLogWriter`) and raises :class:`UnauthorizedToolCallError`. The
-caller — the orchestrator's tool dispatch — translates the exception into
-the response-level ``UNAUTHORIZED`` abstention state. ARCHITECTURE §4 puts
-this check on the *tool side* of the trust boundary so a model that emits
-a foreign ``patient_id`` (prompt-injection probe) trips RBAC before the
-fetch happens, not after.
+2. **FHIR-ACL-side, after fetch attempt.** A subclass's ``_run`` may raise
+   :class:`FhirAuthorizationDeniedError` to signal that the upstream FHIR
+   server returned 401 / 403. The base catches that, writes the same
+   UNAUTHORIZED audit row, and re-raises as
+   :class:`UnauthorizedToolCallError` chained from the original. ACL wins
+   when the two layers disagree (ARCHITECTURE §4).
+
+Both denial branches produce identical audit and exception surfaces so the
+orchestrator's abstention layer has one shape to handle. The audit write is
+fail-closed via :class:`AuditLogWriter`: a write error surfaces as
+:class:`AuditLogWriteError` and the request returns 5xx — never
+UNAUTHORIZED without a logged row.
+
+ARCHITECTURE §4 puts the JWT-side check on the *tool side* of the trust
+boundary so a model that emits a foreign ``patient_id`` (prompt-injection
+probe) trips RBAC before the fetch happens, not after.
 """
 
 from __future__ import annotations
@@ -52,6 +63,23 @@ class UnauthorizedToolCallError(ToolError):
         self.requested_patient_id = requested_patient_id
 
 
+class FhirAuthorizationDeniedError(ToolError):
+    """Raised by ``_run`` when the upstream FHIR server denies the read.
+
+    The JWT-side RBAC check already passed (otherwise execution would not
+    have reached ``_run``), but the OAuth-bearer call to FHIR came back
+    401 / 403. ARCHITECTURE §4 makes the FHIR ACL the authority: when the
+    two layers disagree, ACL wins. The base class catches this, writes an
+    UNAUTHORIZED audit row, and re-raises as
+    :class:`UnauthorizedToolCallError` — subclasses do not write the
+    audit row themselves.
+
+    PR 7 ships the contract; PR 8's FHIR-backed tools are the first
+    concrete callers (mapping ``FhirError`` with status 401 / 403 into
+    this exception inside ``_run``).
+    """
+
+
 class Tool(ABC):
     """ABC for retrieval tools.
 
@@ -82,7 +110,25 @@ class Tool(ABC):
             patient_id=patient_id,
             request_id=request_id,
         )
-        records = self._run(patient_id=patient_id)
+        try:
+            records = self._run(patient_id=patient_id)
+        except FhirAuthorizationDeniedError as exc:
+            # JWT side passed, FHIR ACL disagreed. ACL wins
+            # (ARCHITECTURE §4). Audit the denial against the *requested*
+            # patient_id (the target of the failed access) and surface the
+            # same UnauthorizedToolCallError the JWT-side path raises so
+            # the orchestrator's abstention layer has one shape to handle.
+            self._audit.write(
+                self._unauthorized_event(
+                    claims=claims,
+                    patient_id=patient_id,
+                    request_id=request_id,
+                )
+            )
+            raise UnauthorizedToolCallError(
+                self.name,
+                requested_patient_id=patient_id,
+            ) from exc
         return ToolResult(
             tool_name=self.name,
             patient_id=patient_id,
@@ -138,13 +184,26 @@ class Tool(ABC):
         if patient_match and scope_ok:
             return
         self._audit.write(
-            AuditEvent(
-                user_id=claims.user_id,
-                role=claims.role,
-                patient_id_hash=hash_patient_id(patient_id, salt=self._audit_salt),
-                resource_type=self.name,
-                action="UNAUTHORIZED",
+            self._unauthorized_event(
+                claims=claims,
+                patient_id=patient_id,
                 request_id=request_id,
             )
         )
         raise UnauthorizedToolCallError(self.name, requested_patient_id=patient_id)
+
+    def _unauthorized_event(
+        self,
+        *,
+        claims: ClinicianClaims,
+        patient_id: str,
+        request_id: str,
+    ) -> AuditEvent:
+        return AuditEvent(
+            user_id=claims.user_id,
+            role=claims.role,
+            patient_id_hash=hash_patient_id(patient_id, salt=self._audit_salt),
+            resource_type=self.name,
+            action="UNAUTHORIZED",
+            request_id=request_id,
+        )
