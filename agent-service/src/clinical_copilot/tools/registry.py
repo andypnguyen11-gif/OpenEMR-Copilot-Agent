@@ -12,14 +12,33 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from clinical_copilot.observability import traceable_tool_dispatch
+from clinical_copilot.tools.allergies import GetAllergiesFhirTool
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.impl import all_tool_classes
+from clinical_copilot.tools.labs import GetLabsFhirTool
+from clinical_copilot.tools.meds import GetMedsFhirTool
+from clinical_copilot.tools.notes import GetNotesFhirTool
+from clinical_copilot.tools.problems import GetProblemsFhirTool
+from clinical_copilot.tools.visits import GetVisitsFhirTool
 
 if TYPE_CHECKING:
     from clinical_copilot.audit.log import AuditLogWriter
     from clinical_copilot.auth.session import ClinicianClaims
+    from clinical_copilot.data.fhir_client import FhirClient
+    from clinical_copilot.runtime.async_bridge import AsyncBridge
     from clinical_copilot.tools.base import Tool
+    from clinical_copilot.tools.fhir_base import FhirBackedTool
     from clinical_copilot.tools.records import ToolResult
+
+
+_FHIR_TOOL_CLASSES: tuple[type[FhirBackedTool], ...] = (
+    GetProblemsFhirTool,
+    GetMedsFhirTool,
+    GetAllergiesFhirTool,
+    GetLabsFhirTool,
+    GetVisitsFhirTool,
+    GetNotesFhirTool,
+)
 
 
 class UnknownToolError(Exception):
@@ -53,6 +72,33 @@ class ToolRegistry:
         for tool_cls in all_tool_classes():
             instances[tool_cls.name] = tool_cls(
                 store=store,
+                audit=audit,
+                audit_salt=audit_salt,
+            )
+        return cls(instances)
+
+    @classmethod
+    def from_fhir(
+        cls,
+        *,
+        fhir: FhirClient,
+        bridge: AsyncBridge,
+        audit: AuditLogWriter,
+        audit_salt: str,
+    ) -> ToolRegistry:
+        """Production wiring — every tool reads from the live FHIR server.
+
+        ``get_flags`` is intentionally absent: PR 13 owns the flag
+        surface and the rules engine that populates it. Until then, the
+        FHIR-backed registry exposes only the six retrieval tools
+        listed in PR 8 / ARCHITECTURE §1.
+        """
+
+        instances: dict[str, Tool] = {}
+        for tool_cls in _FHIR_TOOL_CLASSES:
+            instances[tool_cls.name] = tool_cls(
+                fhir=fhir,
+                bridge=bridge,
                 audit=audit,
                 audit_salt=audit_salt,
             )

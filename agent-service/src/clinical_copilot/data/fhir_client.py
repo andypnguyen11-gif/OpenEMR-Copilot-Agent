@@ -90,7 +90,16 @@ class FhirError(RuntimeError):
     failed (transport / status / parse). Treat the message as sensitive:
     it may quote bytes from the FHIR response, including resource ids
     that would be PHI in production.
+
+    ``status_code`` is set on HTTP-status failures so the tool layer can
+    map 401 / 403 to :class:`FhirAuthorizationDeniedError` without
+    string-matching the message. ``None`` for transport / parse / OAuth
+    errors where there's no upstream HTTP status to forward.
     """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _utcnow() -> datetime:
@@ -249,14 +258,16 @@ class FhirClient:
                 # want that to fail loud, not retry-then-fail-loud.
                 raise FhirError(
                     f"FHIR client error: status={response.status_code} "
-                    f"url={url} body={response.text[:200]!r}"
+                    f"url={url} body={response.text[:200]!r}",
+                    status_code=response.status_code,
                 )
 
             # 5xx — retry once, then surface.
             if attempt == MAX_ATTEMPTS:
                 raise FhirError(
                     f"FHIR server error after retry: status={response.status_code} "
-                    f"url={url} body={response.text[:200]!r}"
+                    f"url={url} body={response.text[:200]!r}",
+                    status_code=response.status_code,
                 )
             await asyncio.sleep(self._retry_backoff.total_seconds())
 
