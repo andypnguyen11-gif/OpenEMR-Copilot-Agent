@@ -35,6 +35,12 @@
  *   - "older" entries  — 2024-06-01
  *   - "stale" labs     — 2024-08-15  (>18 months pre-now; trips stale-lab rule)
  *
+ * `providerID` is fixed to 1 (the docker-default `admin` user, also the demo
+ * login the eval suite signs JWTs as). PR 17.5's gateway access checker
+ * requires `patient_data.providerID = users.id`, so unassigned fixtures 403
+ * every UI surface; pinning to id=1 aligns the data with the real rule
+ * rather than relaxing the gate for demos.
+ *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
  * @license   https://github.com/openemr/openemr/blob/master/LICENSE GNU General Public License 3
@@ -62,6 +68,7 @@ return [
             'postal_code' => '92101',
             'language' => 'english',
             'status' => 'married',
+            'providerID' => 1,
         ],
         'lists' => [
             [
@@ -110,6 +117,7 @@ return [
             'postal_code' => '92101',
             'language' => 'english',
             'status' => 'single',
+            'providerID' => 1,
         ],
         // No allergy row in `lists` — that's the conflict.
         'lists' => [],
@@ -149,6 +157,7 @@ return [
             'postal_code' => '92101',
             'language' => 'english',
             'status' => 'married',
+            'providerID' => 1,
         ],
         'lists' => [
             [
@@ -197,6 +206,7 @@ return [
             'postal_code' => '92101',
             'language' => 'english',
             'status' => 'married',
+            'providerID' => 1,
         ],
         'lists' => [
             [
@@ -247,6 +257,7 @@ return [
             'postal_code' => '92101',
             'language' => 'english',
             'status' => 'married',
+            'providerID' => 1,
         ],
         'lists' => [
             [
