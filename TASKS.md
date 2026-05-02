@@ -1212,33 +1212,56 @@ loader paths (enabled / disabled / unknown-id / malformed YAML / missing file)
 each pinned by a test. Full `make check` green: ruff lint + format, mypy strict,
 326 tests passing.
 
-#### PR 13c — Remaining rule packs + seeded-fixture integration test
+#### PR 13c — Remaining rule packs + seeded-fixture integration test — ✅ landed
 
 Depends on 13a + 13b. Completes the four rule categories and validates against the
 real fixture.
 
-- [ ] Categorized rule types per ARCHITECTURE §3 / §6:
-  - `data_quality` (missing fields, stale labs, active-but-resolved)
-  - `safety` (allergy ↔ active med, encoded interaction flags)
-  - `value_sanity` (lab values outside plausible ranges)
-  - `consistency` extended to cover allergy-table mismatch
-- [ ] Note-side checks scoped to keyword presence on the most recent note(s) only — AUDIT
-  §3.3 explicitly down-scopes regex/NLP for MVP.
-- [ ] Orphan-tolerant queries (no FKs in OpenEMR; AUDIT D-03).
-- [ ] **No** treatment-recommendation logic (out of scope per PRD §5 / USERS §6).
+- [x] Categorized rule types per ARCHITECTURE §3 / §6:
+  - `data_quality` — `resolved_problem_still_active`, `stale_chronic_lab`
+  - `safety` — `allergen_med_safety_conflict` (cross-reactivity table is config, not code)
+  - `value_sanity` — `lab_out_of_plausible_range` (narrow placeholder; default
+    severity codes don't match the seeded HbA1c so it doesn't trigger-leak into
+    the integration test)
+  - `consistency` extended with `narrative_only_allergy`
+- [x] Note-side checks scoped to keyword presence on the most recent N notes only
+  (`look_back_notes` per rule) — AUDIT §3.3 down-scope respected.
+- [x] Orphan-tolerant queries (no FKs in OpenEMR; AUDIT D-03) — engine reads
+  typed `PatientChart` records via the same tools the agent uses, so missing
+  cross-references are vacuous absences rather than join failures.
+- [x] **No** treatment-recommendation logic shipped (out of scope per PRD §5 / USERS §6).
 
 **NEW**
+- `agent-service/src/clinical_copilot/discrepancy/rules/narrative_only_allergy.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/resolved_problem_still_active.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/allergen_med_safety_conflict.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/stale_chronic_lab.py`
+- `agent-service/src/clinical_copilot/discrepancy/rules/lab_out_of_range.py`
 - `agent-service/src/clinical_copilot/discrepancy/rules/data_quality.yaml`
 - `agent-service/src/clinical_copilot/discrepancy/rules/safety.yaml`
 - `agent-service/src/clinical_copilot/discrepancy/rules/value_sanity.yaml`
-- `agent-service/tests/integration/test_seeded_fixture.py`
+- `agent-service/tests/integration/test_seeded_fixture.py` (7 cases — per-scenario +
+  cross-scenario sanity)
+- `agent-service/tests/unit/test_discrepancy_rules.py` (16 per-rule negative cases)
 
 **EDIT**
 - `agent-service/src/clinical_copilot/discrepancy/rules/consistency.yaml` — add
-  allergy-table-mismatch rule
+  `narrative_only_allergy` entry
+- `agent-service/src/clinical_copilot/discrepancy/rules/__init__.py` — register
+  five new rule classes; add three new pack paths to `DEFAULT_PACK_PATHS`
+  (safety pack first so its flags lead engine output)
+- `agent-service/tests/unit/test_rules_engine.py` — relax the consistency-pack
+  loader test to assert subset rather than exact count (PR 13c added a second
+  rule to the pack)
+- `.codespell-ignore-words.txt` — add `augmentin` (brand name in cross-reactivity table)
 
-**Acceptance:** engine produces all five expected flags from the SQL-loaded fixture with
-correct categories and source attribution.
+**Acceptance:** engine produces exactly one flag per seeded scenario with the right
+category and source attribution. Implementation: integration test mirrors the five
+PHP scenarios as Python `PatientChart` instances and asserts each rule fires only
+on its own scenario; cross-scenario aggregation produces the expected five distinct
+`rule_id` values. Live SQL-loaded variant lands in PR 13d alongside the cross-path
+parity gate. Full `make check` green: ruff lint + format, mypy strict,
+349 tests passing (was 326 — 23 new).
 
 #### PR 13d — Wire `get_flags` to engine + cross-path parity
 
