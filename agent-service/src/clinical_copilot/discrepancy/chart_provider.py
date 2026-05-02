@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from clinical_copilot.data.fhir_client import FhirError
 from clinical_copilot.discrepancy.engine import PatientChart
@@ -42,8 +42,6 @@ if TYPE_CHECKING:
 
     from clinical_copilot.data.fhir_client import FhirClient
     from clinical_copilot.runtime.async_bridge import AsyncBridge
-
-_RecordT = TypeVar("_RecordT")
 
 
 class ChartProvider(ABC):
@@ -123,15 +121,13 @@ class FhirChartProvider(ChartProvider):
             raise
 
     async def _load_async(self, patient_id: str) -> PatientChart:
-        conditions, requests, allergies, observations, encounters, documents = (
-            await asyncio.gather(
-                self._fhir.search_conditions(patient_id=patient_id),
-                self._fhir.search_medications(patient_id=patient_id),
-                self._fhir.search_allergies(patient_id=patient_id),
-                self._fhir.search_lab_observations(patient_id=patient_id),
-                self._fhir.search_encounters(patient_id=patient_id),
-                self._fhir.search_document_references(patient_id=patient_id),
-            )
+        conditions, requests, allergies, observations, encounters, documents = await asyncio.gather(
+            self._fhir.search_conditions(patient_id=patient_id),
+            self._fhir.search_medications(patient_id=patient_id),
+            self._fhir.search_allergies(patient_id=patient_id),
+            self._fhir.search_lab_observations(patient_id=patient_id),
+            self._fhir.search_encounters(patient_id=patient_id),
+            self._fhir.search_document_references(patient_id=patient_id),
         )
         return PatientChart(
             patient_id=patient_id,
@@ -156,5 +152,5 @@ class FhirChartProvider(ChartProvider):
         )
 
 
-def _drop_none(items: Iterable[_RecordT | None]) -> Iterable[_RecordT]:
+def _drop_none[RecordT](items: Iterable[RecordT | None]) -> Iterable[RecordT]:
     return (item for item in items if item is not None)

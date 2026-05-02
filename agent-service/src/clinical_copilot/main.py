@@ -23,8 +23,10 @@ from pydantic import BaseModel, Field
 from clinical_copilot import __version__
 from clinical_copilot.app_state import AppState, build_app_state
 from clinical_copilot.audit.log import AuditLogWriteError
+from clinical_copilot.auth.internal_token import require_internal_token
 from clinical_copilot.auth.jwt_verifier import require_clinician_claims
 from clinical_copilot.config import Settings, get_settings
+from clinical_copilot.discrepancy.background import BackgroundRunner
 from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane
@@ -34,6 +36,38 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
     from clinical_copilot.auth.session import ClinicianClaims
+
+
+class WarmRequest(BaseModel):
+    """Body of ``POST /api/agent/internal/warm``.
+
+    A panel of patient_ids the gateway wants the cache to recompute
+    flags for. Bounded list size (200 is well above any realistic
+    clinic panel) protects the route from a runaway gateway request
+    that would tie up the FHIR backend serially. Each id is bounded the
+    same way ``ClinicianClaims.patient_id`` is so the validation
+    surface stays consistent across user-facing and internal routes.
+    """
+
+    patient_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class WarmFailureBody(BaseModel):
+    patient_id: str
+    reason: str
+
+
+class WarmResponse(BaseModel):
+    """Summary returned by ``POST /api/agent/internal/warm``.
+
+    No flag content — the warm route exists so subsequent ``get_flags``
+    calls hit cache, not so the gateway can read flags directly. Keeping
+    the payload to counts + failure reasons is the explicit guarantee
+    that no PHI bubbles out of an ostensibly internal endpoint.
+    """
+
+    warmed: int
+    failed: list[WarmFailureBody]
 
 
 class QueryRequest(BaseModel):
@@ -107,6 +141,8 @@ def create_app(
     app.state.session_store = resolved_state.session_store
 
     claims_dep = require_clinician_claims(resolved_state.jwt_verifier)
+    internal_dep = require_internal_token(resolved_settings.internal_token)
+    runner = BackgroundRunner(resolved_state.discrepancy_cache)
 
     @app.get("/healthz", tags=["health"])
     async def healthz() -> dict[str, str]:
@@ -161,6 +197,45 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="audit log unavailable",
             ) from exc
+
+    @app.post(
+        "/api/agent/internal/warm",
+        tags=["internal"],
+        response_model=WarmResponse,
+    )
+    async def warm_route(
+        body: WarmRequest,
+        _: None = internal_dep,
+    ) -> WarmResponse:
+        # Runner swallows per-patient failures into the summary, so this
+        # route only needs to translate the dataclass into the wire shape.
+        # No exception path here — a runner-level crash (e.g. cache
+        # backing object missing) is genuinely a 500 and FastAPI's
+        # default handler is the right thing.
+        summary = runner.warm_panel(body.patient_ids)
+        return WarmResponse(
+            warmed=summary.warmed,
+            failed=[
+                WarmFailureBody(patient_id=f.patient_id, reason=f.reason) for f in summary.failed
+            ],
+        )
+
+    @app.post(
+        "/api/agent/internal/invalidate/{patient_id}",
+        tags=["internal"],
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def invalidate_route(
+        patient_id: str = Path(min_length=1, max_length=64),
+        _: None = internal_dep,
+    ) -> Response:
+        # ``DiscrepancyCache.invalidate`` is idempotent on unknown
+        # patients (PR 14 contract), so the route returns 204 even if
+        # there was nothing to drop. The PHP-side write hook is
+        # fire-and-forget; surfacing 404 here would just create work
+        # for the gateway it can't action.
+        resolved_state.discrepancy_cache.invalidate(patient_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.delete(
         "/api/agent/session/{session_id}",

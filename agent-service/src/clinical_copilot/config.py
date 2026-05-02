@@ -12,6 +12,9 @@ migrated to RS384 private key + kid in PR 5.5 to match what OpenEMR's
 confidential-client OAuth2 endpoint actually accepts for ``system/*`` scopes),
 and per-lane model tiers added in PR 10 (``MODEL_SLOW`` / ``MODEL_FAST`` so
 eval can A/B Sonnet vs Haiku without redeploy). Cache settings land in PR 14.
+PR 15 adds the service-to-service ``COPILOT_INTERNAL_TOKEN`` for the warm
+and invalidate routes — separate from the user-facing HMAC secret so
+rotating one doesn't drop in-flight chat sessions.
 """
 
 from __future__ import annotations
@@ -68,6 +71,7 @@ class Settings:
     oauth_token_url: str
     model_slow: str
     model_fast: str
+    internal_token: str
 
     @property
     def is_production(self) -> bool:
@@ -95,6 +99,7 @@ def _load() -> Settings:
         oauth_private_key_pem = _optional("OAUTH_PRIVATE_KEY_PEM", "").encode("utf-8")
         oauth_key_id = _optional("OAUTH_KEY_ID", "")
         oauth_token_url = _optional("OAUTH_TOKEN_URL", "http://localhost:8300/oauth2/default/token")
+        internal_token = _optional("COPILOT_INTERNAL_TOKEN", "dev-insecure-internal-token")
     else:
         hmac_secret = _require("COPILOT_HMAC_SECRET")
         llm_api_key = _require("ANTHROPIC_API_KEY")
@@ -105,6 +110,7 @@ def _load() -> Settings:
         oauth_private_key_pem = _require("OAUTH_PRIVATE_KEY_PEM").encode("utf-8")
         oauth_key_id = _require("OAUTH_KEY_ID")
         oauth_token_url = _require("OAUTH_TOKEN_URL")
+        internal_token = _require("COPILOT_INTERNAL_TOKEN")
 
     return Settings(
         env=env,
@@ -120,6 +126,7 @@ def _load() -> Settings:
         oauth_token_url=oauth_token_url,
         model_slow=model_slow,
         model_fast=model_fast,
+        internal_token=internal_token,
     )
 
 

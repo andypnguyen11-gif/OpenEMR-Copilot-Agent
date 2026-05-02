@@ -40,6 +40,13 @@ triple — slow-lane traffic and fast-lane traffic never share cache
 state. A test passing ``llm=`` applies that single stub to both lanes;
 the unit-test surface only exercises one lane at a time and asserts on
 ``gateway.calls[i]["system"]`` to confirm the right prompt was used.
+
+PR 15 hoists the :class:`DiscrepancyCache` onto :class:`AppState` so
+the warm and invalidate routes operate on the same instance the
+``get_flags`` tool reads through. Building it once here (rather than
+twice — once inside the registry, once for the routes) is what
+guarantees a warmed entry is visible to the next chat-side
+``get_flags`` call without a durable-tier round trip.
 """
 
 from __future__ import annotations
@@ -57,6 +64,13 @@ from clinical_copilot.auth.oauth_client import OAuthClient
 from clinical_copilot.auth.session import NonceStore
 from clinical_copilot.data.fhir_client import FhirClient
 from clinical_copilot.db.engine import create_engine_from_url, create_session_factory
+from clinical_copilot.discrepancy.cache import DiscrepancyCache
+from clinical_copilot.discrepancy.chart_provider import (
+    FhirChartProvider,
+    FixtureChartProvider,
+)
+from clinical_copilot.discrepancy.engine import DiscrepancyEngine
+from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
 from clinical_copilot.observability import configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
@@ -107,6 +121,7 @@ class AppState:
     jwt_verifier: JwtVerifier
     orchestrator: Orchestrator
     session_store: SessionStore
+    discrepancy_cache: DiscrepancyCache
     bridge: AsyncBridge | None
 
 
@@ -147,14 +162,28 @@ def build_app_state(
         session_factory = create_session_factory(db_engine)
         audit = AuditLogWriter(session_factory=session_factory)
 
+    # The discrepancy engine is the same in every wiring — only the
+    # chart provider differs. Build the engine once and pass it (with
+    # the wiring-specific chart provider) into a single
+    # :class:`DiscrepancyCache`. Holding the cache on :class:`AppState`
+    # is what lets PR 15's warm/invalidate routes share memory + DB
+    # state with the ``get_flags`` reads coming through the registry.
+    engine = DiscrepancyEngine.from_yaml(DEFAULT_PACK_PATHS, DEFAULT_REGISTRY)
+
     bridge: AsyncBridge | None
     if fixture_store is not None:
         bridge = None
+        chart_provider = FixtureChartProvider(fixture_store)
+        discrepancy_cache = DiscrepancyCache(
+            chart_provider=chart_provider,
+            engine=engine,
+            session_factory=session_factory,
+        )
         registry = ToolRegistry.from_fixture(
             store=fixture_store,
             audit=audit,
             audit_salt=settings.audit_salt,
-            session_factory=session_factory,
+            cache=discrepancy_cache,
         )
     elif not settings.oauth_client_id:
         # Dev / test fallback. ``Settings`` lets ``oauth_client_id`` be
@@ -163,11 +192,18 @@ def build_app_state(
         # to the fixture store. Production fails fast at config load
         # via ``_require``, so this branch never fires there.
         bridge = None
+        store = FixtureStore.from_file()
+        chart_provider = FixtureChartProvider(store)
+        discrepancy_cache = DiscrepancyCache(
+            chart_provider=chart_provider,
+            engine=engine,
+            session_factory=session_factory,
+        )
         registry = ToolRegistry.from_fixture(
-            store=FixtureStore.from_file(),
+            store=store,
             audit=audit,
             audit_salt=settings.audit_salt,
-            session_factory=session_factory,
+            cache=discrepancy_cache,
         )
     else:
         bridge = AsyncBridge()
@@ -178,12 +214,18 @@ def build_app_state(
         # routed through the bridge talks to that same loop, not the
         # main thread's loop (or no loop at all).
         fhir_client = bridge.run(_build_fhir_stack(settings))
+        fhir_chart_provider = FhirChartProvider(fhir=fhir_client, bridge=bridge)
+        discrepancy_cache = DiscrepancyCache(
+            chart_provider=fhir_chart_provider,
+            engine=engine,
+            session_factory=session_factory,
+        )
         registry = ToolRegistry.from_fhir(
             fhir=fhir_client,
             bridge=bridge,
             audit=audit,
             audit_salt=settings.audit_salt,
-            session_factory=session_factory,
+            cache=discrepancy_cache,
         )
 
     verifier_mw = VerificationMiddleware()
@@ -234,6 +276,7 @@ def build_app_state(
         jwt_verifier=jwt_verifier,
         orchestrator=orchestrator,
         session_store=session_store,
+        discrepancy_cache=discrepancy_cache,
         bridge=bridge,
     )
 
