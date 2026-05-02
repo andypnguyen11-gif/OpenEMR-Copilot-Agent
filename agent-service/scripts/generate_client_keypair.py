@@ -89,9 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    private_key = rsa.generate_private_key(
-        public_exponent=PUBLIC_EXPONENT, key_size=KEY_SIZE
-    )
+    private_key = rsa.generate_private_key(public_exponent=PUBLIC_EXPONENT, key_size=KEY_SIZE)
     pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,

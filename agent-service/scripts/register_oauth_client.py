@@ -35,6 +35,8 @@ from pathlib import Path
 
 import httpx
 
+HTTP_BAD_REQUEST = 400
+
 DEFAULT_SCOPES = (
     "system/Patient.read",
     "system/Condition.read",
@@ -45,8 +47,36 @@ DEFAULT_SCOPES = (
     "system/DocumentReference.read",
 )
 
+# Writer-set used by scripts/seed_fixture_patients.py. Kept here so the
+# two scripts share one source of truth for "which scopes does the seeder
+# need" — drift would surface as a 401 deep in the seed run after a
+# clean OAuth round-trip, which is exactly the kind of hard-to-trace bug
+# centralizing the list prevents.
+WRITE_SCOPES = (
+    "system/Patient.read",
+    "system/Patient.write",
+    "system/Condition.read",
+    "system/Condition.write",
+    "system/MedicationRequest.read",
+    "system/MedicationRequest.write",
+    "system/AllergyIntolerance.read",
+    "system/AllergyIntolerance.write",
+    "system/Observation.read",
+    "system/Observation.write",
+    "system/Encounter.read",
+    "system/Encounter.write",
+    "system/DocumentReference.read",
+    "system/DocumentReference.write",
+)
 
-def build_payload(jwk: dict[str, object], openemr_url: str) -> dict[str, object]:
+
+def build_payload(
+    jwk: dict[str, object],
+    openemr_url: str,
+    *,
+    scopes: tuple[str, ...] = DEFAULT_SCOPES,
+    client_name: str = "Clinical Co-Pilot Agent Service",
+) -> dict[str, object]:
     """Assemble the registration body OpenEMR's RFC 7591 endpoint accepts.
 
     ``token_endpoint_auth_method`` is ``private_key_jwt`` because that's the
@@ -56,12 +86,12 @@ def build_payload(jwk: dict[str, object], openemr_url: str) -> dict[str, object]
     """
     return {
         "application_type": "private",
-        "client_name": "Clinical Co-Pilot Agent Service",
+        "client_name": client_name,
         "redirect_uris": [openemr_url.rstrip("/") + "/"],
         "token_endpoint_auth_method": "private_key_jwt",
         "grant_types": ["client_credentials"],
         "jwks": {"keys": [jwk]},
-        "scope": " ".join(DEFAULT_SCOPES),
+        "scope": " ".join(scopes),
     }
 
 
@@ -90,6 +120,25 @@ def main(argv: list[str] | None = None) -> int:
         default=30.0,
         help="HTTP timeout in seconds (default 30).",
     )
+    parser.add_argument(
+        "--writer",
+        action="store_true",
+        help=(
+            "Register a writer client (system/*.read + system/*.write) instead "
+            "of the default reader. Used by scripts/seed_fixture_patients.py "
+            "and one-off data-loading runs; do not use as the agent-service's "
+            "production client."
+        ),
+    )
+    parser.add_argument(
+        "--client-name",
+        default="Clinical Co-Pilot Agent Service",
+        help=(
+            "Client name shown in OpenEMR's API Clients admin page. Override "
+            "(e.g. ``Clinical Co-Pilot Seeder``) when registering an auxiliary "
+            "client so admins can tell them apart."
+        ),
+    )
     args = parser.parse_args(argv)
 
     jwk = json.loads(args.jwk.read_text())
@@ -97,7 +146,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"--jwk file does not contain an RSA JWK: {args.jwk}", file=sys.stderr)
         return 2
 
-    payload = build_payload(jwk, args.openemr_url)
+    scopes = WRITE_SCOPES if args.writer else DEFAULT_SCOPES
+    payload = build_payload(
+        jwk,
+        args.openemr_url,
+        scopes=scopes,
+        client_name=args.client_name,
+    )
     url = args.openemr_url.rstrip("/") + "/oauth2/default/registration"
 
     print(f"POSTing OAuth2 client registration to {url} ...", file=sys.stderr)
@@ -111,7 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     body_text = response.text
     args.out.write_text(body_text)
 
-    if response.status_code >= 400:
+    if response.status_code >= HTTP_BAD_REQUEST:
         print(
             f"\nRegistration failed: status={response.status_code}\n{body_text}",
             file=sys.stderr,

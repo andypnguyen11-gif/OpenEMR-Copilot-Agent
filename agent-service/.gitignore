@@ -36,5 +36,6 @@ agent.db
 
 # OAuth JWT-bearer keypair + registration artifacts (never commit)
 *.pem
-public-jwk.json
-oauth-registration.json
+*public-jwk.json
+*oauth-registration.json
+seeded-patient-ids.json

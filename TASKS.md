@@ -594,7 +594,7 @@ OpenEMR using the RS384-signed JWT-bearer flow; offline `make check` passes;
 
 ## Milestone 2 — Data Access & Tool Layer
 
-### PR 6 — FHIR/REST client wrappers — ✅ code landed (offline gate green); integration round-trip blocked on prod demo data
+### PR 6 — FHIR/REST client wrappers — ✅ landed (956ee954d), live round-trip verified against prod OpenEMR 2026-05-01
 
 Typed Python clients for OpenEMR's FHIR R4 surface. No tool wiring yet — this is the data layer.
 
@@ -616,13 +616,24 @@ Typed Python clients for OpenEMR's FHIR R4 surface. No tool wiring yet — this 
 - `agent-service/tests/integration/test_fhir_client.py`
 
 **Acceptance:** Each FHIR resource (Patient, MedicationRequest, AllergyIntolerance, Observation,
-Condition, Encounter, DocumentReference) round-trips against demo data. **Status:** unit suite
-covers parsing + error paths (34 tests, including bundle parsing, retry on 5xx + transport,
-no-retry on 4xx, malformed JSON, missing required fields); offline `make check` green at
-163 tests. Live wire-format check passed (FhirClient round-trips against deployed prod
-OpenEMR's `/Patient` endpoint and parses an empty Bundle without error). Real-data
-acceptance is gated on loading demo patients into the deployed OpenEMR — pickup item for
-whoever loads data, not a code blocker.
+Condition, Encounter, DocumentReference) round-trips against demo data. **Status:** ✅
+`tests/integration/test_fhir_client.py::test_round_trip_each_resource` passed live against
+deployed prod OpenEMR with `OPENEMR_TEST_PATIENT_ID=a1addd7f-368f-4867-a1dd-3fcced65de46`
+(Maria Lopez, manually populated with one Condition + MedicationRequest + AllergyIntolerance
++ Encounter through OpenEMR's admin UI; Observation and DocumentReference returned empty
+Bundles which the parser handles correctly per the unit suite). Offline `make check`
+remains green at 163 tests.
+
+**Operational note for future bulk-loading (PR 22-23 prereq):** OpenEMR's FHIR write
+surface is **Patient-only** — `POST /fhir/Condition`, `POST /fhir/MedicationRequest`,
+etc. all 404. To seed records programmatically, use OpenEMR's older standard REST API
+(`POST /api/patient/:puuid/medical_problem`, `POST /api/patient/:puuid/allergy`, ...) which
+takes OpenEMR-internal field shapes (``title`` / ``begdate`` / ``diagnosis``), not FHIR.
+This is documented in `agent-service/scripts/seed_fixture_patients.py`'s docstring; the
+script's Patient POST works, the rest is a TODO for whoever picks up bulk-load. Synthea
+is **not** a workaround — its output is FHIR Bundles which hit the same 404. The viable
+path for PR 22-23 is OpenEMR's CCDA import service (`ccdaservice/`) which Synthea
+*can* output, or building per-resource standard-REST mappers.
 
 ---
 
@@ -1119,12 +1130,24 @@ audit-log completeness check passes on demo data.
 
 Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §8.2).
 
+> **Data prereq**: this milestone needs **bulk synthetic patients in deployed
+> OpenEMR** (10+ per category for statistical coverage; the named-fixture
+> mirror seeded by `scripts/seed_fixture_patients.py` only covers the
+> 5 M5 patients). Use [Synthea](https://github.com/synthetichealth/synthea)
+> to generate patients and POST their FHIR Bundles via the write-scoped
+> OAuth client. Do this *before* writing eval cases — the cases assert
+> against patient ids that have to exist. Synthea import is non-trivial
+> (transaction Bundle support is partial in OpenEMR; references need
+> rewriting); budget ~3-4 hours including debugging the write surface.
+
 - [ ] `harness.py` — loads cases, runs agent, checks expected vs observed
 - [ ] `runner.py` — CLI: `python -m clinical_copilot.eval --suite happy_path`
 - [ ] Test cases for use cases 1–4 happy paths (5–10 each, ARCHITECTURE §8.2)
 - [ ] Missing-data suite (5–10 cases)
 - [ ] Ambiguous-query suite (5–10 cases)
 - [ ] Result rows persisted to `eval_runs` table (PR 2)
+- [ ] **Synthea bulk-load** of ~50 patients into deployed OpenEMR before
+  authoring eval cases (see prereq note above)
 
 **NEW**
 - `agent-service/tests/eval/harness.py`
