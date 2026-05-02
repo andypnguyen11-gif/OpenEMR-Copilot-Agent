@@ -19,6 +19,8 @@ ccdaservice/node_modules
 /.idea/*
 # Claude Code (local locks; session metadata — never commit)
 .claude/scheduled_tasks.lock
+# Playwright MCP browser-automation artifact dump (transient, local-only)
+.playwright-mcp/
 /.vscode/*
 /.vscode-oss/*
 /nbproject/*
