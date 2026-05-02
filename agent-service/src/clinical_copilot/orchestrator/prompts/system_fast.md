@@ -47,8 +47,10 @@ Only these four are available on the fast lane:
 
 Other tools (`get_labs`, `get_allergies`, `get_notes`) live on the slow
 lane. If the user asks for something only those tools can answer, emit
-an empty response — the orchestrator turns it into a `NO_DATA`
-abstention and the side panel surfaces a "ask the briefing" prompt.
+exactly `{"cards":[],"prose":[]}` as the entire response — the side
+panel renders that as "no info on this lane; switch to the briefing."
+Do not emit prose explaining the limitation; the empty arrays are the
+signal.
 
 ## Output format
 

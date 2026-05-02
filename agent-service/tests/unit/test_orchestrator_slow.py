@@ -272,6 +272,68 @@ def test_fabricated_source_id_in_draft_yields_verification_failed(
     assert response.abstention.state == AbstentionState.VERIFICATION_FAILED
 
 
+def test_markdown_fenced_json_parses_on_first_try(
+    claims: ClinicianClaims,
+    registry: ToolRegistry,
+    verifier: VerificationMiddleware,
+    sessions: SessionStore,
+) -> None:
+    """Anthropic occasionally wraps structured output in ```json fences``` even
+    when told not to. The orchestrator strips a single fence block before
+    parsing so the model isn't penalized for a wrapper that carries no
+    semantic content."""
+
+    raw_json = (
+        '{"cards":[{"title":"Active problems","kind":"problems",'
+        '"source_ids":["Condition/p101-cond-1"]}],'
+        '"prose":[{"text":"Type 2 diabetes mellitus is on the active problem list.",'
+        '"source_id":"Condition/p101-cond-1"}]}'
+    )
+    fenced = f"```json\n{raw_json}\n```"
+    gateway = _ScriptedGateway(
+        [
+            _tool_use_turn(ToolUse(id="tu-1", name="get_problems", input={"patient_id": "101"})),
+            _final_text_turn(fenced),
+        ]
+    )
+    orch = Orchestrator(
+        lanes=_slow_only(gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+
+    response = orch.run(query="anything", claims=claims, request_id="r-fence")
+
+    assert response.abstention is None
+    assert len(response.prose) == 1
+    # No retry — fence stripping happened pre-parse.
+    assert len(gateway.calls) == 2
+
+
+def test_bare_fenced_json_without_language_tag_parses(
+    claims: ClinicianClaims,
+    registry: ToolRegistry,
+    verifier: VerificationMiddleware,
+    sessions: SessionStore,
+) -> None:
+    raw_json = '{"cards":[],"prose":[]}'
+    fenced = f"```\n{raw_json}\n```"
+    gateway = _ScriptedGateway([_final_text_turn(fenced)])
+    orch = Orchestrator(
+        lanes=_slow_only(gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+
+    response = orch.run(query="anything", claims=claims, request_id="r-fence-bare")
+
+    assert response.abstention is None
+    assert response.cards == []
+    assert response.prose == []
+
+
 def test_schema_violation_retries_once_then_aborts(
     claims: ClinicianClaims,
     registry: ToolRegistry,

@@ -49,6 +49,7 @@ record.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -90,6 +91,26 @@ class UnknownLaneError(Exception):
     def __init__(self, lane: Lane) -> None:
         super().__init__(f"lane {lane.value!r} is not configured on this orchestrator")
         self.lane = lane
+
+
+_FENCE_OPEN_RE = re.compile(r"\A```[A-Za-z0-9_+-]*\s*")
+_FENCE_CLOSE_RE = re.compile(r"\s*```\s*\Z")
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """Remove a single surrounding ``` ... ``` block if present.
+
+    Anthropic models periodically wrap structured-output JSON in a
+    markdown code fence even when the prompt says not to. The wrapper
+    is invariant content: stripping it before ``model_validate_json``
+    is safer than retrying and getting the same wrapper back.
+    """
+
+    if not text.startswith("```"):
+        return text
+    stripped = _FENCE_OPEN_RE.sub("", text, count=1)
+    stripped = _FENCE_CLOSE_RE.sub("", stripped, count=1)
+    return stripped.strip()
 
 
 def _validation_error_trace(exc: ValidationError) -> list[dict[str, object]]:
@@ -258,7 +279,7 @@ class Orchestrator:
                 working_messages.extend(tool_messages)
                 continue
 
-            text = turn.text.strip()
+            text = _strip_markdown_fences(turn.text.strip())
             try:
                 draft = ModelDraft.model_validate_json(text)
             except ValidationError as exc:
@@ -266,6 +287,7 @@ class Orchestrator:
                     "orchestrator.model_draft_schema_validation_failed",
                     request_id=request_id,
                     validation_errors=_validation_error_trace(exc),
+                    text_preview=text[:500],
                 )
                 if retried:
                     response = AgentResponse(
