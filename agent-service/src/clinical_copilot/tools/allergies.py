@@ -44,13 +44,13 @@ class GetAllergiesFhirTool(FhirBackedTool):
         allergies = await self._fhir.search_allergies(patient_id=patient_id)
         records: list[AllergyRecord] = []
         for allergy in allergies:
-            record = _project(allergy)
+            record = project_allergy_intolerance_to_record(allergy)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(allergy: AllergyIntolerance) -> AllergyRecord | None:
+def project_allergy_intolerance_to_record(allergy: AllergyIntolerance) -> AllergyRecord | None:
     substance = allergy.code.preferred_display() if allergy.code else None
     if not substance:
         return None

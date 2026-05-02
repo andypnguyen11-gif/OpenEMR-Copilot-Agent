@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from clinical_copilot.discrepancy.cache import DiscrepancyCache
 from clinical_copilot.discrepancy.chart_provider import (
     ChartProvider,
+    FhirChartProvider,
     FixtureChartProvider,
 )
 from clinical_copilot.discrepancy.engine import DiscrepancyEngine
@@ -127,16 +128,35 @@ class ToolRegistry:
         bridge: AsyncBridge,
         audit: AuditLogWriter,
         audit_salt: str,
+        chart_provider: ChartProvider | None = None,
+        engine: DiscrepancyEngine | None = None,
+        cache: DiscrepancyCache | None = None,
+        session_factory: sessionmaker[SqlSession] | None = None,
     ) -> ToolRegistry:
         """Production wiring — every tool reads from the live FHIR server.
 
-        ``get_flags`` is intentionally absent here: PR 14 shipped the
-        cache layer that makes a FHIR-backed flags surface viable, but
-        the FHIR-backed ``ChartProvider`` itself lands in a follow-up
-        tracked under ``TASKS.md`` Tech Debt § ``FhirChartProvider``.
-        Until then the FHIR-backed registry exposes only the six
-        retrieval tools listed in PR 8 / ARCHITECTURE §1.
+        Mirrors :meth:`from_fixture` for the FHIR-backed path: the six
+        retrieval tools land alongside :class:`GetFlagsTool` reading
+        through a :class:`DiscrepancyCache` over a
+        :class:`FhirChartProvider`. ``session_factory`` enables the
+        durable Postgres tier of the cache; in production the same
+        factory is shared with the audit writer so both surfaces sit on
+        one connection pool.
         """
+
+        resolved_chart_provider = chart_provider or FhirChartProvider(
+            fhir=fhir,
+            bridge=bridge,
+        )
+        resolved_engine = engine or DiscrepancyEngine.from_yaml(
+            DEFAULT_PACK_PATHS,
+            DEFAULT_REGISTRY,
+        )
+        resolved_cache = cache or DiscrepancyCache(
+            chart_provider=resolved_chart_provider,
+            engine=resolved_engine,
+            session_factory=session_factory,
+        )
 
         instances: dict[str, Tool] = {}
         for tool_cls in _FHIR_TOOL_CLASSES:
@@ -146,6 +166,11 @@ class ToolRegistry:
                 audit=audit,
                 audit_salt=audit_salt,
             )
+        instances[GetFlagsTool.name] = GetFlagsTool(
+            cache=resolved_cache,
+            audit=audit,
+            audit_salt=audit_salt,
+        )
         return cls(instances)
 
     def names(self) -> list[str]:

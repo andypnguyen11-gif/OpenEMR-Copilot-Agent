@@ -47,13 +47,13 @@ class GetVisitsFhirTool(FhirBackedTool):
         encounters = await self._fhir.search_encounters(patient_id=patient_id)
         records: list[VisitRecord] = []
         for encounter in encounters:
-            record = _project(encounter)
+            record = project_encounter_to_record(encounter)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(encounter: Encounter) -> VisitRecord | None:
+def project_encounter_to_record(encounter: Encounter) -> VisitRecord | None:
     if encounter.period is None or not encounter.period.start:
         return None
     return VisitRecord(

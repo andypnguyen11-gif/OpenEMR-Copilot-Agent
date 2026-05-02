@@ -183,6 +183,7 @@ def build_app_state(
             bridge=bridge,
             audit=audit,
             audit_salt=settings.audit_salt,
+            session_factory=session_factory,
         )
 
     verifier_mw = VerificationMiddleware()

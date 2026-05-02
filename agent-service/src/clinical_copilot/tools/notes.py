@@ -54,13 +54,13 @@ class GetNotesFhirTool(FhirBackedTool):
         documents = await self._fhir.search_document_references(patient_id=patient_id)
         records: list[NoteRecord] = []
         for document in documents:
-            record = _project(document)
+            record = project_document_reference_to_record(document)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(document: DocumentReference) -> NoteRecord | None:
+def project_document_reference_to_record(document: DocumentReference) -> NoteRecord | None:
     if not document.date:
         return None
     body = _decode_body(document)

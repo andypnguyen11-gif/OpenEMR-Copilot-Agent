@@ -47,13 +47,13 @@ class GetProblemsFhirTool(FhirBackedTool):
         conditions = await self._fhir.search_conditions(patient_id=patient_id)
         records: list[ProblemRecord] = []
         for condition in conditions:
-            record = _project(condition)
+            record = project_condition_to_record(condition)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(condition: Condition) -> ProblemRecord | None:
+def project_condition_to_record(condition: Condition) -> ProblemRecord | None:
     code = condition.code.primary_code() if condition.code else None
     display = condition.code.preferred_display() if condition.code else None
     if not code or not display:

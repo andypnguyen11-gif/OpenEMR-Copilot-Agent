@@ -46,8 +46,11 @@ if TYPE_CHECKING:
 # OpenEMR returns 401 when the bearer is rejected and 403 when the bearer
 # is valid but lacks scope for the requested resource. ARCHITECTURE §4
 # treats both as "ACL denial" — the difference matters for ops, not for
-# the abstention surface, so this layer collapses them.
-_FHIR_ACL_DENIAL_STATUSES = frozenset({401, 403})
+# the abstention surface, so this layer collapses them. Exposed publicly
+# because :class:`FhirChartProvider` (discrepancy/chart_provider.py) does
+# the same translation when its parallel chart load hits an ACL-denying
+# resource — keeping one frozenset means the two paths can't drift.
+FHIR_ACL_DENIAL_STATUSES = frozenset({401, 403})
 
 
 class FhirBackedTool(Tool):
@@ -69,7 +72,7 @@ class FhirBackedTool(Tool):
         try:
             return self._bridge.run(self._fetch(patient_id=patient_id))
         except FhirError as exc:
-            if exc.status_code in _FHIR_ACL_DENIAL_STATUSES:
+            if exc.status_code in FHIR_ACL_DENIAL_STATUSES:
                 # ACL wins when the JWT-side check passed but the FHIR
                 # server still denies — the base Tool catches this and
                 # writes the same UNAUTHORIZED audit row a JWT-side

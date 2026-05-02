@@ -49,13 +49,13 @@ class GetMedsFhirTool(FhirBackedTool):
         requests = await self._fhir.search_medications(patient_id=patient_id)
         records: list[MedicationRecord] = []
         for request in requests:
-            record = _project(request)
+            record = project_medication_request_to_record(request)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(request: MedicationRequest) -> MedicationRecord | None:
+def project_medication_request_to_record(request: MedicationRequest) -> MedicationRecord | None:
     name = _drug_name(request)
     if not name:
         return None

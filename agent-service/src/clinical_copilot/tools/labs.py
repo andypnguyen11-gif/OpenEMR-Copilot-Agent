@@ -52,13 +52,13 @@ class GetLabsFhirTool(FhirBackedTool):
         observations = await self._fhir.search_lab_observations(patient_id=patient_id)
         records: list[LabRecord] = []
         for obs in observations:
-            record = _project(obs)
+            record = project_observation_to_record(obs)
             if record is not None:
                 records.append(record)
         return records
 
 
-def _project(obs: Observation) -> LabRecord | None:
+def project_observation_to_record(obs: Observation) -> LabRecord | None:
     code = obs.code.primary_code() if obs.code else None
     display = obs.code.preferred_display() if obs.code else None
     if not code or not display:
