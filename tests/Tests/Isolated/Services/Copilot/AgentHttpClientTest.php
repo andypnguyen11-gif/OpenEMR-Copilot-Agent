@@ -249,6 +249,79 @@ final class AgentHttpClientTest extends TestCase
         self::assertSame(['detail' => 'invalid token'], $response->body);
     }
 
+    public function testGetInternalSendsInternalTokenHeaderAndNoAuthorization(): void
+    {
+        $this->httpClient->expects($this->once())
+            ->method('sendRequest')
+            ->with($this->callback(static function (RequestInterface $request): bool {
+                self::assertSame('GET', $request->getMethod());
+                self::assertSame(
+                    'http://agent.local:8500/api/agent/internal/flags/90001',
+                    (string) $request->getUri(),
+                );
+                self::assertSame(['application/json'], $request->getHeader('Accept'));
+                self::assertSame(['internal-token-xyz'], $request->getHeader('X-Internal-Token'));
+                // Same threat-model isolation as postInternal: the
+                // user-bearer header must not be set on the internal
+                // route, even by accident.
+                self::assertSame([], $request->getHeader('Authorization'));
+                self::assertSame('', (string) $request->getBody());
+                return true;
+            }))
+            ->willReturn($this->stubResponse(200, '{"patient_id":"90001","flags":[]}'));
+
+        $response = $this->client->getInternal(
+            '/api/agent/internal/flags/90001',
+            'internal-token-xyz',
+        );
+
+        self::assertSame(200, $response->statusCode);
+        self::assertSame(['patient_id' => '90001', 'flags' => []], $response->body);
+    }
+
+    public function testGetInternalRejectsRelativePath(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternal('api/agent/internal/flags/1', 'token');
+    }
+
+    public function testGetInternalRejectsEmptyToken(): void
+    {
+        // Without the token the agent returns 401; failing here is
+        // faster and produces a more attributable log line.
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternal('/api/agent/internal/flags/1', '');
+    }
+
+    public function testGetInternalWrapsTransportFailures(): void
+    {
+        $transportError = new class extends \RuntimeException implements ClientExceptionInterface {};
+        $this->httpClient->method('sendRequest')->willThrowException($transportError);
+
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternal('/api/agent/internal/flags/1', 'token');
+    }
+
+    public function testGetInternalRejectsInvalidJsonBody(): void
+    {
+        $this->httpClient->method('sendRequest')
+            ->willReturn($this->stubResponse(200, '{not-json'));
+
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternal('/api/agent/internal/flags/1', 'token');
+    }
+
+    public function testGetInternalPropagatesNon2xxStatusFromAgent(): void
+    {
+        $this->httpClient->method('sendRequest')
+            ->willReturn($this->stubResponse(500, '{"detail":"engine boom"}'));
+
+        $response = $this->client->getInternal('/api/agent/internal/flags/1', 'token');
+
+        self::assertSame(500, $response->statusCode);
+        self::assertSame(['detail' => 'engine boom'], $response->body);
+    }
+
     private function stubResponse(int $status, string $body): ResponseInterface
     {
         $stream = $this->createMock(StreamInterface::class);

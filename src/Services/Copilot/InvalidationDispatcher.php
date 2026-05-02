@@ -17,6 +17,14 @@
  *   chat UI's patient-select route (``POST /api/agent/warm``) so the
  *   first ``get_flags`` call inside the chat lands on a hot cache.
  *
+ * * :meth:`readFlags` — read the cached flag list for a single patient
+ *   (PR 16a's ``GET /api/agent/internal/flags/{patient_id}``). Used by
+ *   the Daily Brief controller (PR 16b) to populate per-patient cards
+ *   inline. Unlike invalidate / warm, this method *returns* a value —
+ *   the parsed flag list — but it still mustn't throw: a transport
+ *   failure or malformed payload degrades to an empty list so the
+ *   page renders flag-less rather than 5xx-ing.
+ *
  * **Fire-and-forget contract.** Neither method ever throws into the
  * caller. A clinical write that just successfully landed in OpenEMR's
  * database must not be undone or surfaced as a failure to the
@@ -123,6 +131,94 @@ final readonly class InvalidationDispatcher
             $token,
             ['op' => 'warm', 'panel_size' => count($clean)],
         );
+    }
+
+    /**
+     * Read the cached discrepancy flags for ``$patientId`` from the
+     * agent service.
+     *
+     * **Never throws.** Returns ``[]`` on every failure mode the
+     * dispatcher could encounter — unconfigured token, transport
+     * failure, non-2xx response, malformed body, malformed individual
+     * flag entry — and logs the failure at the appropriate level. The
+     * Daily Brief page renders without a flag list rather than 5xx-ing
+     * the entire panel because one card's flag fetch failed.
+     *
+     * Empty ``$patientId`` is a caller bug; short-circuit so the
+     * dispatcher's log surface stays clean.
+     *
+     * @return list<Flag>
+     */
+    public function readFlags(string $patientId): array
+    {
+        if ($patientId === '') {
+            $this->logger->info('Co-Pilot readFlags skipped: empty patient_id');
+            return [];
+        }
+
+        try {
+            $token = $this->config->getInternalToken();
+        } catch (CopilotConfigException $e) {
+            $this->logger->warning('Co-Pilot readFlags skipped: dispatcher not configured', [
+                'exception' => $e,
+            ]);
+            return [];
+        }
+
+        try {
+            $response = $this->client->getInternal(
+                '/api/agent/internal/flags/' . rawurlencode($patientId),
+                $token,
+            );
+        } catch (AgentServiceException $e) {
+            $this->logger->warning('Co-Pilot readFlags transport failure', [
+                'patient_id' => $patientId,
+                'exception' => $e,
+            ]);
+            return [];
+        }
+
+        if ($response->statusCode >= 400) {
+            $level = $response->statusCode >= 500 ? 'warning' : 'info';
+            $this->logger->log($level, 'Co-Pilot readFlags non-2xx response', [
+                'patient_id' => $patientId,
+                'status' => $response->statusCode,
+            ]);
+            return [];
+        }
+
+        $rawFlags = $response->body['flags'] ?? null;
+        if (!is_array($rawFlags)) {
+            $this->logger->warning('Co-Pilot readFlags malformed body', [
+                'patient_id' => $patientId,
+            ]);
+            return [];
+        }
+
+        $flags = [];
+        foreach ($rawFlags as $row) {
+            if (!is_array($row)) {
+                $this->logger->warning('Co-Pilot readFlags entry not an object', [
+                    'patient_id' => $patientId,
+                ]);
+                return [];
+            }
+            try {
+                /** @var array<string, mixed> $row */
+                $flags[] = Flag::fromArray($row);
+            } catch (\InvalidArgumentException $e) {
+                // One bad row poisons the whole list — refuse to render
+                // a partial flag set on a clinician-facing card. The
+                // operator log line names the patient and the parse
+                // error so the wiring problem is attributable.
+                $this->logger->warning('Co-Pilot readFlags entry parse failure', [
+                    'patient_id' => $patientId,
+                    'exception' => $e,
+                ]);
+                return [];
+            }
+        }
+        return $flags;
     }
 
     /**

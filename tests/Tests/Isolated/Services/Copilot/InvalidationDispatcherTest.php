@@ -221,6 +221,173 @@ final class InvalidationDispatcherTest extends TestCase
         self::assertSame('warning', $this->logger->records[0]['level']);
         self::assertSame(1, $this->logger->records[0]['context']['panel_size']);
     }
+
+    public function testReadFlagsReturnsParsedFlagsOnHappyPath(): void
+    {
+        $this->client->expects($this->once())
+            ->method('getInternal')
+            ->with(
+                '/api/agent/internal/flags/90001',
+                str_repeat('a', 64),
+            )
+            ->willReturn(new AgentResponse(200, [
+                'patient_id' => '90001',
+                'flags' => [
+                    [
+                        'source_id' => 'flag:med_vs_note:90001:abc',
+                        'rule_id' => 'med_vs_note_conflict',
+                        'category' => 'consistency',
+                        'rationale' => "Active medication 'Metoprolol' but recent note from 2026-04-15 mentions 'discontinued'.",
+                        'referenced_source_ids' => ['med:1', 'note:2'],
+                    ],
+                ],
+            ]));
+
+        $flags = $this->makeDispatcher()->readFlags('90001');
+
+        // PHPStan infers list<Flag> from the readFlags return type, so
+        // assertInstanceOf would be redundant; the field assertions
+        // below exercise the parsed object directly.
+        self::assertCount(1, $flags);
+        self::assertSame('med_vs_note_conflict', $flags[0]->ruleId);
+        self::assertSame('consistency', $flags[0]->category);
+        self::assertSame(['med:1', 'note:2'], $flags[0]->referencedSourceIds);
+        self::assertSame([], $this->logger->records);
+    }
+
+    public function testReadFlagsReturnsEmptyListWhenAgentReportsZeroFlags(): void
+    {
+        // The healthy-patient case — no flags, no exception, no log.
+        $this->client->method('getInternal')
+            ->willReturn(new AgentResponse(200, ['patient_id' => '90001', 'flags' => []]));
+
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+        self::assertSame([], $this->logger->records);
+    }
+
+    public function testReadFlagsUrlEncodesPatientId(): void
+    {
+        // Same defensive behaviour as invalidate — patient ids carrying
+        // path-segment-special characters must not break the route.
+        $this->client->expects($this->once())
+            ->method('getInternal')
+            ->with(
+                '/api/agent/internal/flags/foo%2Fbar%20baz',
+                str_repeat('a', 64),
+            )
+            ->willReturn(new AgentResponse(200, ['patient_id' => 'foo/bar baz', 'flags' => []]));
+
+        $this->makeDispatcher()->readFlags('foo/bar baz');
+    }
+
+    public function testReadFlagsNoOpsOnEmptyPatientId(): void
+    {
+        $this->client->expects($this->never())->method('getInternal');
+
+        self::assertSame([], $this->makeDispatcher()->readFlags(''));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('info', $this->logger->records[0]['level']);
+    }
+
+    public function testReadFlagsReturnsEmptyListOnTransportFailure(): void
+    {
+        $this->client->method('getInternal')
+            ->willThrowException(new AgentServiceException('boom'));
+
+        // Daily Brief page must still render — the cards just lose their
+        // flag list; the rest of the panel is unaffected.
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('warning', $this->logger->records[0]['level']);
+    }
+
+    public function testReadFlagsLogs5xxAtWarningAndReturnsEmptyList(): void
+    {
+        $this->client->method('getInternal')
+            ->willReturn(new AgentResponse(500, ['detail' => 'engine boom']));
+
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('warning', $this->logger->records[0]['level']);
+        self::assertSame(500, $this->logger->records[0]['context']['status']);
+    }
+
+    public function testReadFlagsLogs4xxAtInfoAndReturnsEmptyList(): void
+    {
+        $this->client->method('getInternal')
+            ->willReturn(new AgentResponse(401, ['detail' => 'invalid token']));
+
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('info', $this->logger->records[0]['level']);
+        self::assertSame(401, $this->logger->records[0]['context']['status']);
+    }
+
+    public function testReadFlagsReturnsEmptyListWhenBodyMissingFlagsKey(): void
+    {
+        // Diverging response shape (missing key, wrong type) is a
+        // wiring problem worth knowing about — log warning, render
+        // flag-less.
+        $this->client->method('getInternal')
+            ->willReturn(new AgentResponse(200, ['patient_id' => '90001']));
+
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('warning', $this->logger->records[0]['level']);
+    }
+
+    public function testReadFlagsRefusesPartialListWhenOneEntryIsMalformed(): void
+    {
+        // Refusing partial flag sets keeps clinicians from acting on a
+        // truncated view — better to render zero flags + a warning log
+        // than to silently drop the bad row and let the doctor see four
+        // out of five.
+        $this->client->method('getInternal')
+            ->willReturn(new AgentResponse(200, [
+                'patient_id' => '90001',
+                'flags' => [
+                    [
+                        'source_id' => 'flag:ok',
+                        'rule_id' => 'r',
+                        'category' => 'c',
+                        'rationale' => 'x',
+                        'referenced_source_ids' => ['s:1'],
+                    ],
+                    // Missing rationale field
+                    [
+                        'source_id' => 'flag:bad',
+                        'rule_id' => 'r',
+                        'category' => 'c',
+                        'referenced_source_ids' => ['s:1'],
+                    ],
+                ],
+            ]));
+
+        self::assertSame([], $this->makeDispatcher()->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('warning', $this->logger->records[0]['level']);
+    }
+
+    public function testReadFlagsReturnsEmptyListWhenTokenUnconfigured(): void
+    {
+        $this->client->expects($this->never())->method('getInternal');
+        $dispatcher = new InvalidationDispatcher(
+            $this->client,
+            new CopilotConfig(new OEGlobalsBag([])),
+            $this->logger,
+        );
+
+        self::assertSame([], $dispatcher->readFlags('90001'));
+
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('warning', $this->logger->records[0]['level']);
+    }
 }
 
 /**

@@ -59,6 +59,22 @@ $apiCsrfToken = $privateKey !== ''
     : '';
 $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
 
+// Optional deep-link from Daily Brief: ``?pid=NNNNN`` pre-selects the
+// patient in the dropdown. Whitelisted against the demo panel so a
+// crafted URL can't push a non-fixture patient_id into the chat —
+// the gateway's PR 17.5 access checker would block it anyway, but
+// reflecting an arbitrary id back into the option list would still
+// show "PID NNNNN" in the rendered dropdown.
+$demoPanel = ['90001', '90002', '90003', '90004', '90005'];
+$preselectedPid = '';
+// filter_input rather than $_GET — the openemr.forbiddenRequestGlobals
+// PHPStan rule blocks $_SUPERGLOBAL access in src/, and we follow the
+// same convention in interface/* for consistency.
+$pidParam = filter_input(INPUT_GET, 'pid');
+if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
+    $preselectedPid = $pidParam;
+}
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -85,11 +101,32 @@ $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
                 <?php echo xlt('Patient'); ?>
             </label>
             <select id="copilot-patient" data-copilot-patient>
-                <option value="101">101 — Maria Lopez (T2DM + HTN, well controlled)</option>
-                <option value="102">102 — James Wright (T2DM, stale labs)</option>
-                <option value="103">103 — Eleanor Banks (med-vs-note conflict)</option>
-                <option value="104">104 — Robert Kim (allergy-vs-med safety)</option>
-                <option value="999">999 — OUT-OF-PANEL sentinel (RBAC test)</option>
+                <?php
+                /**
+                 * Patient dropdown — anchored on the seeded discrepancy
+                 * fixtures (PR 13a) so chat and Daily Brief share one
+                 * panel. Pids match
+                 * ``tests/Tests/Fixtures/discrepancy-scenarios.php``;
+                 * descriptions name the conflict shape so demo viewers
+                 * can pick a scenario by intent.
+                 */
+                $options = [
+                    '90001' => '90001 — Discrepancy MedNoteOne (med-vs-note conflict)',
+                    '90002' => '90002 — Discrepancy NarrativeAllergy (narrative-only allergy)',
+                    '90003' => '90003 — Discrepancy ResolvedActive (resolved-still-active problem)',
+                    '90004' => '90004 — Discrepancy AllergyMed (allergy-vs-med safety)',
+                    '90005' => '90005 — Discrepancy StaleLab (chronic disease, stale lab)',
+                ];
+                foreach ($options as $pid => $label) :
+                    // PHP coerces numeric-string array keys to int, so
+                    // ``$pid`` is int here even though the source array
+                    // looks string-keyed. Re-stringify so the equality
+                    // and the ``attr`` cast both stay in the string lane.
+                    $pidStr = (string) $pid;
+                    $selected = ($pidStr === $preselectedPid) ? ' selected' : '';
+                    ?>
+                    <option value="<?php echo attr($pidStr); ?>"<?php echo $selected; ?>><?php echo text($label); ?></option>
+                <?php endforeach; ?>
             </select>
             <button type="button" class="btn btn-secondary btn-sm" data-copilot-reset>
                 <?php echo xlt('Clear chat'); ?>

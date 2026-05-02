@@ -210,3 +210,199 @@
     border-radius: 4px;
     margin: 0.5rem 0;
 }
+
+/* Daily Brief (PR 16b) ------------------------------------------------------
+ *
+ * Distinct ``.copilot-brief-*`` namespace from the chat-side ``.copilot-card``
+ * citation cards: the two surfaces share only the outer ``.copilot-shell``
+ * frame. Patient cards are larger, multi-section, and group-rendered into a
+ * single panel so a clinician can scan five charts at once without
+ * scrolling through chat-style pagination.
+ */
+
+.copilot-empty-panel {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 1.25rem 1rem;
+    color: #555;
+}
+
+.copilot-panel {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 992px) {
+    .copilot-panel {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.copilot-brief-card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 1rem 1.1rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.copilot-brief-card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.6rem;
+    border-bottom: 1px solid #ececec;
+    padding-bottom: 0.6rem;
+}
+
+.copilot-brief-card-name {
+    margin: 0;
+    font-size: 1.15rem;
+    flex: 1 1 auto;
+}
+
+.copilot-brief-card-meta {
+    margin: 0;
+    color: #666;
+    font-size: 0.85rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.copilot-brief-card-meta .copilot-brief-card-pid {
+    font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+    color: #888;
+}
+
+.copilot-brief-card-section h3 {
+    margin: 0 0 0.4rem 0;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #555;
+}
+
+.copilot-brief-card-empty {
+    margin: 0;
+    color: #888;
+    font-size: 0.9rem;
+    font-style: italic;
+}
+
+.copilot-brief-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.copilot-brief-card-list li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.25rem 0;
+    border-bottom: 1px dashed #f0f0f0;
+}
+
+.copilot-brief-card-list li:last-child {
+    border-bottom: none;
+}
+
+.copilot-brief-card-title {
+    font-weight: 600;
+    flex: 1 1 auto;
+}
+
+.copilot-brief-card-code,
+.copilot-brief-card-date,
+.copilot-brief-card-range,
+.copilot-brief-card-comments,
+.copilot-brief-card-reaction,
+.copilot-brief-card-verification {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.copilot-brief-card-result {
+    font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.copilot-brief-card-result-abnormal {
+    color: #a14;
+    font-weight: 600;
+}
+
+.copilot-brief-card-flags h3 {
+    margin: 0 0 0.4rem 0;
+    font-size: 0.95rem;
+    color: #722;
+}
+
+.copilot-brief-card-count {
+    color: #888;
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.copilot-brief-flag-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.copilot-brief-flag {
+    background: #fdf6f0;
+    border-left: 3px solid #c87038;
+    padding: 0.5rem 0.7rem;
+    border-radius: 3px;
+}
+
+.copilot-brief-flag[data-flag-category="safety"] {
+    background: #fdf2f2;
+    border-left-color: #b03030;
+}
+
+.copilot-brief-flag[data-flag-category="consistency"] {
+    background: #fdf6e8;
+    border-left-color: #d09530;
+}
+
+.copilot-brief-flag[data-flag-category="data_quality"] {
+    background: #f4f6fb;
+    border-left-color: #4a7cb5;
+}
+
+.copilot-brief-flag-rule {
+    font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+    font-size: 0.8rem;
+    color: #444;
+    margin-right: 0.5rem;
+}
+
+.copilot-brief-flag-category {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #888;
+}
+
+.copilot-brief-flag-rationale {
+    margin: 0.25rem 0 0 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #222;
+}

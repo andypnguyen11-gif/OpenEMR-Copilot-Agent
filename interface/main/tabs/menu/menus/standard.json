@@ -73,9 +73,32 @@
   {
     "label": "Co-Pilot",
     "menu_id": "cpl0",
-    "target": "cpl",
-    "url": "/interface/copilot/chat.php",
-    "children": [],
+    "children": [
+      {
+        "label": "Daily Brief",
+        "menu_id": "cpl1",
+        "target": "cpl",
+        "url": "/interface/copilot/daily_brief.php",
+        "children": [],
+        "requirement": 0,
+        "acl_req": [
+          "patients",
+          "demo"
+        ]
+      },
+      {
+        "label": "Chat",
+        "menu_id": "cpl2",
+        "target": "cpl",
+        "url": "/interface/copilot/chat.php",
+        "children": [],
+        "requirement": 0,
+        "acl_req": [
+          "patients",
+          "demo"
+        ]
+      }
+    ],
     "requirement": 0,
     "acl_req": [
       "patients",

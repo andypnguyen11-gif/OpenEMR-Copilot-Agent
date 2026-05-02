@@ -209,6 +209,62 @@ readonly class AgentHttpClient
     }
 
     /**
+     * GET ``$path`` on the agent service with an ``X-Internal-Token``
+     * header (PR 16a flags-read route) instead of a bearer JWT.
+     *
+     * Mirror of :meth:`postInternal` for read-only routes — the Daily
+     * Brief controller (PR 16b) reads cached flags through this method
+     * after warming the panel via :meth:`postInternal`. The header
+     * separation between user-JWT and internal-token is the same as
+     * for the warm/invalidate routes; documented at
+     * ``agent-service/src/clinical_copilot/auth/internal_token.py``.
+     *
+     * Same JSON-decoding and transport-error translation as
+     * :meth:`get`. Non-2xx HTTP statuses are returned in
+     * :class:`AgentResponse` rather than thrown — the caller decides
+     * whether the page renders without flags or surfaces a 5xx.
+     *
+     * @throws AgentServiceException When the transport fails or the
+     *                               body is not decodable JSON.
+     */
+    public function getInternal(string $path, string $internalToken): AgentResponse
+    {
+        if (!str_starts_with($path, '/')) {
+            throw new AgentServiceException('agent path must start with /');
+        }
+        if ($internalToken === '') {
+            throw new AgentServiceException('agent getInternal called without an internal token');
+        }
+
+        $url = $this->config->getAgentBaseUrl() . $path;
+        $request = $this->requestFactory->createRequest('GET', $url)
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('X-Internal-Token', $internalToken);
+
+        try {
+            $response = $this->httpClient->sendRequest($request);
+        } catch (ClientExceptionInterface $e) {
+            throw new AgentServiceException('agent service transport failure', 0, $e);
+        }
+
+        $rawBody = (string) $response->getBody();
+        $decoded = [];
+        if ($rawBody !== '') {
+            try {
+                $decoded = json_decode($rawBody, true, flags: JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                throw new AgentServiceException('agent service returned invalid JSON', 0, $e);
+            }
+            if (!is_array($decoded)) {
+                throw new AgentServiceException('agent service returned non-object JSON');
+            }
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return new AgentResponse($response->getStatusCode(), $decoded);
+    }
+
+    /**
      * DELETE ``$path`` on the agent service with an HS256 bearer token.
      *
      * No body, no Content-Type. Used by :class:`SessionDeleteController`
