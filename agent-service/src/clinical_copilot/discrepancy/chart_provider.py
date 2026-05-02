@@ -12,7 +12,8 @@ contract regardless of where the chart records originated.
 Today only :class:`FixtureChartProvider` ships. A FHIR-backed sibling
 will let the FHIR registry wire ``get_flags`` (now that PR 14's cache
 makes per-request rebuilds viable); the registry's current ``from_fhir``
-entry-point deliberately omits ``get_flags`` until that lands.
+entry-point deliberately omits ``get_flags`` until that lands. Tracked
+under ``TASKS.md`` Tech Debt § ``FhirChartProvider``.
 """
 
 from __future__ import annotations

@@ -1361,7 +1361,8 @@ recreates the SQLAlchemy `Engine` itself between cache instances).
 **Out of scope (deferred):** A `FhirChartProvider` so the FHIR-backed registry can wire
 `get_flags` too. The cache layer is the prerequisite (it makes per-request chart rebuilds
 viable); the FHIR provider lands separately. Until then `from_fhir()` still omits
-`get_flags` and only the fixture-backed registry uses the cache.
+`get_flags` and only the fixture-backed registry uses the cache. Tracked in
+**Tech Debt § `FhirChartProvider`** below.
 
 ---
 
@@ -1791,6 +1792,43 @@ Side-finding worth flagging separately: in-Docker `composer phpstan` exits 9 wit
 stdout/stderr when the cache is corrupt (no error message at all), which is why the original
 diagnosis pointed at the baseline. Host phpstan in the same state prints the real errors
 and exits 1. Worth keeping in mind whenever Docker phpstan is silent.
+
+---
+
+### `FhirChartProvider` — wire `get_flags` into the FHIR-backed registry
+
+Deferred from PR 14. The cache layer shipped, but `ToolRegistry.from_fhir()` still omits
+`get_flags` because there is no FHIR-backed `ChartProvider` to hand the cache. Production
+wiring (`AppState.build_registry` → `from_fhir`) therefore exposes only the six retrieval
+tools — the fast-lane prompt's "prefer `get_flags` first" guidance has no flags surface to
+hit until this lands. Fixture-backed tests already exercise the cache + engine end-to-end,
+so the gap is purely the FHIR-side adapter.
+
+**Acceptance**
+- `agent-service/src/clinical_copilot/discrepancy/chart_provider.py` — add
+  `FhirChartProvider(ChartProvider)` that loads a `PatientChart` by calling the same six
+  `FhirClient` methods the retrieval tools use (`problems`, `medications`, `allergies`,
+  `labs`, `notes`, `visits`). Reuse `AsyncBridge` so the sync `load_chart` interface holds.
+- `agent-service/src/clinical_copilot/tools/registry.py::from_fhir` — accept an optional
+  `session_factory` (mirroring `from_fixture`), build a `DiscrepancyCache` over the new
+  FHIR provider + `DiscrepancyEngine.from_yaml(DEFAULT_PACK_PATHS, DEFAULT_REGISTRY)`, and
+  register `GetFlagsTool` alongside the six retrieval tools.
+- `agent-service/src/clinical_copilot/app_state.py` — pass the existing
+  `_session_factory` into `from_fhir` so the durable Postgres tier is shared with the audit
+  writer in production (same pattern the fixture path uses today).
+- `agent-service/tests/unit/test_tools.py` (or a sibling) — parity test that runs the same
+  flag-shape assertion against both `from_fixture` and `from_fhir` registries using a
+  recorded FHIR fixture. The intent: prove the FHIR path produces the same `FlagRecord`
+  shape the fixture path does, not retest the rule logic.
+- Update the deferral notes in `tools/registry.py:from_fhir` docstring,
+  `discrepancy/chart_provider.py` module docstring, and `TASKS.md` PR 14 "Out of scope"
+  callout once this ships.
+
+**Why it's tech debt and not a milestone PR:** the build sequence treats `get_flags` as
+landed (PR 13d ✅, PR 14 ✅). PR 15 (background pre-warm) and PR 16 (Daily Brief) both
+assume a working FHIR-backed flags surface. Without this, those PRs either depend on the
+fixture registry or have to ship the FHIR provider themselves — exactly the bundling the
+section header warns against.
 
 ---
 

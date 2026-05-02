@@ -132,7 +132,8 @@ class ToolRegistry:
 
         ``get_flags`` is intentionally absent here: PR 14 shipped the
         cache layer that makes a FHIR-backed flags surface viable, but
-        the FHIR-backed ``ChartProvider`` itself lands in a follow-up.
+        the FHIR-backed ``ChartProvider`` itself lands in a follow-up
+        tracked under ``TASKS.md`` Tech Debt § ``FhirChartProvider``.
         Until then the FHIR-backed registry exposes only the six
         retrieval tools listed in PR 8 / ARCHITECTURE §1.
         """
