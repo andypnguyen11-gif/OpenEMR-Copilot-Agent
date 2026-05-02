@@ -12,6 +12,16 @@ Services scope set the agent registers for under PR 5
 to OpenEMR with the union of those scopes; the per-clinician RBAC check
 that runs *here* uses the JWT from the gateway, not the OAuth token —
 the two layers are intentionally separate (ARCHITECTURE §4).
+
+PR 13d note on ``get_flags`` — the flags tool no longer reads
+hand-encoded conflicts off the fixture; it builds a
+:class:`~clinical_copilot.discrepancy.engine.PatientChart` via a
+:class:`~clinical_copilot.discrepancy.chart_provider.ChartProvider` and
+runs the discrepancy engine. The Tool I/O schema is unchanged
+(``record_kind="Flag"``, returns ``FlagRecord``) so call sites and the
+verification middleware do not need to change. The registry wires the
+chart provider + engine in :meth:`ToolRegistry.from_fixture` (and the
+parallel FHIR factory once PR 14 ships ``FhirChartProvider``).
 """
 
 from __future__ import annotations
@@ -20,6 +30,8 @@ from collections.abc import Sequence
 from typing import ClassVar
 
 from clinical_copilot.audit.log import AuditLogWriter
+from clinical_copilot.discrepancy.chart_provider import ChartProvider
+from clinical_copilot.discrepancy.engine import DiscrepancyEngine
 from clinical_copilot.tools.base import Tool
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.records import AnyRecord
@@ -129,10 +141,20 @@ class GetNotesTool(_FixtureTool):
         return list(self._store.notes(patient_id))
 
 
-class GetFlagsTool(_FixtureTool):
+class GetFlagsTool(Tool):
+    """Discrepancy flags surface — engine output, not hand-encoded data.
+
+    Sits outside :class:`_FixtureTool` because the M1 store is no longer
+    its data source: the tool composes a chart via :class:`ChartProvider`
+    and hands it to :class:`DiscrepancyEngine`. The verification
+    middleware sees the same :class:`FlagRecord` shape it always did
+    (``rule_id`` / ``category`` / ``referenced_source_ids``), so the
+    only call-site impact of the swap is constructor wiring.
+    """
+
     name: ClassVar[str] = "get_flags"
     description: ClassVar[str] = (
-        "Return the precomputed discrepancy flags for the patient. "
+        "Return the discrepancy flags computed for the patient. "
         "Each flag points at the source records that conflict; cite "
         "the flag's source_id when surfacing the conflict in prose. "
         "Use this tool first when the user asks 'is there anything I "
@@ -140,26 +162,46 @@ class GetFlagsTool(_FixtureTool):
     )
     # The flags surface is read-only and not 1:1 with a FHIR resource;
     # we reuse the Encounter scope here as a coarse "needs chart access"
-    # gate. PR 13 lifts this onto a dedicated scope.
+    # gate. PR 14 lifts this onto a dedicated scope.
     required_scope: ClassVar[str] = "system/Encounter.read"
     record_kind: ClassVar[str] = "Flag"
 
+    def __init__(
+        self,
+        *,
+        chart_provider: ChartProvider,
+        engine: DiscrepancyEngine,
+        audit: AuditLogWriter,
+        audit_salt: str,
+    ) -> None:
+        super().__init__(audit=audit, audit_salt=audit_salt)
+        self._chart_provider = chart_provider
+        self._engine = engine
+
     def _run(self, *, patient_id: str) -> Sequence[AnyRecord]:
-        return list(self._store.flags(patient_id))
+        chart = self._chart_provider.load_chart(patient_id)
+        return list(self._engine.evaluate(chart))
 
 
-_TOOL_CLASSES: tuple[type[_FixtureTool], ...] = (
+# The retrieval tools all share the (store, audit, audit_salt) constructor
+# shape so the fixture-backed registry can iterate them uniformly.
+# ``GetFlagsTool`` is wired separately because it has different
+# dependencies (chart provider + engine).
+_RETRIEVAL_TOOL_CLASSES: tuple[type[_FixtureTool], ...] = (
     GetProblemsTool,
     GetMedsTool,
     GetAllergiesTool,
     GetLabsTool,
     GetVisitsTool,
     GetNotesTool,
-    GetFlagsTool,
 )
 
 
-def all_tool_classes() -> tuple[type[_FixtureTool], ...]:
-    """Stable enumeration of the tool classes the registry wires up."""
+def retrieval_tool_classes() -> tuple[type[_FixtureTool], ...]:
+    """Stable enumeration of the fixture-backed retrieval tool classes.
 
-    return _TOOL_CLASSES
+    Excludes :class:`GetFlagsTool` — it has a different constructor and
+    is wired separately by the registry.
+    """
+
+    return _RETRIEVAL_TOOL_CLASSES

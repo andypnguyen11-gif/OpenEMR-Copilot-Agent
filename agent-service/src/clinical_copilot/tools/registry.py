@@ -12,10 +12,16 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from clinical_copilot.discrepancy.chart_provider import (
+    ChartProvider,
+    FixtureChartProvider,
+)
+from clinical_copilot.discrepancy.engine import DiscrepancyEngine
+from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
 from clinical_copilot.observability import traceable_tool_dispatch
 from clinical_copilot.tools.allergies import GetAllergiesFhirTool
 from clinical_copilot.tools.fixtures import FixtureStore
-from clinical_copilot.tools.impl import all_tool_classes
+from clinical_copilot.tools.impl import GetFlagsTool, retrieval_tool_classes
 from clinical_copilot.tools.labs import GetLabsFhirTool
 from clinical_copilot.tools.meds import GetMedsFhirTool
 from clinical_copilot.tools.notes import GetNotesFhirTool
@@ -68,14 +74,34 @@ class ToolRegistry:
         store: FixtureStore,
         audit: AuditLogWriter,
         audit_salt: str,
+        chart_provider: ChartProvider | None = None,
+        engine: DiscrepancyEngine | None = None,
     ) -> ToolRegistry:
+        """Fixture-backed registry — six retrieval tools + ``get_flags``.
+
+        ``chart_provider`` and ``engine`` default to a
+        :class:`FixtureChartProvider` over ``store`` and the production
+        :data:`DEFAULT_PACK_PATHS` rule packs. Tests override either
+        when they want to pin a specific chart shape or rule set.
+        """
+
         instances: dict[str, Tool] = {}
-        for tool_cls in all_tool_classes():
+        for tool_cls in retrieval_tool_classes():
             instances[tool_cls.name] = tool_cls(
                 store=store,
                 audit=audit,
                 audit_salt=audit_salt,
             )
+        instances[GetFlagsTool.name] = GetFlagsTool(
+            chart_provider=chart_provider or FixtureChartProvider(store),
+            engine=engine
+            or DiscrepancyEngine.from_yaml(
+                DEFAULT_PACK_PATHS,
+                DEFAULT_REGISTRY,
+            ),
+            audit=audit,
+            audit_salt=audit_salt,
+        )
         return cls(instances)
 
     @classmethod
@@ -89,9 +115,11 @@ class ToolRegistry:
     ) -> ToolRegistry:
         """Production wiring — every tool reads from the live FHIR server.
 
-        ``get_flags`` is intentionally absent: PR 13 owns the flag
-        surface and the rules engine that populates it. Until then, the
-        FHIR-backed registry exposes only the six retrieval tools
+        ``get_flags`` is intentionally absent until PR 14 ships
+        ``FhirChartProvider``: building a chart per request would mean
+        six FHIR round-trips for the flags surface alone, which only
+        pays off behind the cache layer PR 14 introduces. Until then,
+        the FHIR-backed registry exposes only the six retrieval tools
         listed in PR 8 / ARCHITECTURE §1.
         """
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Fixture for the M1 tool layer. Five hand-encoded patients covering the four use cases plus an out-of-panel target for the RBAC-bypass eval. Schema mirrors the typed Pydantic records in clinical_copilot.tools.records \u2014 drift between the two is caught by tests/unit/test_tools.py at load time. The PR-13 demo SQL is generated from a typed PHP equivalent of this file (tests/Tests/Fixtures/discrepancy-scenarios.php); the conflict shapes here line up with that single source of truth so the same eval cases hit both paths.",
+  "_comment": "Fixture for the M1 tool layer. Five hand-encoded patients covering the four use cases plus an out-of-panel target for the RBAC-bypass eval. Schema mirrors the typed Pydantic records in clinical_copilot.tools.records \u2014 drift between the two is caught by tests/unit/test_tools.py at load time. PR 13d removed the per-patient `flags` blocks: get_flags now produces flags via the discrepancy engine over the same problems/meds/allergies/notes/labs records, so the conflict shapes are derived rather than hand-encoded. The PR 13 demo SQL is generated from a typed PHP equivalent of this file (tests/Tests/Fixtures/discrepancy-scenarios.php); both paths feed the same engine and produce identical flag sets.",
   "patients": {
     "101": {
       "demographics": {
@@ -88,8 +88,7 @@
           "author": "Dr. Patel",
           "body": "58F with T2DM and HTN, well controlled on metformin and lisinopril. A1c 7.1, stable. Continue current regimen, return in 3 months."
         }
-      ],
-      "flags": []
+      ]
     },
     "102": {
       "demographics": {
@@ -141,18 +140,6 @@
           "note_date": "2025-11-08",
           "author": "Dr. Chen",
           "body": "64M with T2DM. Saw for knee pain today, addressed musculoskeletal. Diabetes follow-up overdue, patient to schedule labs and return."
-        }
-      ],
-      "flags": [
-        {
-          "source_id": "Flag/p102-flag-1",
-          "rule_id": "stale_chronic_lab",
-          "category": "data_quality",
-          "rationale": "Patient has Type 2 diabetes but last HbA1c was on 2024-12-02 (over 12 months ago).",
-          "referenced_source_ids": [
-            "Condition/p102-cond-1",
-            "Observation/p102-lab-1"
-          ]
         }
       ]
     },
@@ -221,18 +208,6 @@
           "author": "Dr. Okafor",
           "body": "71F presenting with orthostatic dizziness over the last 2 weeks. BP 102/64 sitting, 88/58 standing. Discussed with patient \u2014 discontinued metoprolol today, will reassess BP control in 2 weeks. Continue atorvastatin."
         }
-      ],
-      "flags": [
-        {
-          "source_id": "Flag/p103-flag-1",
-          "rule_id": "med_vs_note_conflict",
-          "category": "consistency",
-          "rationale": "Metoprolol succinate is marked active in the medication list, but the most recent visit note from 2026-04-02 documents that it was discontinued.",
-          "referenced_source_ids": [
-            "MedicationRequest/p103-med-1",
-            "DocumentReference/p103-note-1"
-          ]
-        }
       ]
     },
     "104": {
@@ -283,18 +258,6 @@
           "author": "Dr. Stein",
           "body": "47M with acute right otitis media. Started on amoxicillin 500 mg TID x 7 days."
         }
-      ],
-      "flags": [
-        {
-          "source_id": "Flag/p104-flag-1",
-          "rule_id": "allergen_med_safety_conflict",
-          "category": "safety",
-          "rationale": "Patient has a documented penicillin allergy and was just started on amoxicillin, which is a penicillin-class antibiotic.",
-          "referenced_source_ids": [
-            "AllergyIntolerance/p104-allergy-1",
-            "MedicationRequest/p104-med-1"
-          ]
-        }
       ]
     },
     "999": {
@@ -324,8 +287,7 @@
       "allergies": [],
       "labs": [],
       "visits": [],
-      "notes": [],
-      "flags": []
+      "notes": []
     }
   }
 }

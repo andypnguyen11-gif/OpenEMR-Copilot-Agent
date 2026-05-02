@@ -18,7 +18,6 @@ from pydantic import TypeAdapter
 
 from clinical_copilot.tools.records import (
     AllergyRecord,
-    FlagRecord,
     LabRecord,
     MedicationRecord,
     NoteRecord,
@@ -45,7 +44,6 @@ _ALLERGY_LIST = TypeAdapter(list[AllergyRecord])
 _LAB_LIST = TypeAdapter(list[LabRecord])
 _VISIT_LIST = TypeAdapter(list[VisitRecord])
 _NOTE_LIST = TypeAdapter(list[NoteRecord])
-_FLAG_LIST = TypeAdapter(list[FlagRecord])
 
 
 class FixtureStore:
@@ -101,9 +99,6 @@ class FixtureStore:
     def notes(self, patient_id: str) -> list[NoteRecord]:
         return _NOTE_LIST.validate_python(self._slice(patient_id, "notes"))
 
-    def flags(self, patient_id: str) -> list[FlagRecord]:
-        return _FLAG_LIST.validate_python(self._slice(patient_id, "flags"))
-
     def _slice(self, patient_id: str, key: str) -> list[object]:
         block = self._patients.get(patient_id)
         if block is None:
@@ -124,7 +119,6 @@ _EXPECTED_BLOCK_KEYS = (
     "labs",
     "visits",
     "notes",
-    "flags",
 )
 
 

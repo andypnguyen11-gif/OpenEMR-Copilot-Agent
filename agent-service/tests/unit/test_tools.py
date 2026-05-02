@@ -26,6 +26,9 @@ import pytest
 from clinical_copilot.audit.log import AuditLogWriter, hash_patient_id
 from clinical_copilot.audit.models import AuditEvent
 from clinical_copilot.auth.session import ClinicianClaims
+from clinical_copilot.discrepancy.chart_provider import FixtureChartProvider
+from clinical_copilot.discrepancy.engine import DiscrepancyEngine
+from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
 from clinical_copilot.tools.base import UnauthorizedToolCallError
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.impl import (
@@ -165,15 +168,25 @@ def test_get_flags_returns_safety_conflict_for_p104(
     store: FixtureStore,
     audit: _RecordingAuditWriter,
 ) -> None:
-    tool = GetFlagsTool(store=store, audit=audit, audit_salt=AUDIT_SALT)
+    chart_provider = FixtureChartProvider(store)
+    engine = DiscrepancyEngine.from_yaml(DEFAULT_PACK_PATHS, DEFAULT_REGISTRY)
+    tool = GetFlagsTool(
+        chart_provider=chart_provider,
+        engine=engine,
+        audit=audit,
+        audit_salt=AUDIT_SALT,
+    )
     claims = _claims_for("104")
 
     result = tool.execute(claims=claims, patient_id="104", request_id="req-flags")
 
-    assert len(result.records) == 1
-    flag = result.records[0]
-    assert getattr(flag, "rule_id", None) == "allergen_med_safety_conflict"
-    assert getattr(flag, "category", None) == "safety"
+    safety_flags = [
+        flag
+        for flag in result.records
+        if getattr(flag, "rule_id", None) == "allergen_med_safety_conflict"
+    ]
+    assert len(safety_flags) == 1
+    assert getattr(safety_flags[0], "category", None) == "safety"
 
 
 def test_missing_required_scope_denies_even_when_patient_matches(
