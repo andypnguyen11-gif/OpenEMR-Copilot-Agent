@@ -141,6 +141,74 @@ readonly class AgentHttpClient
     }
 
     /**
+     * POST a JSON body to ``$path`` on the agent service with an
+     * ``X-Internal-Token`` header (PR 15) instead of a bearer JWT.
+     *
+     * Used by :class:`InvalidationDispatcher` for the warm + invalidate
+     * routes. The header name is intentionally not ``Authorization`` so
+     * the user-facing JWT verifier on the agent side can never
+     * accidentally satisfy the internal-token gate (and vice versa);
+     * the two threat models are documented in
+     * ``agent-service/src/clinical_copilot/auth/internal_token.py``.
+     *
+     * Same JSON-encoding and transport-error translation as
+     * :meth:`post`. Non-2xx HTTP statuses are returned in
+     * :class:`AgentResponse` rather than thrown — the
+     * :class:`InvalidationDispatcher` decides whether a 4xx warrants a
+     * log line versus silent best-effort.
+     *
+     * @param array<string, mixed> $body Decoded JSON object to encode and send.
+     *
+     * @throws AgentServiceException When the transport fails, the body is not
+     *                               JSON-encodable, or the response is not
+     *                               decodable JSON.
+     */
+    public function postInternal(string $path, array $body, string $internalToken): AgentResponse
+    {
+        if (!str_starts_with($path, '/')) {
+            throw new AgentServiceException('agent path must start with /');
+        }
+        if ($internalToken === '') {
+            throw new AgentServiceException('agent postInternal called without an internal token');
+        }
+
+        try {
+            $payload = json_encode($body, JSON_THROW_ON_ERROR);
+        } catch (Throwable $e) {
+            throw new AgentServiceException('agent request body is not JSON-encodable', 0, $e);
+        }
+
+        $url = $this->config->getAgentBaseUrl() . $path;
+        $request = $this->requestFactory->createRequest('POST', $url)
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('X-Internal-Token', $internalToken)
+            ->withBody(Utils::streamFor($payload));
+
+        try {
+            $response = $this->httpClient->sendRequest($request);
+        } catch (ClientExceptionInterface $e) {
+            throw new AgentServiceException('agent service transport failure', 0, $e);
+        }
+
+        $rawBody = (string) $response->getBody();
+        $decoded = [];
+        if ($rawBody !== '') {
+            try {
+                $decoded = json_decode($rawBody, true, flags: JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                throw new AgentServiceException('agent service returned invalid JSON', 0, $e);
+            }
+            if (!is_array($decoded)) {
+                throw new AgentServiceException('agent service returned non-object JSON');
+            }
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return new AgentResponse($response->getStatusCode(), $decoded);
+    }
+
+    /**
      * DELETE ``$path`` on the agent service with an HS256 bearer token.
      *
      * No body, no Content-Type. Used by :class:`SessionDeleteController`

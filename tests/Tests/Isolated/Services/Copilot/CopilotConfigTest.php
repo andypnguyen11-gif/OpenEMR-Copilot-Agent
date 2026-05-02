@@ -26,6 +26,8 @@ final class CopilotConfigTest extends TestCase
         'COPILOT_AGENT_BASE_URL',
         'COPILOT_AGENT_TIMEOUT_SECONDS',
         'COPILOT_JWT_SECRET',
+        'COPILOT_INTERNAL_TOKEN',
+        'COPILOT_INTERNAL_TIMEOUT_SECONDS',
     ];
 
     protected function setUp(): void
@@ -213,6 +215,77 @@ final class CopilotConfigTest extends TestCase
         ]));
 
         self::assertSame(12, $config->getAgentTimeoutSeconds());
+    }
+
+    public function testReturnsInternalTokenWhenConfigured(): void
+    {
+        $token = str_repeat('a', 64);
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_internal_token' => $token,
+        ]));
+
+        self::assertSame($token, $config->getInternalToken());
+    }
+
+    public function testRaisesWhenInternalTokenMissing(): void
+    {
+        // Same fail-loud posture as the JWT secret: the dispatcher
+        // refuses to mint requests against the internal routes before
+        // it has a real token, so a wiring oversight surfaces at the
+        // first invalidate / warm rather than as a silent 401 chain.
+        $config = new CopilotConfig(new OEGlobalsBag([]));
+
+        $this->expectException(CopilotConfigException::class);
+        $this->expectExceptionMessage('copilot_internal_token');
+
+        $config->getInternalToken();
+    }
+
+    public function testRaisesWhenInternalTokenTooShort(): void
+    {
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_internal_token' => 'too-short',
+        ]));
+
+        $this->expectException(CopilotConfigException::class);
+        $this->expectExceptionMessage('at least 32 bytes');
+
+        $config->getInternalToken();
+    }
+
+    public function testEnvInternalTokenOverridesGlobals(): void
+    {
+        $envToken = str_repeat('e', 64);
+        $globalsToken = str_repeat('g', 64);
+        putenv('COPILOT_INTERNAL_TOKEN=' . $envToken);
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_internal_token' => $globalsToken,
+        ]));
+
+        self::assertSame($envToken, $config->getInternalToken());
+    }
+
+    public function testInternalTimeoutFallsBackToThreeSecondsWhenInvalid(): void
+    {
+        // Same defensive default as getAgentTimeoutSeconds — zero or
+        // negative would disable the timeout in Guzzle, which on an
+        // invalidate hook would block the clinical write that triggered
+        // it.
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_internal_timeout_seconds' => -1,
+        ]));
+
+        self::assertSame(3, $config->getInternalTimeoutSeconds());
+    }
+
+    public function testEnvInternalTimeoutOverridesGlobals(): void
+    {
+        putenv('COPILOT_INTERNAL_TIMEOUT_SECONDS=8');
+        $config = new CopilotConfig(new OEGlobalsBag([
+            'copilot_internal_timeout_seconds' => 3,
+        ]));
+
+        self::assertSame(8, $config->getInternalTimeoutSeconds());
     }
 
     public function testStandardScopesContainsTheMvpReadSurface(): void

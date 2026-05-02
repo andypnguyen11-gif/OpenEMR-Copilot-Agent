@@ -176,6 +176,79 @@ final class AgentHttpClientTest extends TestCase
         self::assertSame(['error' => 'invalid token'], $response->body);
     }
 
+    public function testPostInternalSendsJsonBodyAndInternalTokenHeader(): void
+    {
+        $this->httpClient->expects($this->once())
+            ->method('sendRequest')
+            ->with($this->callback(static function (RequestInterface $request): bool {
+                self::assertSame('POST', $request->getMethod());
+                self::assertSame(
+                    'http://agent.local:8500/api/agent/internal/warm',
+                    (string) $request->getUri(),
+                );
+                self::assertSame(['application/json'], $request->getHeader('Content-Type'));
+                self::assertSame(['application/json'], $request->getHeader('Accept'));
+                self::assertSame(['internal-token-xyz'], $request->getHeader('X-Internal-Token'));
+                // Confirm Authorization header is *not* set — the internal
+                // route must not be reachable via a bearer mis-default.
+                self::assertSame([], $request->getHeader('Authorization'));
+                self::assertSame(
+                    '{"patient_ids":["101","102"]}',
+                    (string) $request->getBody(),
+                );
+                return true;
+            }))
+            ->willReturn($this->stubResponse(200, '{"warmed":2,"failed":[]}'));
+
+        $response = $this->client->postInternal(
+            '/api/agent/internal/warm',
+            ['patient_ids' => ['101', '102']],
+            'internal-token-xyz',
+        );
+
+        self::assertSame(200, $response->statusCode);
+        self::assertSame(['warmed' => 2, 'failed' => []], $response->body);
+    }
+
+    public function testPostInternalRejectsRelativePath(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->client->postInternal('api/agent/internal/warm', ['patient_ids' => ['1']], 't');
+    }
+
+    public function testPostInternalRejectsEmptyToken(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->client->postInternal('/api/agent/internal/warm', ['patient_ids' => ['1']], '');
+    }
+
+    public function testPostInternalWrapsTransportFailures(): void
+    {
+        $transportError = new class extends \RuntimeException implements ClientExceptionInterface {};
+        $this->httpClient->method('sendRequest')->willThrowException($transportError);
+
+        $this->expectException(AgentServiceException::class);
+        $this->client->postInternal('/api/agent/internal/warm', ['patient_ids' => ['1']], 'token');
+    }
+
+    public function testPostInternalPropagatesNon2xxStatusFromAgent(): void
+    {
+        // 401 from the agent's internal-token guard must round-trip
+        // verbatim — the dispatcher decides whether to retry / log /
+        // fall through to TTL freshness.
+        $this->httpClient->method('sendRequest')
+            ->willReturn($this->stubResponse(401, '{"detail":"invalid token"}'));
+
+        $response = $this->client->postInternal(
+            '/api/agent/internal/warm',
+            ['patient_ids' => ['1']],
+            'wrong-token',
+        );
+
+        self::assertSame(401, $response->statusCode);
+        self::assertSame(['detail' => 'invalid token'], $response->body);
+    }
+
     private function stubResponse(int $status, string $body): ResponseInterface
     {
         $stream = $this->createMock(StreamInterface::class);

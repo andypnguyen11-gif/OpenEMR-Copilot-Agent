@@ -93,6 +93,65 @@ final readonly class CopilotConfig
     }
 
     /**
+     * Shared secret for the agent service's internal warm + invalidate
+     * routes (PR 15). Carried in the ``X-Internal-Token`` header by
+     * :class:`InvalidationDispatcher`; the Python verifier on the other
+     * side reads the same byte string from ``COPILOT_INTERNAL_TOKEN``.
+     *
+     * Distinct from :meth:`getJwtSecret` because the threat models differ:
+     * the JWT secret authorises a specific clinician for a specific
+     * patient_id, the internal token authorises the gateway process
+     * itself. Rotating one without the other is a common operational
+     * need; that's only possible if they're separate.
+     *
+     * Reads ``COPILOT_INTERNAL_TOKEN`` from the environment first so
+     * Railway / Docker deployments can configure the gateway without
+     * writing to ``sites/default/config.php``; falls back to the
+     * ``copilot_internal_token`` global for legacy / file-based config.
+     *
+     * @throws CopilotConfigException When the secret is unset or shorter
+     *                                than 32 bytes — same minimum-entropy
+     *                                guard as the JWT secret.
+     */
+    public function getInternalToken(): string
+    {
+        $env = getenv('COPILOT_INTERNAL_TOKEN');
+        $token = is_string($env) && $env !== ''
+            ? $env
+            : $this->globals->getString('copilot_internal_token', '');
+        if ($token === '') {
+            throw new CopilotConfigException('copilot_internal_token is not configured');
+        }
+        if (strlen($token) < 32) {
+            throw new CopilotConfigException(
+                'copilot_internal_token must be at least 32 bytes',
+            );
+        }
+        return $token;
+    }
+
+    /**
+     * Per-request timeout in seconds for fire-and-forget calls to the
+     * agent service's ``/api/agent/internal/*`` routes (PR 15). Kept
+     * deliberately short: the warm and invalidate paths are
+     * fire-and-forget from the clinician's perspective, so a sluggish
+     * agent service must not stall the OpenEMR write that triggered the
+     * invalidate. The default (3 s) is below the slow-lane chat
+     * timeout because cache-freshness work shouldn't compete with a
+     * live chat request for connection slots.
+     */
+    public function getInternalTimeoutSeconds(): int
+    {
+        $env = getenv('COPILOT_INTERNAL_TIMEOUT_SECONDS');
+        if (is_string($env) && $env !== '' && ctype_digit($env)) {
+            $timeout = (int) $env;
+        } else {
+            $timeout = $this->globals->getInt('copilot_internal_timeout_seconds', 3);
+        }
+        return $timeout > 0 ? $timeout : 3;
+    }
+
+    /**
      * Standard MVP scope set the gateway grants to a chat session when the
      * user's stored scopes are empty. PR 18 replaces this with a per-role
      * lookup; for the M-PR demo every logged-in clinician can see the full
