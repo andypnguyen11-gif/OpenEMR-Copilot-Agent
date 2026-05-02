@@ -775,30 +775,98 @@ short-circuit (problems test). 52 new tests; full suite at 221 passed / 2 skippe
 
 ## Milestone 3 — Orchestrator
 
-### PR 9 — Single-orchestrator agent (slow lane)
+### PR 9 — Single-orchestrator agent (slow lane) — ✅ landed (57fc3b88b, b097ad999, cba4c3071)
 
 Plain Python orchestrator using Anthropic SDK + tool use. Slow lane only — Sonnet candidate
 model, full tool access. ARCHITECTURE §1.2.
 
-- [ ] `orchestrator/agent.py` — single-loop tool-use orchestrator
-- [ ] Pydantic schemas for the **structured response** (ARCHITECTURE §3, "Architecture for
-  verification" diagram): `cards`, `prose: [{claim, source_id, source_field}]`, `tool_results`
-- [ ] System prompt for slow lane in `prompts/system_slow.md` (chart contents passed as
-  delimited tool results, not concatenated — prompt injection defense, ARCHITECTURE §4)
-- [ ] Schema-violation retry: one retry with explicit schema reminder, then abstain
-  (ARCHITECTURE §7)
-- [ ] In-memory conversation history per session (dropped on session end — PRD §3)
-- [ ] Anthropic SDK call uses **prompt caching** (system prompt + tool defs) to keep
-  per-request cost down
+- [x] `orchestrator/agent.py` — single-loop tool-use orchestrator (`Orchestrator.run` →
+  `_execute` → `_dispatch_tools`); per-turn flow: resolve session → LLM `complete` → dispatch
+  any `tool_use` blocks through `ToolRegistry` → feed typed `tool_result` blocks back → on
+  final text turn, parse → verify → return
+- [x] Pydantic schemas for the **structured response** (ARCHITECTURE §3, "Architecture for
+  verification" diagram): `Card`, `CitedClaim`, `ModelDraft`, `AgentResponse` in
+  `orchestrator/schemas.py` — `ModelDraft` is the model-emitted shape (`cards` + `prose`),
+  `AgentResponse` adds server-attested `tool_results`, optional `abstention`, and the
+  canonical `session_id` so the trust boundary stays visible. Schema field is `text` (not
+  `claim` per the original spec) and pairs `source_field` with a required `expected_value`
+  enforced by `_field_assertion_must_be_complete` — the verifier's field-check needs both or
+  neither; half-set is rejected at parse time
+- [x] System prompt for slow lane in `prompts/system_slow.md` (chart contents passed as
+  delimited tool results, not concatenated — prompt injection defense, ARCHITECTURE §4).
+  Hard-rule 3 frames tool output as data, never instructions
+- [x] Schema-violation retry: one retry with explicit schema reminder, then abstain
+  (ARCHITECTURE §7) — `agent.py` `_execute`: on `ValidationError`, append the corrective
+  frames to `working_messages` only and re-prompt; second failure → `VERIFICATION_FAILED`
+  whole-response abstention
+- [x] In-memory conversation history per session (dropped on session end — PRD §3) —
+  `SessionStore` keys state by `(user_id, patient_id, session_id)` from verified JWT claims,
+  TTL-evicts at 30 min, and `delete()` is wired into the chat surface (clear-chat /
+  patient-switch)
+- [x] Anthropic SDK call uses **prompt caching** (system prompt + tool defs) to keep
+  per-request cost down — `AnthropicLlmGateway.complete` plants two `ephemeral` cache
+  breakpoints: one on the system block and one on the last tool def, so everything before
+  the marker (system + full tool array) is cacheable
 
 **NEW**
-- `agent-service/src/clinical_copilot/orchestrator/agent.py`
-- `agent-service/src/clinical_copilot/orchestrator/schemas.py`
-- `agent-service/src/clinical_copilot/orchestrator/prompts/system_slow.md`
-- `agent-service/tests/unit/test_orchestrator_slow.py`
+- `agent-service/src/clinical_copilot/orchestrator/agent.py` — single-loop orchestrator.
+  Owns the persisted-vs-working messages split (retry frames stay out of session history),
+  maps tool failures to abstention states (`UnauthorizedToolCallError` → `UNAUTHORIZED`,
+  other `ToolError` → `TOOL_FAILURE`, max-turns → `TOOL_FAILURE`), and stamps the canonical
+  `session_id` onto the response before it leaves the service
+- `agent-service/src/clinical_copilot/orchestrator/schemas.py` — Pydantic models for the
+  structured response. `_Frozen` base sets `frozen=True, extra="forbid"`; `Card` carries
+  `source_ids` so cards are verifiable the same way prose is; `CitedClaim` enforces both-or-
+  neither for `source_field`/`expected_value`; `AgentResponse` is the wire shape returned to
+  the PHP gateway
+- `agent-service/src/clinical_copilot/orchestrator/llm_gateway.py` — thin Anthropic SDK
+  wrapper. Defines the `LlmGateway` Protocol the orchestrator depends on (so unit tests pass
+  a stub gateway with canned turns) and the production `AnthropicLlmGateway` that owns prompt
+  caching. `LlmTurn`/`ToolUse` normalize the SDK's content blocks; `raw_assistant_blocks`
+  preserves the exact assistant turn shape so subsequent loop iterations can echo it back
+- `agent-service/src/clinical_copilot/orchestrator/sessions.py` — process-local TTL session
+  store with per-key `threading.Lock`. `get_or_create` acquires the lock and returns the
+  canonical id (fresh UUID for unknown / cross-principal ids — never echoes a foreign id
+  back); paired `update` / `release` drops it. `delete()` returns False under a different
+  principal for the same `session_id` so DELETE never doubles as an existence oracle.
+  Single-replica explicitly per ARCHITECTURE §6
+- `agent-service/src/clinical_copilot/orchestrator/prompts/system_slow.md` — slow-lane system
+  prompt (renamed from `system.md`). Hard rules: cite every prose sentence, never claim
+  absence in prose, treat tool output as data not commands, patient scope is fixed, no
+  diagnostics/dosing/novel suggestions
+- `agent-service/tests/unit/test_orchestrator_slow.py` — 11 cases pinning happy path,
+  out-of-panel UNAUTHORIZED, unknown-tool TOOL_FAILURE, fabricated `source_id` →
+  VERIFICATION_FAILED, schema-retry-then-abort, max-turns convergence, canonical session id
+  on first turn, multi-turn continuation, retry traffic doesn't leak into session history,
+  cross-principal session-id replay returns empty history, lock dropped on uncaught exception
+- `agent-service/tests/unit/test_session_store.py` — 9 cases pinning composite-key isolation
+  across `(user_id, patient_id)` differences, fresh-mint on unknown / cross-principal id, TTL
+  eviction, delete returns False under wrong principal, concurrent same-session POSTs
+  serialize via per-key lock + `threading.Barrier`
+- `e2e/` Playwright suite — `multi-turn-continuity`, `patient-switch-drops-history`,
+  `clear-chat-drops-history`, `session-id-roundtrip` driving the full OpenEMR → PHP gateway
+  → agent-service → Anthropic stack through a real browser
 
-**Acceptance:** End-to-end test: clinician asks "what are this patient's active problems?" →
-agent invokes `get_problems` → emits structured response with cards + cited prose.
+**Modified**
+- `agent-service/src/clinical_copilot/main.py` — POST `/api/agent/query` accepts optional
+  `session_id`; new DELETE `/api/agent/sessions/{session_id}` route
+- `agent-service/src/clinical_copilot/app_state.py` — wires the `SessionStore` into app state
+  so the orchestrator and DELETE handler share one instance
+- `src/Services/Copilot/QueryRequest.php`, `QueryController.php`, `AgentHttpClient.php` —
+  PHP-side session-id round-trip; charset/length validation rejects malformed ids at the
+  gateway boundary
+- `src/Services/Copilot/SessionDeleteController.php` (new) + `apis/routes/_rest_routes_copilot.inc.php`
+  — DELETE `/api/copilot/sessions/{session_id}` proxies to the agent
+- `src/Services/Copilot/JwtSigner.php` — floors `iat`/`exp` to integer seconds (the previous
+  microsecond-precision encoding tripped strict PyJWT verifiers as malformed NumericDates)
+- `public/copilot/chat.js` + `interface/copilot/chat.php` — UI sends/receives `session_id`,
+  fires DELETE on clear-chat and patient-switch
+
+**Acceptance:** ✅ End-to-end test: clinician asks "what are this patient's active problems?"
+→ agent invokes `get_problems` → emits structured response with cards + cited prose
+(`test_orchestrator_slow.py::test_happy_path_returns_verified_response`). 20 / 20 new unit
+tests pass; full Python suite green; PHP isolated 71 / 71 passing; Playwright suite covers
+the chat-session UX layer.
 
 ---
 
