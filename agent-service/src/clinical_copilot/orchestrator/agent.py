@@ -163,6 +163,7 @@ class Orchestrator:
                 request_id=request_id,
                 prior_state=prior_state,
                 config=config,
+                lane=lane,
             )
             self._sessions.update(
                 claims,
@@ -188,6 +189,7 @@ class Orchestrator:
         request_id: str,
         prior_state: SessionState,
         config: LaneConfig,
+        lane: Lane,
     ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult]]:
         """Run one user turn against the LLM tool-use loop.
 
@@ -294,7 +296,11 @@ class Orchestrator:
                 )
                 continue
 
-            verified = self._verifier.verify(draft=draft, tool_results=tool_results)
+            verified = self._verifier.verify(
+                draft=draft,
+                tool_results=tool_results,
+                lane=lane,
+            )
             if verified.abstention is not None:
                 # Verifier rejected — same rollback contract as a tool
                 # abstention. The model's draft is unreliable; nothing

@@ -16,7 +16,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from clinical_copilot.tools.records import ToolResult
-from clinical_copilot.verification.abstention import Abstention
+from clinical_copilot.verification.abstention import Abstention, ClaimAbstention
 
 
 class _Frozen(BaseModel):
@@ -102,6 +102,14 @@ class AgentResponse(_Frozen):
     are returned for traceability — the side panel uses them to build
     the "show source" hover.
 
+    ``dropped_claims`` is the slow-lane sidecar (PR 12 / ARCHITECTURE §3
+    granularity rule). Slow-lane verification removes offending items
+    from ``cards`` / ``prose`` and appends one entry per drop here so
+    the UI can render a redaction marker where the item used to be.
+    Empty on every fast-lane response and on slow-lane responses that
+    pass verification cleanly — its presence implies a partial trust
+    failure, while a non-None ``abstention`` implies a total one.
+
     ``session_id`` is the server's canonical id for the conversation
     this response belongs to. The client echoes it on the next turn to
     continue the session; an unknown/foreign id at the next turn is
@@ -120,4 +128,5 @@ class AgentResponse(_Frozen):
     prose: list[CitedClaim]
     tool_results: list[ToolResult]
     abstention: Abstention | None = None
+    dropped_claims: list[ClaimAbstention] = Field(default_factory=list)
     session_id: str = Field(default="", max_length=64)
