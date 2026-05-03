@@ -1,0 +1,25 @@
+# Warmer cron service for the Co-Pilot agent (PR 27).
+#
+# Railway runs this image as a one-shot job on the cron schedule below; each
+# run pings the agent's /healthz to keep the agent-service replica warm and
+# avoid the cold-start tail that would blow the fast-lane SLO (p95 ≤ 8s) on
+# the first request after an idle gap.
+#
+# Deploy this as a separate Railway service in the same project as the
+# agent-service. Point it at this directory; the railway CLI / dashboard
+# will pick up Dockerfile + cron schedule from this file.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Every 4 minutes — Railway's idle-spin-down timer is conservative but the
+# cold-start tail on agent-service is dominated by Python import + warm-up
+# of httpx / SQLAlchemy connection pools, so 4 min keeps the pool primed
+# without spamming the agent.
+cronSchedule = "*/4 * * * *"
+# One-shot, do not restart on failure — a flap during a deploy or a brief
+# 503 is normal; Railway logs the failed run and the next cron invocation
+# is the retry.
+restartPolicyType = "NEVER"

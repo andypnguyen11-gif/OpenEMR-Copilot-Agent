@@ -171,6 +171,101 @@ of editing the Makefile.
 Production env vars are configured via the Railway dashboard, not via
 checked-in config.
 
+## Production deployment (PR 27)
+
+This section is the runbook for the deployed demo on Railway. Two services
+live in the same Railway project:
+
+- `agent-service` — this directory (Python/FastAPI sidecar).
+- `agent-service-warmer` — `agent-service/warmer/` (cron-driven curl ping).
+
+OpenEMR runs in its own Railway service from the repo root.
+
+### Production env-var checklist (`agent-service`)
+
+Set every row marked **prod** via the Railway dashboard before the first
+deploy. None of these have safe defaults outside development.
+
+| Var | Notes |
+|---|---|
+| `APP_ENV` | Set to `production`. Triggers the required-var enforcement at startup so a missing secret fails the deploy instead of silently using a dev default. |
+| `COPILOT_HMAC_SECRET` | 32-byte hex string (`openssl rand -hex 32`). Must equal `copilot_jwt_secret` in OpenEMR globals; rotation procedure under [Shared HMAC secret rotation](#shared-hmac-secret-rotation). |
+| `ANTHROPIC_API_KEY` | LLM key for the orchestrator. |
+| `FHIR_BASE_URL` | OpenEMR FHIR R4 base — public URL of the OpenEMR Railway service plus `/apis/default/fhir`. Once the private-domain flip below lands, this swings to `http://openemr.railway.internal:<port>/apis/default/fhir`. |
+| `DATABASE_URL` | Postgres DSN supplied by the Railway Postgres plugin (`agent-db`). |
+| `COPILOT_AUDIT_SALT` | 32-byte hex string. Independent from the HMAC secret. |
+| `OAUTH_CLIENT_ID` | From `register_oauth_client.py` output (per OpenEMR environment). |
+| `OAUTH_PRIVATE_KEY_PEM` | **Multi-line PEM with `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` markers preserved.** Railway's dashboard can strip line breaks if pasted carelessly — verify by reading the env back and confirming the markers are intact. A stripped value surfaces as `Could not parse the provided public key` on every FHIR tool call. |
+| `OAUTH_KEY_ID` | Same `kid` used at keypair generation time. |
+| `OAUTH_TOKEN_URL` | OpenEMR's `oauth2/default/token` (site root, *not* under `/apis/default/`). |
+| `LANGSMITH_API_KEY` | Optional but recommended; PR 20 trace export. |
+
+### Production env-var checklist (OpenEMR PHP service)
+
+These live in OpenEMR globals (DB) or Railway env, depending on how the
+gateway resolves them — see `src/Services/Copilot/Config/CopilotConfig.php`.
+
+| Var / Global | Purpose |
+|---|---|
+| `copilot_agent_base_url` | Base URL of the `agent-service` Railway service. Public form: `https://<agent-service>.up.railway.app`. Private-domain target: `http://agent-service.railway.internal:8000` (see below). |
+| `copilot_jwt_secret` | Equal to `agent-service`'s `COPILOT_HMAC_SECRET`. |
+
+### Warm-keep cron service (`agent-service-warmer`)
+
+Cold starts on the Railway hobby tier blow the fast-lane SLO (p95 ≤ 8s) on
+the first request after an idle window. The warmer is a separate Railway
+service that runs `curl --fail $WARM_URL` every 4 minutes, keeping the
+agent-service replica primed.
+
+One-time Railway setup:
+
+1. In the Railway project dashboard → **New service** → **Deploy from
+   GitHub repo** → select this repo → set **Root directory** to
+   `agent-service/warmer`.
+2. Railway picks up `agent-service/warmer/railway.toml`, which sets
+   `cronSchedule = "*/4 * * * *"` and points at the local Dockerfile.
+3. Set `WARM_URL` on the new service. While the agent-service is still
+   publicly routable, use its `https://<agent-service>.up.railway.app/healthz`
+   URL. Once the private-domain flip lands, switch to
+   `http://agent-service.railway.internal:8000/healthz` (the Dockerfile's
+   default).
+4. Verify by tailing logs on the warmer service — each run should print a
+   single 200 response and exit zero.
+
+The warmer is intentionally minimal (alpine + curl, ~5 MB image): no
+Python, no SDK, no dependencies that could drift from `agent-service`.
+
+### Private-domain target (deferred — not flipped on the deployed demo)
+
+Goal state: `agent-service` is reachable only from inside the Railway
+project, not from the public internet. The OpenEMR PHP gateway and the
+warmer reach it via Railway's private DNS (`*.railway.internal`); the
+public networking on `agent-service` is removed.
+
+Why this isn't flipped today: requires (a) project-level private
+networking enabled in the Railway dashboard, (b) a coordinated env-var
+swap on the OpenEMR service (`copilot_agent_base_url` → private URL) and
+the warmer (`WARM_URL` → private URL), and (c) a smoke-test loop on
+prod. Each of those is a deploy that could break the live demo. It is
+queued post-deadline rather than rushed for submission day.
+
+When flipping:
+
+1. In the Railway dashboard, enable **Private Networking** at the project
+   level (it is opt-in).
+2. Remove `agent-service`'s public domain (Settings → Networking →
+   Remove Public Networking).
+3. Update `copilot_agent_base_url` on the OpenEMR service to
+   `http://agent-service.railway.internal:8000`.
+4. Update `WARM_URL` on the warmer service likewise (or remove the
+   override and let the Dockerfile default apply).
+5. Smoke-test: load Daily Brief, send one chat query, confirm both
+   succeed and the agent's logs show the request arriving over the
+   `*.railway.internal` host.
+
+Until step 1 is enabled, the `*.railway.internal` hostname does not
+resolve, so flipping any of steps 3–4 first will break the demo.
+
 ## OpenEMR OAuth2 client registration
 
 The agent service authenticates to OpenEMR's FHIR endpoint as a backend
