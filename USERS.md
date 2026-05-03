@@ -1,8 +1,10 @@
 # USERS.md — Clinical Co-Pilot
 
 **Status:** Draft for case-study submission
-**Last updated:** 2026-04-27
+**Last updated:** 2026-05-03
 **Role:** Source of truth for agent scope. ARCHITECTURE.md traces back to this document; every agent capability must map to a use case below.
+
+> **Instructor-feedback revision (2026-05-03).** Three additional use cases — chronic-disease lab-cadence surveillance (UC5), intake-vs-allergy-table reconciliation (UC6), and resident-supervision review (UC7) — are added below to reach the ≥7-narrative threshold the case-study rubric expects. The underlying capabilities (the 7-tool registry and the discrepancy engine's rule packs) already supported these at MVP; the gap was scope on this document, not architecture. The eval suite is being expanded in lockstep — see TASKS.md "Instructor-feedback punch list" for the corresponding eval-fixture and README-onboarding work items.
 
 ---
 
@@ -17,11 +19,11 @@ The agent enters the user's day at two distinct moments with very different late
 1. **Pre-clinic, when available — anywhere from 0 to 30 minutes before doors open.** *When* the user has time, they sit at a desk going through today's panel one patient at a time, building context to walk into rooms; the agent is allowed 10–20 seconds per query and verification depth is full. The architecture does *not* assume this window exists — the slow-lane pre-warm runs as a server-side background pass triggered by schedule load, login, or cron, so the cache is warm whether or not the clinician engages with the Daily Brief. Real-world prep time varies from "none" (running late, back-to-back schedule) to a calm 30 minutes; both cases are designed for.
 2. **Between rooms, ~90 seconds.** The user has just left room 4, is walking to room 5, and needs a refresher in time to put their hand on the door. The agent has under 5 seconds. Verification depth is lighter (it leans on flags pre-computed in the slow lane). The output is glanced at.
 
-Four use cases cover the day. Three of them — *what's changed since last visit*, *active problems / meds / allergies / abnormal labs*, and *what should I know before walking in* — are concrete chart-reading tasks that today take dense minutes and produce error under pressure. The fourth — *what conflicts or missing data should I verify* — is the **differentiating feature**: a synthesis the user simply cannot get from a dashboard, because discrepancies aren't a list view, they're a cross-source comparison the chart UI doesn't make. This fourth use case is also the surface where the agent honors the case study's domain-constraint requirement, by flagging what the chart already says rather than generating new clinical recommendations.
+Seven use cases cover the day. Four of them — *what's changed since last visit*, *active problems / meds / allergies / abnormal labs*, *what conflicts or missing data should I verify*, and *what should I know before walking in* — are the original spine of the agent and the surfaces the MVP demo runs against. Three more — *which chronic-disease patients are overdue for monitoring labs*, *did the patient mention an allergy at intake that's not in the allergy table*, and *what did my resident touch on this patient since I last reviewed* — were added on instructor feedback (2026-05-03) to surface narratives the underlying machinery already supports but USERS.md had not previously enumerated. *What conflicts or missing data should I verify* remains the **differentiating feature**: a synthesis the user simply cannot get from a dashboard, because discrepancies aren't a list view, they're a cross-source comparison the chart UI doesn't make. It is also the surface where the agent honors the case study's domain-constraint requirement, by flagging what the chart already says rather than generating new clinical recommendations. Use cases 5 and 6 are sharper instances of that same domain-constraint posture; use case 7 is the supervision moment that pairs with the secondary RBAC scenario in §1.4.
 
 Each use case in this document includes an explicit defense of why a conversational agent — and not a dashboard, sorted list, or better chart view — is the right shape for it. That defense is the bar the case study sets, and it is the bar this user makes meetable: a clinician with no chart memory, under time pressure, asking open-ended questions whose follow-ups are not knowable in advance is exactly the user-shape that makes a conversational agent genuinely chosen rather than imposed.
 
-A secondary RBAC scenario — *resident under attending supervision* — is included as an authorization story (same workflow, supervisor read-access to resident activity) to demonstrate multi-user enforcement. It is not a second user persona with its own workflow.
+The secondary RBAC scenario — *resident under attending supervision* — is included as an authorization story to demonstrate multi-user enforcement. The supervision *workflow* is now use case 7 (the attending's end-of-clinic review surface); the secondary RBAC role still exists primarily so the architecture's per-tool RBAC and audit-log durability have a concrete second use to demonstrate against. The resident's day still maps to use cases 1–6 with extra audit posture, not to a parallel set of capabilities.
 
 This document was derived from the case study, OpenEMR's actual data model, and safety-design heuristics — not from primary interviews with real cross-coverage clinicians. That caveat is honored explicitly in §1.3.
 
@@ -77,14 +79,14 @@ Validation with a real cross-coverage clinician is post-MVP work and is called o
 
 ### 1.4 Secondary RBAC user: resident under attending supervision
 
-A second access pattern is included to demonstrate multi-user authorization, not to add a second workflow:
+A second access pattern is included to demonstrate multi-user authorization. The role itself doesn't add new agent capabilities — but the supervision *moment* (an attending reviewing what their resident did) is its own narrative and is enumerated as use case 7 in §3.
 
 - **Resident** — same read scope as the covering clinician, but every agent action is logged for supervisor review.
 - **Supervisor (attending)** — read access to the supervised resident's activity log.
 
 The supervisor role expands **audit visibility, not data permissions.** A supervisor sees the same patient PHI a covering attending would see in their own panel; what's added is the ability to read a supervised resident's activity log. No role in MVP unlocks PHI beyond what its base clinical scope already grants.
 
-This is intentionally light. It exists so the architecture's per-tool RBAC enforcement and audit-log durability have a concrete second use to demonstrate against. The agent does not gain new capabilities for the resident user; it gains a different audit posture.
+This is intentionally light. It exists so the architecture's per-tool RBAC enforcement and audit-log durability have a concrete second use to demonstrate against. The agent gives the resident the same retrieval/synthesis capabilities it gives an attending; what differs is the audit posture and the supervisor's read access to that audit posture (use case 7).
 
 ### 1.5 Authorized users in MVP
 
@@ -155,6 +157,12 @@ The user catches up on notes, returns calls, eats. The agent is not in this loop
 
 Same shape as 7:35 AM but compressed. The user revisits the Daily Brief for any afternoon-only patients, or skims the same flagged patients as a refresher.
 
+### 5:00 PM — supervision review (attending only)
+
+If the user is acting as a supervising attending for a resident on the same panel, they open the **supervision review** view at end of clinic. For each patient the resident touched, the agent surfaces a short audit-log-driven summary of what the resident asked, what flags were surfaced, and which abstentions fired. The attending reads to confirm nothing the resident saw needs follow-up cosignature or a teaching point. Read-only; this surface does not let the attending impersonate the resident or alter the resident's audit trail.
+
+**Agent latency budget here: 10–20s per patient (slow lane).** Use case 7.
+
 ### 5:30 PM — wrap up
 
 End of clinic. The agent exits the day. Conversation history is dropped on session end (no cross-session memory at MVP).
@@ -163,8 +171,9 @@ End of clinic. The agent exits the day. Conversation history is dropped on sessi
 
 | Moment | Surface | Lane | What the user is doing |
 |---|---|---|---|
-| 7:35 – 8:55 AM | Daily Brief | Slow | Building baseline context across the panel |
+| 7:35 – 8:55 AM | Daily Brief | Slow | Building baseline context across the panel; chronic-disease lab-cadence sweep (UC5); intake-vs-allergy-table reconciliation (UC6) |
 | 8:55 AM – 5:30 PM | In-chart Side Panel | Fast | Refreshing context before each room; chasing follow-up threads |
+| 5:00 PM (supervisors only) | Supervision review | Slow | Reviewing resident activity per patient (UC7) |
 | Note-writing, calls, orders, education | — | — | **Out of scope.** Agent does not write notes, place orders, or speak to patients. |
 
 ---
@@ -234,6 +243,55 @@ Each use case below answers the case study's bar: *why a conversational agent an
 | **Success criterion** | 100% of factual claims cited; prioritization picks issues a chart-experienced clinician would also flag, validated against a hand-graded subset; abstains explicitly when grounding is weak. |
 | **Known failure modes** | Eval ground truth is harder for prioritization ("what should the briefing emphasize?") than for retrieval. Likely needs a human-graded eval subset. Tracked as PRD §14 open question 4. |
 
+### Use Case 5 — "Which of my chronic-disease patients are overdue for monitoring labs?"
+
+| Field | Value |
+|---|---|
+| **Trigger** | Pre-clinic Daily Brief — panel-level sweep across diabetics (A1c cadence), patients on amiodarone (TFT/LFT), patients on chronic statins (lipid panel), CKD patients (BMP cadence), etc. Also reachable per-patient via the side panel. |
+| **Lane** | Slow (panel sweep); Fast (cache read on a single patient). |
+| **Latency budget** | ≤20s p95 (slow); ≤5s p50 (fast cache hit). |
+| **Inputs** | Today's panel (slow) or `patient_id` (fast). |
+| **Tools called** | `get_problems` (to identify chronic-disease cohorts), `get_meds` (to identify drug-driven cadences), `get_labs` (to read most-recent results and dates), `get_flags` (to read precomputed staleness flags). |
+| **Output shape** | Per-patient list of overdue lab cadences with the chronic-disease anchor, the expected interval, and the date of the last result. Citations point to the meds/problems that establish the cadence and to the most recent lab record. |
+| **Verification surface** | The discrepancy engine's `data_quality.yaml` rule pack already covers stale-lab flagging (PRD §5 layer 5, ARCHITECTURE §6). The agent reads the engine output as a tool, doesn't author cadences at runtime. Citations field-checked. |
+| **Why an agent (not a dashboard)** | OpenEMR exposes lab dates and meds in different parts of the chart and does not natively join "patient is on amiodarone → TFT due every 6 months → last TFT was 11 months ago." The cadence rule depends on *which* chronic disease/med is active for *this* patient, so a static "show overdue labs" view either over-flags (every lab on every patient) or under-flags (no patient-specific cadence). The agent ranks staleness against the patient's own clinical context. The cross-coverage clinician also asks the natural follow-up — *"any prior TFT abnormalities?"*, *"is the dose still 200 mg/d?"* — which threads off the flag. |
+| **Domain-constraint scope** | **In scope:** stale-lab flagging against a small, encoded cadence rule set (A1c, lipid panel, BMP/CMP, TFT-on-amiodarone). **Out of scope:** generating new cadence recommendations, specialty-guideline checking, novel monitoring protocols. The agent flags what the chart cadence rules already encode; it does not invent intervals. |
+| **Success criterion** | Adversarial fixture of seeded stale-lab patients — agent surfaces ≥90% with correct chronic-disease anchor and last-result date; zero fabricated cadences. |
+| **Known failure modes** | Patients whose chronic-disease cohort is implied in the note text but not coded into the problem list; the rule set misses these by design. Surfaced as eval gaps; resolved by problem-list curation, not by agent reasoning. |
+
+### Use Case 6 — "Did the patient mention an allergy at intake that isn't on the allergy list?"
+
+| Field | Value |
+|---|---|
+| **Trigger** | Pre-clinic Daily Brief flag for patients with a recent intake form / triage note. Side panel offers a "any unreconciled intake mentions?" query. |
+| **Lane** | Slow (precomputed); Fast (cache read for drill-in). |
+| **Latency budget** | ≤20s p95 (slow); ≤5s p50 (fast). |
+| **Inputs** | `patient_id`. |
+| **Tools called** | `get_allergies` (structured AllergyIntolerance table), `get_notes` (intake / triage document text), `get_flags` (cache read of consistency engine output). |
+| **Output shape** | Each unreconciled mention is rendered as `intake says X / structured allergy list does not contain X`, with citations pointing at both the note span and the (absent or differing) AllergyIntolerance entry. The agent does not assert which side is correct — it surfaces the inconsistency for the clinician to resolve. |
+| **Verification surface** | The discrepancy engine's `consistency.yaml` rule pack (PRD §5 layer 5) already covers narrative-vs-structured allergy mismatches. The agent reads the engine output as a tool. Field-checked citations on every claim. |
+| **Why an agent (not a dashboard)** | The mismatch sits across structured (AllergyIntolerance table) and narrative (intake-form text, often free-text or scanned) records. A static dashboard cannot read narrative; a chart-text full-text search can find candidate spans but cannot decide which spans are allergy *mentions* vs. allergy-history negation ("no known drug allergies"), which is a parsing-and-comparison task. The agent's follow-up surface — *"what reaction did the patient describe?"*, *"is there a prior episode of this in the chart?"* — is the second-order value the clinician needs and a list view does not provide. |
+| **Domain-constraint scope** | **In scope:** flagging a substance/agent named in the intake-form text that is not present in the structured AllergyIntolerance list (or whose reaction differs). **Out of scope:** authoring the AllergyIntolerance entry, deciding which side is correct, reasoning about cross-reactivity beyond what the chart already encodes. |
+| **Success criterion** | Adversarial fixture of seeded intake-vs-table mismatches — agent surfaces ≥90% with correct narrative span and structured-record citation; zero fabricated allergens. |
+| **Known failure modes** | Scanned intake forms (image-only PDFs) the agent cannot read; surfaces as `NO_DATA` rather than a false-clean. Negation handling in narrative ("no allergy to penicillin") is the dominant failure surface and is covered by adversarial eval cases. |
+
+### Use Case 7 — "What did my resident touch on this patient since I last reviewed?" *(supervisor surface)*
+
+| Field | Value |
+|---|---|
+| **User** | **Supervising attending in supervision role** (the secondary RBAC user from §1.4 — *not* the cross-coverage attending). The resident does not see this surface for themselves. |
+| **Trigger** | End-of-clinic supervision review (typical), or ad-hoc when the attending is preparing a teaching moment / cosign decision. Per-patient, scoped to the panel both attending and resident are authorized for. |
+| **Lane** | Slow. This is off the critical between-rooms path; the attending has time. |
+| **Latency budget** | ≤20s p95. |
+| **Inputs** | `patient_id`, `since` timestamp (default = since the supervisor last opened this patient's review). |
+| **Tools called** | `get_audit` reads the `audit_log` and `agent_traces` rows scoped to the supervised resident and patient (PR 2 schema, PR 19 wiring); `get_flags` (to reflect which discrepancy flags the resident saw); `get_meds`/`get_problems` for current-state context the summary references. |
+| **Output shape** | Chronological summary: resident asked X at HH:MM, agent surfaced flags A/B, agent abstained on C with reason `<state>`. Each entry cited to the audit row. No PHI synthesis beyond what the resident's session already exposed; no new clinical reasoning. |
+| **Verification surface** | Audit-log reads are exact records, not LLM-generated content; the synthesis paragraph (timeline summary) is citation-required and field-checked against the audit rows it references. |
+| **Why an agent (not a dashboard / sorted list)** | A raw audit-log table is unreadable under cosignature pressure: the attending wants *"did the resident miss anything that needs my attention,"* not a chronological dump. The agent compresses the audit rows into a teaching-moment-or-not summary, ranks abstentions by whether they affected a clinical decision the resident made, and supports follow-up — *"why did the agent abstain on the metoprolol question?"*, *"did the resident see the allergy flag?"* — which a tabular UI does not. |
+| **Domain-constraint scope** | **In scope:** summarizing audit-log rows the attending is already authorized to read. **Out of scope:** retroactively re-running the resident's queries with attending privileges, generating "what the resident should have asked" suggestions, modifying the resident's audit trail. The agent reads supervision data; it does not author teaching content. |
+| **Success criterion** | Every fact in the summary cites an audit-log or trace row; zero fabricated events; abstention surfaces every audit row the resident's session generated, even ones with `NO_DATA` or `TOOL_FAILURE` outcomes (those are the teaching surface). |
+| **Known failure modes** | Audit-log retention boundary — events older than retention horizon are absent, which the agent surfaces explicitly rather than silently dropping. Cross-resident attribution if the supervisor covers multiple residents on the same panel — handled by the `since` parameter and explicit resident scoping in the audit query. |
+
 ---
 
 ## 4. Why a Conversational Agent (overarching defense)
@@ -263,24 +321,26 @@ Every architecture capability serves a use case here. This table is the contract
 
 | Architecture capability (ARCHITECTURE.md / PRD ref) | Serves use case | Why it's needed |
 |---|---|---|
-| Daily Brief surface (PRD §7) | 1, 2, 3, 4 | Pre-clinic prep moment; precomputes flags that the fast lane reads |
-| In-chart Side Panel surface (PRD §7) | 1, 2, 3, 4 | Between-room moment; bound to current patient |
-| Slow lane (10–20s budget) (PRD §4) | 1, 2, 3 | Pre-clinic prep tolerates depth; full verification |
-| Fast lane (<5s budget) (PRD §4) | 2, 4 | Between-room is read while walking; lighter verification + cache |
-| Retrieval-first rendering (PRD §5 layer 2) | 1, 2, 4 | Hard facts (meds/allergies/labs) — can't be hallucinated if not generated |
-| Citation-required structured output (PRD §5 layer 3) | 1, 2, 3, 4 | Every prose claim attributable to a record |
-| Field-level verification check (PRD §5 layer 4) | 1, 2, 3, 4 | Catches dominant fabrication mode programmatically |
-| Discrepancy / domain-constraint engine (PRD §5 layer 5) | 3 (primary); 4 (consumes flags) | Differentiating feature; honors case-study domain-constraint requirement |
-| Abstention taxonomy (NO_DATA / VERIFICATION_FAILED / TOOL_FAILURE / UNAUTHORIZED) (PRD §5) | 1, 2, 3, 4 | "I don't know" is a good answer; the four states have different UX |
-| Per-tool RBAC enforcement (PRD §6) | All; secondary user explicitly | Auth is verification; resident/supervisor demonstration |
-| Patient context binding (session-immutable) (PRD §6) | All | Structural prevention of wrong-patient drift |
-| Multi-turn within session (PRD §3) | 1 (primary); 3 (drill-in); 2, 4 (occasional) | Threaded follow-ups are the user's natural pattern |
+| Daily Brief surface (PRD §7) | 1, 2, 3, 4, 5, 6 | Pre-clinic prep moment; precomputes flags that the fast lane reads |
+| In-chart Side Panel surface (PRD §7) | 1, 2, 3, 4, 5, 6 | Between-room moment; bound to current patient |
+| Supervision review surface (new — UC7) | 7 | End-of-clinic supervisor read of resident audit + traces; no new agent capability, new render surface |
+| Slow lane (10–20s budget) (PRD §4) | 1, 2, 3, 5, 6, 7 | Pre-clinic prep / supervision review tolerate depth; full verification |
+| Fast lane (<5s budget) (PRD §4) | 2, 4, 5 (cache hit), 6 (cache hit) | Between-room is read while walking; lighter verification + cache |
+| Retrieval-first rendering (PRD §5 layer 2) | 1, 2, 4, 5, 6, 7 | Hard facts (meds/allergies/labs/audit rows) — can't be hallucinated if not generated |
+| Citation-required structured output (PRD §5 layer 3) | 1, 2, 3, 4, 5, 6, 7 | Every prose claim attributable to a record |
+| Field-level verification check (PRD §5 layer 4) | 1, 2, 3, 4, 5, 6, 7 | Catches dominant fabrication mode programmatically |
+| Discrepancy / domain-constraint engine (PRD §5 layer 5) | 3 (primary); 4 (consumes flags); 5 (data_quality.yaml — stale labs); 6 (consistency.yaml — narrative vs. structured allergy) | Differentiating feature; honors case-study domain-constraint requirement; UC5/UC6 are sharper instances of the same posture |
+| Abstention taxonomy (NO_DATA / VERIFICATION_FAILED / TOOL_FAILURE / UNAUTHORIZED) (PRD §5) | 1, 2, 3, 4, 5, 6, 7 | "I don't know" is a good answer; the four states have different UX |
+| Per-tool RBAC enforcement (PRD §6) | All; UC7 explicitly | Auth is verification; UC7 is where the supervisor's read scope is enforced at the audit-log tool boundary |
+| Patient context binding (session-immutable) (PRD §6) | 1–6 | Structural prevention of wrong-patient drift; UC7 is panel-scoped, not patient-bound |
+| Multi-turn within session (PRD §3) | 1 (primary); 3 (drill-in); 5, 6 (drill-in); 7 (drill-in); 2, 4 (occasional) | Threaded follow-ups are the user's natural pattern |
 | HMAC-signed JWT (HS256) trust handoff (PRD §6, ARCH §1) | All | Trust boundary between PHP gateway and Python sidecar. HS256 (shared-secret HMAC) is used for service-to-service trust within a controlled internal boundary, not for third-party identity federation — RS256 is unnecessary overhead at this trust scope. |
-| FHIR/REST data access (PRD §7) | All | OpenEMR's existing ACL is the source of truth; no direct DB access |
-| Two-model strategy (Sonnet/Haiku candidates) (PRD §4, §8) | 1, 3 → slow; 2, 4 → fast | Latency budgets demand model-tier split |
+| FHIR/REST data access (PRD §7) | 1–6 | OpenEMR's existing ACL is the source of truth; no direct DB access |
+| Audit-log read endpoint (PR 19) | 7 | UC7 reads the same rows every other use case writes; no separate retention path |
+| Two-model strategy (Sonnet/Haiku candidates) (PRD §4, §8) | 1, 3, 5, 6, 7 → slow; 2, 4 → fast | Latency budgets demand model-tier split |
 | Non-streaming responses (PRD §5) | All | Whole-response verification depends on buffer-then-display |
-| Audit log durability (PRD §6, §10) | All; secondary user | HIPAA-relevant; supervisor view depends on it |
-| LangSmith observability (PRD §8) | All | Per-request trace, token cost, latency — case-study required; annotation queue feeds use-case-4 human grading |
+| Audit log durability (PRD §6, §10) | All; UC7 depends on it being complete | HIPAA-relevant; supervisor view (UC7) is unusable if rows are missing |
+| LangSmith observability (PRD §8) | All | Per-request trace, token cost, latency — case-study required; annotation queue feeds use-case-4 human grading and UC5–7 expansion |
 
 Every capability in ARCHITECTURE.md should map to at least one row in this table. Capabilities with no row are scope creep and should be removed.
 
@@ -316,7 +376,9 @@ These are user-side open questions; the broader architecture/build open-question
 3. **Sample data sufficiency for use case 3.** The differentiating feature depends on conflicting/incomplete records being present in the demo data. If the sample data is too clean, the audit will need to call out a "seeded discrepancy" fixture.
 4. **Real-clinician validation.** This document is reasoned, not interviewed. Post-MVP work should include reviewing the use cases and workflow with a practicing cross-coverage primary-care physician.
 5. **Eval ground truth for prioritization (use case 4).** "What should the briefing emphasize?" is not a retrieval task — it's a judgment task. Likely needs a human-graded eval subset rather than purely synthetic ground truth.
-6. **Resident/supervisor flow validation.** The secondary RBAC scenario is included for architecture demonstration; the actual supervision workflow (when does an attending review? at what cadence?) is not validated against real teaching-clinic practice.
+6. **Resident/supervisor flow validation.** The secondary RBAC scenario is included for architecture demonstration; the actual supervision workflow (when does an attending review? at what cadence?) is not validated against real teaching-clinic practice. UC7 is the surface that this question now hangs off.
+7. **Cadence-rule coverage for use case 5.** The chronic-disease lab cadences encoded in `data_quality.yaml` are a starter set (A1c, lipid, BMP, TFT-on-amiodarone). A practicing PCP would extend the list — which extensions are highest-yield is an open question for post-MVP.
+8. **Intake-form ingestion path for use case 6.** Free-text intake notes are reachable via `get_notes`; scanned-image intake forms are not. Whether UC6 needs an OCR path or a "scanned-form unreadable" abstention is open.
 
 ---
 
@@ -324,7 +386,7 @@ These are user-side open questions; the broader architecture/build open-question
 
 | Field | Value |
 |---|---|
-| Derived from | PRD.md (v3) §2, §3; case-study Stage 4 requirements |
-| Drives | ARCHITECTURE.md (every capability traces here); AUDIT.md scoping (which OpenEMR areas matter) |
+| Derived from | PRD.md (v3) §2, §3; case-study Stage 4 requirements; instructor feedback 2026-05-03 (UC5–7 promotion + ≥7-narrative threshold) |
+| Drives | ARCHITECTURE.md (every capability traces here); AUDIT.md scoping (which OpenEMR areas matter); TASKS.md eval-fixture expansion to ≥30 cases (instructor punch list) |
 | Validation status | Reasoned from case study + OpenEMR data model; not validated with primary clinician interviews (see §1.3) |
-| Last updated | 2026-04-27 |
+| Last updated | 2026-05-03 |

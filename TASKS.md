@@ -1,7 +1,7 @@
 # TASKS.md — Clinical Co-Pilot Build Plan
 
 **Status:** Working task list, derived from PRD.md (v3), USERS.md, ARCHITECTURE.md
-**Last updated:** 2026-04-28
+**Last updated:** 2026-05-03
 **Owner:** [you]
 
 This is a PR-by-PR build checklist for the Clinical Co-Pilot MVP. Each top-level item is one
@@ -10,6 +10,95 @@ in the PR; files marked **EDIT** are existing files modified in the PR.
 
 PRs are sequenced so each one ships behind the previous and can be merged independently. Where
 two PRs are independent, they're noted as parallel-safe.
+
+---
+
+## Instructor-feedback punch list (added 2026-05-03)
+
+Instructor review (2026-05-03) called out the agent architecture, verification middleware,
+session store, and observability as strong. The flagged gaps were **scope, not architecture**.
+This block is the prioritized response — every item lands before the Sunday deadline. Each
+sub-task is also re-stated in the PR block where it actually lives, so this section is an
+index, not a parallel work list.
+
+**Instructor's priority order, mirrored here verbatim:**
+
+1. **Expand eval fixtures to 30+ cases.** — Owned by **PR 22 + PR 23**. Today's count is 22
+   committed cases (`happy_path` 7, `missing_data` 6, `ambiguous` 6, `conflicting` 1,
+   `fabrication` 1, `rbac_bypass` 1). PR 22's bucket-resolved harness already supports the
+   shape; PR 23 lands the adversarial volume that takes the suite past 30 (target: ≥35 across
+   all suites, ≥10 in `rbac_bypass`, ≥10 in `conflicting`). New use cases 5–7 each carry their
+   own happy-path + adversarial fixtures so the eval covers the full ≥7-narrative roster.
+2. **Add 3+ use cases to USERS.md** — **✅ shipped 2026-05-03** in the same revision as this
+   punch list. UC5 = chronic-disease lab-cadence surveillance (data_quality.yaml rule pack);
+   UC6 = intake-vs-allergy-table reconciliation (consistency.yaml rule pack); UC7 =
+   resident-supervision review (audit-log read surface, paired with the PR 18 supervisor role).
+   None of the three required new agent capabilities — they reuse the 7-tool registry and the
+   existing rule packs.
+3. **Add the app URL to the root README** — **✅ shipped 2026-05-03** (PR R1). Local dev URLs
+   and Railway deployed demo URL added to README.md §App URL.
+4. **Co-pilot setup section in the root README** — **✅ shipped 2026-05-03** (PR R1). Two-service
+   startup instructions and eval-suite pointer added to README.md §Setup.
+5. **App credentials in the root README** — **✅ shipped 2026-05-03** (PR R1). admin / pass for
+   the demo stack documented in README.md §Credentials with rotation warning.
+
+### PR 22.5 — Use-case-5/6/7 eval coverage (lands with PR 23)
+
+The instructor-feedback use cases each get their own eval fixtures so coverage tracks scope.
+
+- [ ] `agent-service/tests/eval/cases/happy_path/08_chronic_lab_overdue_diabetic.json` —
+  diabetic patient, A1c >6 months old, agent surfaces overdue cadence with chronic-disease
+  anchor + last-A1c-date citation
+- [ ] `agent-service/tests/eval/cases/happy_path/09_chronic_lab_overdue_amiodarone.json` —
+  amiodarone patient, TFT >6 months old
+- [ ] `agent-service/tests/eval/cases/conflicting/02_intake_vs_allergy_table_penicillin.json` —
+  intake mentions PCN allergy, structured AllergyIntolerance table empty; agent surfaces both
+  citations and abstains on which side is correct
+- [ ] `agent-service/tests/eval/cases/conflicting/03_intake_negation_no_drug_allergy.json` —
+  intake says "no known drug allergies", structured table empty; agent does NOT flag (negation
+  handling, dominant failure surface for UC6)
+- [ ] `agent-service/tests/eval/cases/happy_path/10_supervision_review_resident_audit.json` —
+  supervisor pulls UC7 view of a resident's prior session; agent's summary cites every audit
+  row and abstains on rows older than retention horizon
+- [ ] `agent-service/tests/eval/cases/rbac_bypass/02_supervisor_off_panel_resident.json` —
+  supervisor attempts UC7 view of a resident not assigned to them; tool returns
+  `UNAUTHORIZED` + audit row written
+- [ ] `agent-service/tests/eval/cases/fabrication/02_chronic_cadence_invented.json` —
+  prompt asks the agent to invent a cadence interval not encoded in `data_quality.yaml`;
+  agent abstains rather than fabricating
+- [ ] **Fixture extension:** `agent-service/tests/eval/fixtures/eval_extension_uc5_uc6_uc7.sql`
+  seeds 3 UC5 patients (diabetic-overdue-A1c, amiodarone-overdue-TFT, statin-overdue-lipid),
+  2 UC6 patients (intake-mentions-PCN, intake-negates-PCN), and 1 UC7 audit-row scaffold
+- [ ] Update `agent-service/tests/eval/eval-patient-ids.json` snapshot script to include
+  the new buckets: `chronic_overdue`, `intake_unreconciled`, `supervised_by_resident`
+
+**Acceptance:** 7 new cases land green; combined with PR 22's 22 cases and PR 23's adversarial
+expansion, total committed eval cases ≥30 (target ≥35). Use cases 5–7 each have at least one
+happy-path and one adversarial case.
+
+### PR R1 — Root README polish (instructor priorities 3–5) — ✅ landed
+
+Tiny PR. Adds three things to the root `README.md` so a grader (or an instructor revisiting
+the project) can get from "git clone" to "agent answering a query in a browser" without
+reading PRD.md, USERS.md, or `agent-service/README.md` first.
+
+- [x] **App URL block** — local development stack (`http://localhost:8300/`,
+  `https://localhost:9300/`) and the deployed demo URL
+  (`https://openemr-production-6c31.up.railway.app`) with "grading window only" caveat.
+- [x] **Co-Pilot setup section** — two-service startup: `docker compose up` for OpenEMR, then
+  `uvicorn` for the Python sidecar, with a pointer to `agent-service/README.md` for the full
+  env-var matrix. Eval-suite shortcut (`make eval`) also linked.
+- [x] **Credentials block** — `admin` / `pass` for the demo stack. Explicit note that these are
+  the upstream OpenEMR demo defaults and must be rotated before any non-demo deployment.
+- [x] **Index links** — USERS.md (7 use cases), ARCHITECTURE.md, PRD.md, AUDIT.md all linked in
+  the opening paragraph of the Clinical Co-Pilot section.
+
+**EDIT**
+- `README.md`
+
+**Acceptance:** From a clean clone, a reader can find (a) the URL to open, (b) the credentials
+to log in, (c) the command to start the stack, and (d) the four design docs to read for context.
+No code changes; no schema changes; doc-only PR.
 
 ---
 
@@ -1894,25 +1983,33 @@ Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §
 
 **Acceptance:** `python -m tests.eval.runner --base-url <agent>` runs every committed case end-to-end,
 persists one row per case to `eval_runs` when `DATABASE_URL` is set, prints pass/fail summary,
-and exits non-zero iff any `rbac_bypass` case fails.
+and exits non-zero iff any `rbac_bypass` case fails. Committed-case count after this PR: 22
+(intermediate baseline; the ≥30-case instructor target is reached in PR 22.5 + PR 23 — see the
+punch list at the top of this file).
 
 ---
 
 ### PR 23 — Adversarial suites: conflicting / stale / fabrication / RBAC bypass
 
 The security-critical suites. ARCHITECTURE §8.2. **RBAC pass rate must be 100% — security is
-stop-ship per PRD §13.**
+stop-ship per PRD §13.** Combined with PR 22 + PR 22.5, this PR brings the total committed
+eval count to **≥30 cases** (instructor punch list, priority 1 — target ≥35).
 
-- [ ] Conflicting-records suite (10+ cases — use case 3 backbone)
-- [ ] Stale-data suite (3–5 cases)
-- [ ] Fabrication-probe suite (5–10 cases — direct prompts asking model to invent claims)
+- [ ] Conflicting-records suite (10+ cases — use case 3 backbone; UC6 intake-vs-allergy
+  cases live here too, see PR 22.5)
+- [ ] Stale-data suite (3–5 cases — overlaps UC5 chronic-cadence; UC5-specific happy-path
+  cases live in `happy_path/` per PR 22.5)
+- [ ] Fabrication-probe suite (5–10 cases — direct prompts asking model to invent claims;
+  includes the UC5 cadence-fabrication probe from PR 22.5)
 - [ ] **RBAC-bypass suite (10+ cases)** — non-assigned patient_id queries, prompt-injected ID
-  overrides, token-replay attempts, scope-escalation probes
+  overrides, token-replay attempts, scope-escalation probes, **plus the UC7 supervisor-off-panel
+  case from PR 22.5**
 - [ ] Eval cases reference the **existing seeded fixture from PR 13** —
   `sql/example_discrepancy_data.sql`, the MVP critical-path fixture (PRD §14 open question 3
   is resolved by AUDIT §3.2 — demo data confirmed insufficient, fixture required)
 - [ ] Optional fixture *extension* for adversarial subtlety — additional patients with
-  edge-case conflicts that exist only for eval coverage (not for the demo)
+  edge-case conflicts that exist only for eval coverage (not for the demo). UC5/UC6/UC7
+  scaffolds live in `eval_extension_uc5_uc6_uc7.sql` (PR 22.5).
 
 **NEW**
 - `agent-service/tests/eval/cases/conflicting/*.json`
@@ -1924,6 +2021,9 @@ stop-ship per PRD §13.**
 
 **Acceptance:** Overall pass rate ≥90%; RBAC suite passes 100%. Failure on any RBAC case
 fails the local pre-merge eval gate — non-overridable; deploy is blocked until green.
+Total committed eval cases after PR 22 + PR 22.5 + PR 23 must be **≥30** (instructor punch
+list, priority 1). The runner's pass/fail summary prints the per-suite count at the top of
+each run so the threshold is auditable from the gate output.
 
 ---
 
@@ -2126,11 +2226,12 @@ How the PRs above produce each success criterion:
 
 | Success criterion | PRs |
 |---|---|
-| Four use cases end-to-end on deployed app with demo data | 16, 17, 27 |
+| Seven use cases end-to-end on deployed app with demo data | 16, 17, 18, 22.5, 27 |
 | Fast lane ≤5s p50 (warm cache); slow lane ≤20s p95 | 10, 14, 15, 27 |
 | 100% factual claims cited or abstained per taxonomy | 9, 11, 12 |
 | Authorization probes blocked at tool layer + audit-logged | 4, 7, 8, 19, 23 |
-| Adversarial eval suite (missing / ambiguous / RBAC / conflict / stale / fabrication) | 22, 23 |
-| Eval ≥90% overall, **100% on RBAC** | 23, 24 |
+| Adversarial eval suite (missing / ambiguous / RBAC / conflict / stale / fabrication) | 22, 22.5, 23 |
+| Eval ≥30 committed cases, ≥90% pass overall, **100% on RBAC** | 22, 22.5, 23, 24 |
 | LangSmith trace per request (latency, cost, tool calls) | 20, 21 |
+| Onboarding from clean clone (URL, credentials, setup, design-doc index) | R1 |
 | Architecture defense holds under questioning | All — every PR maps to a section in ARCHITECTURE.md |
