@@ -102,6 +102,18 @@
     input.addEventListener("input", touchIdleTimer);
     input.addEventListener("keydown", touchIdleTimer);
 
+    // Page-unload cleanup. Mirrors side_panel.js's pagehide handler so
+    // navigating away from chat.php (tab close, back button, link
+    // click) drops the agent session immediately instead of waiting on
+    // TTL. ``pagehide`` is the right event — ``beforeunload`` doesn't
+    // reliably fire on mobile or when the tab is discarded by the
+    // browser. ``keepalive: true`` lets the request finish after the
+    // document is gone.
+    window.addEventListener("pagehide", function () {
+        deleteServerSession(lastPatientId, { keepalive: true });
+        currentSessionId = null;
+    });
+
     function clearThread(patientIdForDelete) {
         deleteServerSession(patientIdForDelete);
         currentSessionId = null;
@@ -111,7 +123,7 @@
             '</div>';
     }
 
-    function deleteServerSession(patientIdForDelete) {
+    function deleteServerSession(patientIdForDelete, opts) {
         // Server-side state cleanup. Fire-and-forget: failure to reach
         // the gateway here is non-fatal — the agent's TTL eviction
         // bounds orphaned sessions, and the next request from this
@@ -122,14 +134,22 @@
         }
         const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
             + "?patient_id=" + encodeURIComponent(patientIdForDelete);
-        fetch(url, {
+        const init = {
             method: "DELETE",
             credentials: "same-origin",
             headers: {
                 "Accept": "application/json",
                 "apicsrftoken": csrfToken
             }
-        }).catch(function () {
+        };
+        // ``keepalive: true`` is only meaningful on the unload path — it
+        // lets the browser finish the request after the document is
+        // gone. In-page paths (idle timeout, patient switch, reset
+        // button) skip it so the request behaves like a normal fetch.
+        if (opts && opts.keepalive) {
+            init.keepalive = true;
+        }
+        fetch(url, init).catch(function () {
             // Intentional swallow — TTL covers us.
         });
     }

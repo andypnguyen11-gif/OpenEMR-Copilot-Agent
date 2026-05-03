@@ -1596,12 +1596,25 @@ provider per fixture patient, so this is fine for now.
 PRD §6 / ARCHITECTURE §4.4. Three MVP roles. Supervisor expands **audit visibility, not PHI
 permissions** (USERS §1.4).
 
-- [ ] Role enum in PHP gateway; pulled from OpenEMR's existing role/ACL data
-- [ ] JWT claim includes role; agent tool layer enforces per-role scopes
-- [ ] Session lifecycle: created on panel open / Daily Brief query, ended on panel close,
-  patient switch, idle timeout (15 min), explicit logout (ARCHITECTURE §4.4)
-- [ ] Idle timer in UI + server-side enforcement
-- [ ] Resident role: every action audit-logged (success-side audit landed alongside
+- [x] Role enum in PHP gateway; pulled from OpenEMR's existing role/ACL data — shipped in
+  `2302b94ad` (`OpenEMR\Services\Copilot\Auth\Role`).
+- [x] JWT claim includes role; agent tool layer enforces per-role scopes — shipped in
+  `b8c4dc8eb`; per-tool RBAC keyed on the typed `Role` enum, default-deny on `UNKNOWN`.
+- [x] Session lifecycle: created on panel open / Daily Brief query, ended on panel close,
+  patient switch, idle timeout (15 min), explicit logout (ARCHITECTURE §4.4). Created on
+  the first POST /api/agent/query (server mints + echoes back the canonical id, see
+  `orchestrator/sessions.py::SessionStore.get_or_create`). Patient switch isolation is
+  inherent in the `(user_id, patient_id, session_id)` composite key; chat.js fires
+  DELETE on selector change, side_panel.js re-iframes on switch. Panel close: side panel
+  fires `pagehide` DELETE with `keepalive: true`; chat.js mirrors the same handler so
+  navigating away from `/interface/copilot/chat.php` cleans the session immediately
+  (TTL is the fallback). Idle timeout: 15 min server-side TTL + matching UI timer
+  (`2801d13bd`). Explicit logout: `DELETE /api/agent/session/{id}` route + chat.js reset
+  button.
+- [x] Idle timer in UI + server-side enforcement — shipped in `2801d13bd`; UI timer in
+  `idle_timer.js` uses the same `DEFAULT_TIMEOUT_MS` the server's `DEFAULT_TTL_SECONDS`
+  resolves to, so the two cannot drift independently.
+- [x] Resident role: every action audit-logged (success-side audit landed alongside
   this PR — see PR 19 note below; resident-tagged SUCCESS row asserted in
   `test_role_enforcement.py::test_resident_success_writes_one_row_with_resident_role_tag`)
 - [x] Supervisor role: read endpoint for supervised resident's audit log entries (the supervisor
@@ -1616,11 +1629,13 @@ permissions** (USERS §1.4).
   the endpoint is reachable only via test-minted JWTs. Endpoint, reader, and the new claim
   are covered by `tests/integration/test_supervisor_audit_route.py` (happy path, non-supervised
   resident → 403, physician role → 403, empty result → 200, pagination cap, missing JWT → 401).
-- [ ] **Expand `PatientAccessCheckerInterface` to cover cross-coverage panels.** PR 17.5
+- [x] **Expand `PatientAccessCheckerInterface` to cover cross-coverage panels.** PR 17.5
   shipped the strict `patient_data.providerID = authUserID` rule as a security hotfix;
   PR 18 needs a panel-aware implementation that also allows covering attendings (per
-  PRD §6 — "physician — full read on assigned cross-coverage panel"). The interface
-  already exists; only the implementation expands.
+  PRD §6 — "physician — full read on assigned cross-coverage panel"). Shipped in
+  `e73e009d3` — `DatabasePatientAccessChecker` SQL is now a `UNION ALL` of the
+  direct-ownership leg and an active `care_team_member` join, matching `CareTeamService`'s
+  existing convention for active care-team membership.
 
 **NEW**
 - `src/Services/Copilot/Auth/Role.php` (enum)
