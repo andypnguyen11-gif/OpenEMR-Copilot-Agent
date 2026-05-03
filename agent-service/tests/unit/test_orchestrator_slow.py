@@ -8,7 +8,10 @@ tools, hands the right results back, and produces the expected
 Coverage:
 
 * Happy path with one tool call → verified response.
-* Out-of-panel patient_id from the model → ``UNAUTHORIZED`` abstention.
+* LLM emits a foreign ``patient_id`` in ``tool_use.input`` → the
+  scoped-registry view ignores the field and dispatches against the
+  JWT-bound patient. Verifies the structural defense from
+  :class:`PatientScopedToolRegistry`.
 * Tool raising a non-RBAC error → ``TOOL_FAILURE`` abstention.
 * Final JSON failing schema validation twice → ``VERIFICATION_FAILED``.
 * Fabricated source_id in the final draft → ``VERIFICATION_FAILED`` via
@@ -188,19 +191,30 @@ def test_happy_path_returns_verified_response(
     assert response.tool_results[0].tool_name == "get_problems"
 
 
-def test_out_of_panel_tool_call_returns_unauthorized_abstention(
+def test_llm_injected_foreign_patient_id_is_structurally_ignored(
     claims: ClinicianClaims,
     registry: ToolRegistry,
     verifier: VerificationMiddleware,
     sessions: SessionStore,
 ) -> None:
+    # Session is bound to patient 101 (see the ``claims`` fixture). A
+    # prompt-injection probe convinces the model to put ``patient_id=999``
+    # in ``tool_use.input``. The orchestrator builds a
+    # ``PatientScopedToolRegistry`` against ``claims.patient_id`` and
+    # dispatches every tool through that view; the view supplies the
+    # bound id and ignores anything in ``tool_use.input``. The tool
+    # therefore reads patient 101's chart, not 999's, and the run
+    # completes normally with 101's records.
+    final_json = (
+        '{"cards":[{"title":"Active problems","kind":"problems",'
+        '"source_ids":["Condition/p101-cond-1"]}],'
+        '"prose":[{"text":"Type 2 diabetes mellitus is on the active problem list.",'
+        '"source_id":"Condition/p101-cond-1"}]}'
+    )
     gateway = _ScriptedGateway(
         [
             _tool_use_turn(ToolUse(id="tu-1", name="get_problems", input={"patient_id": "999"})),
-            # If the orchestrator did not short-circuit, it would fall
-            # through to here and the test assertion below would still
-            # catch the bug — but we should never get this far.
-            _final_text_turn('{"cards":[],"prose":[]}'),
+            _final_text_turn(final_json),
         ]
     )
     orch = Orchestrator(
@@ -212,11 +226,22 @@ def test_out_of_panel_tool_call_returns_unauthorized_abstention(
 
     response = orch.run(query="evil cross-patient query", claims=claims, request_id="r2")
 
-    assert response.abstention is not None
-    assert response.abstention.state == AbstentionState.UNAUTHORIZED
-    # The orchestrator must short-circuit on RBAC denial — only one LLM
-    # call should have happened (the one that emitted the bad tool_use).
-    assert len(gateway.calls) == 1
+    # The injected ``patient_id=999`` did not produce a leak: no
+    # abstention, the run completed against 101's records, and the
+    # final response cites only 101's source_ids.
+    assert response.abstention is None
+    assert len(response.tool_results) == 1
+    assert response.tool_results[0].patient_id == "101"
+    assert all(
+        record.source_id.startswith("Condition/p101-")
+        for record in response.tool_results[0].records
+    )
+    # Two LLM calls — initial tool_use and the final JSON — confirm
+    # the orchestrator did *not* short-circuit on the foreign id.
+    # Pre-fix this test asserted an UNAUTHORIZED abstention after one
+    # call; the new structural defense skips the denial path because
+    # cross-patient calls are no longer reachable.
+    assert len(gateway.calls) == 2
 
 
 def test_unknown_tool_returns_tool_failure_abstention(

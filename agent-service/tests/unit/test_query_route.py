@@ -9,7 +9,10 @@ writer so no Anthropic key or Postgres is required. The test exercises:
 * Tool-use loop (real :class:`Orchestrator` against the real fixture
   store and tool registry),
 * Verification middleware (real one),
-* Audit-log writes for an out-of-panel RBAC denial,
+* Audit-log writes for a SUCCESS dispatch when the model emits a
+  foreign ``patient_id`` in ``tool_use.input`` — the scoped-registry
+  view ignores the field and the bound patient is read instead, so the
+  audit row tags the bound id rather than the injected one,
 * Schema-shape of the JSON response.
 
 If any of these wires breaks the contract, this test fails — which is
@@ -183,12 +186,25 @@ def test_query_happy_path_returns_verified_response(audit: _RecordingAudit) -> N
     assert audit.events[0].resource_type == "get_problems"
 
 
-def test_query_unauthorized_writes_audit_and_returns_abstention(
+def test_query_route_ignores_llm_injected_foreign_patient_id(
     audit: _RecordingAudit,
 ) -> None:
+    # End-to-end version of the orchestrator-level structural-defense
+    # test: the model puts ``patient_id=999`` in ``tool_use.input`` even
+    # though the JWT is scoped to 101. The scoped-registry view supplies
+    # the bound id, so the tool reads 101's chart, the audit row tags 101
+    # (not 999), and the response cites 101's source_ids. There is no
+    # UNAUTHORIZED path through the orchestrator anymore for this shape.
+    final_json = (
+        '{"cards":[{"title":"Active problems","kind":"problems",'
+        '"source_ids":["Condition/p101-cond-1"]}],'
+        '"prose":[{"text":"Type 2 diabetes mellitus is on the active problem list.",'
+        '"source_id":"Condition/p101-cond-1"}]}'
+    )
     gateway = _ScriptedGateway(
         [
             _tool_use_turn(ToolUse(id="tu-1", name="get_problems", input={"patient_id": "999"})),
+            _final_text_turn(final_json),
         ]
     )
     client = _client(gateway, audit)
@@ -202,9 +218,15 @@ def test_query_unauthorized_writes_audit_and_returns_abstention(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["abstention"]["state"] == "UNAUTHORIZED"
+    assert body["abstention"] is None
+    # Tool result and the response itself reference the bound patient.
+    assert len(body["tool_results"]) == 1
+    assert body["tool_results"][0]["patient_id"] == "101"
+    assert body["prose"][0]["source_id"] == "Condition/p101-cond-1"
+    # Audit row is a SUCCESS tagged with the bound patient — the LLM's
+    # injected 999 never reaches the audit-hash input.
     assert len(audit.events) == 1
-    assert audit.events[0].action == "UNAUTHORIZED"
+    assert audit.events[0].action == "SUCCESS"
     assert audit.events[0].resource_type == "get_problems"
 
 

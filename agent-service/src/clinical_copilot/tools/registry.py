@@ -10,6 +10,7 @@ name the registry doesn't know about, even by accident.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from clinical_copilot.discrepancy.cache import DiscrepancyCache
@@ -22,6 +23,7 @@ from clinical_copilot.discrepancy.engine import DiscrepancyEngine
 from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
 from clinical_copilot.observability import traceable_tool_dispatch
 from clinical_copilot.tools.allergies import GetAllergiesFhirTool
+from clinical_copilot.tools.base import UnauthorizedToolCallError
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.impl import GetFlagsTool, retrieval_tool_classes
 from clinical_copilot.tools.labs import GetLabsFhirTool
@@ -220,5 +222,84 @@ class ToolRegistry:
         return self.get(name).execute(
             claims=claims,
             patient_id=patient_id,
+            request_id=request_id,
+        )
+
+    def scoped_for(self, patient_id: str) -> PatientScopedToolRegistry:
+        """Return a per-request view bound to ``patient_id``.
+
+        The orchestrator calls this once at request entry with
+        ``claims.patient_id`` and uses the returned view for every
+        schema-list and dispatch call within the request. The bound
+        ``patient_id`` flows to tools via the view rather than via the
+        LLM's ``tool_use.input``, so a prompt-injection probe that
+        manages to put ``patient_id=999`` into the model's tool call
+        cannot escape the session's scope — the value is structurally
+        unreachable from inside the LLM's surface.
+        """
+
+        return PatientScopedToolRegistry(_registry=self, _patient_id=patient_id)
+
+
+@dataclass(frozen=True, slots=True)
+class PatientScopedToolRegistry:
+    """:class:`ToolRegistry` view bound to one ``patient_id`` for the
+    lifetime of a single agent request.
+
+    The LLM-facing schema does not expose a ``patient_id`` argument
+    (see :meth:`Tool.anthropic_schema`); the bound id is supplied by
+    the view at dispatch time. Construction is via
+    :meth:`ToolRegistry.scoped_for`; the dataclass fields are private
+    by convention so callers do not depend on the underlying registry
+    handle.
+    """
+
+    _registry: ToolRegistry
+    _patient_id: str
+
+    def anthropic_schemas(
+        self,
+        *,
+        allowed_names: Iterable[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """Per-lane Anthropic-SDK tool definitions for this view.
+
+        Delegates to the underlying registry — the schema is the same
+        for every patient, so there is no per-view rewriting to do.
+        Surfacing the call through the view (rather than the bare
+        registry) keeps the orchestrator free of any direct
+        ``ToolRegistry`` handle once the view is built.
+        """
+
+        return self._registry.anthropic_schemas(allowed_names=allowed_names)
+
+    @traceable_tool_dispatch
+    def dispatch(
+        self,
+        name: str,
+        *,
+        claims: ClinicianClaims,
+        request_id: str,
+    ) -> ToolResult:
+        """Run a tool against the bound ``patient_id``.
+
+        ``claims.patient_id`` is cross-checked against the bound id as
+        defense-in-depth: the orchestrator should always wire the same
+        claims that built the view, so a divergence is a wiring bug
+        upstream. Per ARCHITECTURE §4 we fail closed before the tool
+        runs rather than try to recover. The tool's own
+        :meth:`Tool._enforce_rbac` is the second wall — it would catch
+        the same mismatch one layer deeper if this check ever
+        regressed.
+        """
+
+        if claims.patient_id != self._patient_id:
+            raise UnauthorizedToolCallError(
+                tool_name=name,
+                requested_patient_id=self._patient_id,
+            )
+        return self._registry.get(name).execute(
+            claims=claims,
+            patient_id=self._patient_id,
             request_id=request_id,
         )

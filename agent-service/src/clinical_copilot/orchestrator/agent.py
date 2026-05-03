@@ -79,7 +79,7 @@ from clinical_copilot.verification.middleware import VerificationMiddleware
 
 if TYPE_CHECKING:
     from clinical_copilot.auth.session import ClinicianClaims
-    from clinical_copilot.tools.registry import ToolRegistry
+    from clinical_copilot.tools.registry import PatientScopedToolRegistry, ToolRegistry
 
 DEFAULT_MAX_TURNS = 8
 
@@ -279,10 +279,18 @@ class Orchestrator:
             + f"- clinician role: {claims.role}\n"
         )
 
+        # Bind the registry to the JWT-verified patient for the lifetime
+        # of this request. Every tool dispatch from here on flows through
+        # the view, which supplies the bound patient_id at call time —
+        # the model's ``tool_use.input`` cannot influence which patient
+        # the tool reads even if a prompt-injection probe puts a foreign
+        # id there.
+        scoped_registry = self._registry.scoped_for(claims.patient_id)
+
         # Lane-filtered tool defs (and the matching dispatch-time
         # allowed-set used as defense-in-depth in :meth:`_dispatch_tools`).
         # ``None`` here means "all tools" — slow lane keeps the full set.
-        tool_schemas = self._registry.anthropic_schemas(allowed_names=config.tool_names)
+        tool_schemas = scoped_registry.anthropic_schemas(allowed_names=config.tool_names)
 
         # ``persisted_messages`` is what turn N+1 will inherit from the
         # store. ``working_messages`` is what we hand to the LLM each
@@ -337,6 +345,7 @@ class Orchestrator:
                     request_id=request_id,
                     tool_results=tool_results,
                     allowed_names=config.tool_names,
+                    scoped_registry=scoped_registry,
                 )
                 tool_calls += dispatched
                 if abstention is not None:
@@ -446,6 +455,7 @@ class Orchestrator:
         request_id: str,
         tool_results: list[ToolResult],
         allowed_names: frozenset[str] | None,
+        scoped_registry: PatientScopedToolRegistry,
     ) -> tuple[int, list[dict[str, Any]], Abstention | None]:
         """Run every tool the model called this turn, build the next
         user message containing matching ``tool_result`` blocks, and
@@ -458,6 +468,14 @@ class Orchestrator:
         already wrote an UNAUTHORIZED audit row (so it shows up in the
         audit panel under that bucket) and a tool error short-circuited
         before any SUCCESS row was written.
+
+        ``scoped_registry`` is the per-request view bound to
+        ``claims.patient_id``. Tool calls dispatch through the view,
+        which supplies the bound id — any ``patient_id`` the model
+        emits in ``tool_use.input`` is structurally ignored. The view's
+        own check plus the tool's :meth:`Tool._enforce_rbac` are the
+        two defense-in-depth walls if a wiring bug ever slips a stale
+        view past this method.
 
         On the first RBAC denial we surface ``UNAUTHORIZED`` and stop —
         a session that's tried to escape its scope cannot recover by
@@ -487,12 +505,10 @@ class Orchestrator:
                         ),
                     ),
                 )
-            patient_id = str(tool_use.input.get("patient_id", ""))
             try:
-                result = self._registry.dispatch(
+                result = scoped_registry.dispatch(
                     tool_use.name,
                     claims=claims,
-                    patient_id=patient_id,
                     request_id=request_id,
                 )
             except UnauthorizedToolCallError as exc:

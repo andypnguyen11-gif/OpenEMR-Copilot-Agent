@@ -189,9 +189,13 @@ class Tool(ABC):
     def anthropic_schema(cls) -> dict[str, object]:
         """Tool definition payload for the Anthropic SDK.
 
-        All M1 tools share a single input shape (``patient_id``), so the
-        base produces it from class metadata. Tools that grow inputs
-        later override.
+        ``patient_id`` is intentionally absent from the LLM-facing schema.
+        Each agent request binds a single ``patient_id`` at session entry
+        via :class:`PatientScopedToolRegistry`; the bound value flows to
+        ``execute()`` through a non-LLM-visible channel, so the model
+        cannot specify a different patient even if a prompt-injection
+        probe convinces it to try. Tools that grow real LLM-visible
+        inputs later override this method to add them.
         """
 
         return {
@@ -199,17 +203,8 @@ class Tool(ABC):
             "description": cls.description,
             "input_schema": {
                 "type": "object",
-                "properties": {
-                    "patient_id": {
-                        "type": "string",
-                        "description": (
-                            "The patient identifier to fetch. Must match the "
-                            "session's authorized patient — supplying any other "
-                            "value will be denied at the tool layer and audit-logged."
-                        ),
-                    },
-                },
-                "required": ["patient_id"],
+                "properties": {},
+                "required": [],
                 "additionalProperties": False,
             },
         }

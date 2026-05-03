@@ -303,8 +303,14 @@ def test_registry_anthropic_schemas_cover_all_tools(
         "get_problems",
         "get_visits",
     }
-    # Every schema declares the patient_id input contract.
+    # No tool exposes ``patient_id`` (or anything else) as an LLM-facing
+    # input — the bound patient flows through
+    # :class:`PatientScopedToolRegistry`, not through the model's
+    # ``tool_use.input``. A regression that re-introduces ``patient_id``
+    # here would put the cross-patient injection surface back.
     for schema in schemas:
         input_schema = schema["input_schema"]
         assert isinstance(input_schema, dict)
-        assert input_schema["required"] == ["patient_id"]
+        assert input_schema["properties"] == {}
+        assert input_schema["required"] == []
+        assert input_schema["additionalProperties"] is False
