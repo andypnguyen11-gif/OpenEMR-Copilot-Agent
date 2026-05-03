@@ -27,6 +27,7 @@ from clinical_copilot.observability.redaction import (
     redact_tool_dispatch_inputs,
     redact_tool_outputs,
 )
+from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.llm_gateway import LlmTurn, ToolUse
 from clinical_copilot.orchestrator.schemas import AgentResponse, Card, CitedClaim
 from clinical_copilot.tools.records import NoteRecord, ProblemRecord, ToolResult
@@ -247,6 +248,74 @@ def test_orchestrator_outputs_capture_abstention_state() -> None:
     )
     redacted = redact_orchestrator_outputs(response)
     assert redacted["abstention_state"] == "UNAUTHORIZED"
+
+
+def test_llm_inputs_surface_model_from_bound_self() -> None:
+    """LangSmith captures the bound-method ``self`` for every
+    ``@traceable`` instance method, so the ``AnthropicLlmGateway``
+    appears in the inputs dict under ``self``. Surfacing its ``model``
+    attribute is what lets a trace reader filter by lane (slow lane
+    runs the larger model, fast lane the smaller) without descending
+    into the parent orchestrator span — and asserting it here pins
+    that the public attribute name doesn't drift."""
+
+    class _GatewayLike:
+        model = "claude-haiku-4-5-20251001"
+
+    inputs = {
+        "self": _GatewayLike(),
+        "system": "You are a clinical assistant.",
+        "tools": [],
+        "messages": [],
+    }
+    redacted = redact_llm_inputs(inputs)
+    assert redacted["model"] == "claude-haiku-4-5-20251001"
+
+
+def test_llm_inputs_omit_model_when_self_lacks_attribute() -> None:
+    """Test stubs in the orchestrator unit tests don't carry a
+    ``model`` attribute; the redactor must degrade silently rather
+    than reporting a misleading value."""
+
+    inputs = {
+        "self": object(),
+        "system": "x",
+        "tools": [],
+        "messages": [],
+    }
+    redacted = redact_llm_inputs(inputs)
+    assert "model" not in redacted
+
+
+def test_orchestrator_inputs_surface_lane() -> None:
+    """The lane (slow / fast) is the single highest-leverage filter for
+    a trace reader because it identifies which model + system prompt +
+    tool subset ran. Surfacing it on the orchestrator span avoids
+    forcing readers to drill into the LLM child span to learn it."""
+
+    inputs = {
+        "self": object(),
+        "query": "anything",
+        "claims": _claims_with_secrets(),
+        "request_id": "r1",
+        "lane": Lane.FAST,
+    }
+    redacted = redact_orchestrator_inputs(inputs)
+    assert redacted["lane"] == "fast"
+
+
+def test_orchestrator_inputs_omit_lane_when_absent() -> None:
+    """Some test paths construct the inputs dict without a lane; the
+    redactor must not emit ``"lane": "None"`` in that case."""
+
+    inputs = {
+        "self": object(),
+        "query": "anything",
+        "claims": _claims_with_secrets(),
+        "request_id": "r1",
+    }
+    redacted = redact_orchestrator_inputs(inputs)
+    assert "lane" not in redacted
 
 
 def _claims_with_secrets() -> ClinicianClaims:

@@ -157,9 +157,18 @@ def redact_llm_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     conversation, including tool-result blocks whose ``content`` is the
     JSON-serialized tool output we just scrubbed elsewhere. Both must be
     reduced to lengths and counts.
+
+    The model identifier is read from the bound ``self`` LangSmith
+    captures for ``@traceable`` methods. Surfacing it lets traces be
+    filtered by lane (slow lane runs the larger model, fast lane the
+    smaller) without descending into the parent orchestrator span.
     """
 
     redacted: dict[str, Any] = {}
+    gateway = inputs.get("self")
+    model = getattr(gateway, "model", None)
+    if isinstance(model, str):
+        redacted["model"] = model
     system = inputs.get("system")
     if isinstance(system, str):
         redacted["system_prompt_length"] = len(system)
@@ -228,6 +237,11 @@ def redact_orchestrator_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     request_id = inputs.get("request_id")
     if isinstance(request_id, str):
         redacted["request_id"] = request_id
+    lane = inputs.get("lane")
+    if lane is not None:
+        # ``Lane`` is a ``StrEnum`` so its wire value is just ``str(lane)``;
+        # tolerate plain strings too in case a future caller passes one.
+        redacted["lane"] = str(lane)
     claims_summary = _claims_summary(inputs.get("claims"))
     if "session_patient_id_hash" in claims_summary:
         # Promote the session patient hash to a top-level field so

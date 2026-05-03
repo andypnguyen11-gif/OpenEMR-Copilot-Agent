@@ -1367,21 +1367,21 @@ truth for FHIR→record mapping.
 
 ---
 
-### PR 15 — Background pass + invalidation hooks
+### PR 15 — Background pass + invalidation hooks — ✅ landed (e8bb0e9b6, 2df04a905)
 
 Pre-warming pass per ARCHITECTURE §2.3 / §6. Triggers are server-side, **not** UI-triggered
 (this is the architectural decoupling from "does the clinician have prep time?").
 
-- [ ] Background runner that, given a panel of patient_ids, evaluates rules and writes cache
-- [ ] Trigger surfaces:
+- [x] Background runner that, given a panel of patient_ids, evaluates rules and writes cache
+- [x] Trigger surfaces:
   - schedule-load endpoint on agent service (`POST /agent/internal/warm`)
   - cron entry point (FastAPI route guarded by internal token)
   - login event hook from PHP gateway (PR triggers POST to warm endpoint)
-- [ ] **PHP-side invalidation hooks** — emit on med save, lab post, allergy update, note sign
+- [x] **PHP-side invalidation hooks** — emit on med save, lab post, allergy update, note sign
   → POST to agent service `/agent/internal/invalidate/{patient_id}`
-- [ ] Daily Brief open does NOT trigger pre-warm (one consumption surface among others, per
+- [x] Daily Brief open does NOT trigger pre-warm (one consumption surface among others, per
   ARCHITECTURE §2.3)
-- [ ] Cold-cache fallback: synchronous recompute on miss (1–3s acceptable, PRD §10)
+- [x] Cold-cache fallback: synchronous recompute on miss (1–3s acceptable, PRD §10)
 
 **NEW**
 - `agent-service/src/clinical_copilot/discrepancy/background.py`
@@ -1403,21 +1403,21 @@ invalidates the matching patient's cached flags within seconds.
 
 ## Milestone 6 — UI Surfaces
 
-### PR 16 — Daily Brief page (slow lane surface)
+### PR 16 — Daily Brief page (slow lane surface) — ✅ landed (39f73feda, 796202f30)
 
 The pre-clinic surface, USERS §2 7:35 AM. New OpenEMR page; renders today's panel as cards
 with precomputed flags + per-patient briefings.
 
-- [ ] `interface/copilot/daily_brief.php` page handler
-- [ ] Smarty template renders today's panel (one card per patient)
-- [ ] Card shows: name, age, problem snapshot, flag list, "open chat" button
-- [ ] Chat panel scoped to the clicked patient
-- [ ] Cards rendered from records (retrieval-first per ARCHITECTURE §3 layer 2) — never LLM prose
-- [ ] Synthesis paragraph rendered separately, visibly cited
-- [ ] **Top-nav tab** registered per AUDIT §2.2 — opens new frame via the
+- [x] `interface/copilot/daily_brief.php` page handler
+- [x] Smarty template renders today's panel (one card per patient)
+- [x] Card shows: name, age, problem snapshot, flag list, "open chat" button
+- [x] Chat panel scoped to the clicked patient
+- [x] Cards rendered from records (retrieval-first per ARCHITECTURE §3 layer 2) — never LLM prose
+- [x] Synthesis paragraph rendered separately, visibly cited
+- [x] **Top-nav tab** registered per AUDIT §2.2 — opens new frame via the
   `interface/main/tabs/js/include_opener.js` pattern (non-forking; PRD §14 open question 1
   is resolved by the audit)
-- [ ] Authorization: page only visible to physicians and residents (USERS §1.5)
+- [x] Authorization: page only visible to physicians and residents (USERS §1.5)
 
 **NEW**
 - `interface/copilot/daily_brief.php`
@@ -1700,26 +1700,55 @@ mid-request causes the request to fail without leaking PHI.
 
 ## Milestone 8 — Observability
 
-### PR 20 — LangSmith tracing with PHI redaction
+### PR 20 — LangSmith tracing with PHI redaction — ✅ landed
 
 ARCHITECTURE §8.1. **PHI is not sent to LangSmith** — redaction layer between the agent's
 output and the `@traceable` wrapper is failure-mode tested.
 
-- [ ] `tracing.py` — `@traceable` decorator on Anthropic SDK calls and tool invocations
-- [ ] `redaction.py` — strip raw chart text, note bodies, free-form fields, tool-result PHI;
-  keep only structural metadata (tool name, latency, span counts, claim count, model tier,
-  abstention state) and hashed patient IDs
-- [ ] **Eval test asserts** PHI emitted through a tool result never appears in the trace
-  payload (PHI-leak probe — ARCHITECTURE §8.1)
-- [ ] No LangChain dependency added (per ARCHITECTURE §8.1 — `@traceable` is enough)
+The bulk of this work landed under M4 alongside the Thursday MVP; this entry's
+remaining checkboxes — model tier in trace metadata, the eval/integration-test
+naming — were closed out 2026-05-02.
+
+- [x] `tracing.py` — `@traceable` decorator on Anthropic SDK calls and tool invocations.
+  Wired in three places: `orchestrator/agent.py:166` (`Orchestrator.run`),
+  `orchestrator/llm_gateway.py:89` (`AnthropicLlmGateway.complete`),
+  `tools/registry.py:211` (`ToolRegistry.dispatch`). `configure_tracing` is called
+  once from `app_state.py:150` with the audit salt so the trace's
+  `patient_id_hash` joins to its audit-log row.
+- [x] `redaction.py` — allowlist redactors (build new dicts from explicitly-named
+  safe fields, never copy-and-strip a denylist). Surfaces tool name, record
+  counts, source-id lists, hashed patient IDs, JWT-claim summary (user_id,
+  role, scope_count), abstention state, message/role counts, prose/card counts,
+  **`model`** (read from the bound `AnthropicLlmGateway.model` LangSmith
+  captures as `inputs["self"]`), and **`lane`** (StrEnum value from
+  `Orchestrator.run` inputs). `latency` is captured automatically by
+  `@traceable`.
+- [x] **PHI-leak probe** — `tests/unit/test_phi_redaction.py` plants distinctive
+  sentinels in every PHI-bearing surface (note body, problem display, query
+  text, prose text, model draft text, system prompt, tool-result block) and
+  asserts none survive the redactor. 13 cases, all green. Lives under `unit/`
+  rather than `integration/` because it exercises the redaction layer itself
+  (the only place a leak could happen) — no live LangSmith call needed.
+- [x] No LangChain dependency added (per ARCHITECTURE §8.1 — `@traceable` is enough);
+  `pyproject.toml` deps confirm `langsmith` only.
 
 **NEW**
 - `agent-service/src/clinical_copilot/observability/tracing.py`
 - `agent-service/src/clinical_copilot/observability/redaction.py`
-- `agent-service/tests/integration/test_phi_redaction.py`
+- `agent-service/tests/unit/test_phi_redaction.py`
+
+**EDIT (2026-05-02 closeout)**
+- `agent-service/src/clinical_copilot/orchestrator/llm_gateway.py` — `_model` →
+  public `model` attribute so the trace redactor can surface it without
+  reaching into private state.
+- `agent-service/src/clinical_copilot/observability/redaction.py` —
+  `redact_llm_inputs` now reads `model` from bound `self`;
+  `redact_orchestrator_inputs` now surfaces `lane` from inputs.
 
 **Acceptance:** Trace appears in LangSmith for every request with span tree, latency, token
-cost; PHI-leak probe asserts no patient text in the payload.
+cost; PHI-leak probe asserts no patient text in the payload. Trace readers can
+filter by `lane` (slow / fast) on the orchestrator span and by `model` on the
+LLM child span.
 
 ---
 

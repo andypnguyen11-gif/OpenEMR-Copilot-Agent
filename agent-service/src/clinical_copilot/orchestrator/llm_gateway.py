@@ -83,7 +83,7 @@ class AnthropicLlmGateway:
         max_tokens: int = 4096,
     ) -> None:
         self._client = client
-        self._model = model
+        self.model = model
         self._max_tokens = max_tokens
 
     @traceable_llm_complete
@@ -114,7 +114,7 @@ class AnthropicLlmGateway:
         # target across SDK versions and adds zero safety here — the
         # JSON-Schema dicts are the actual contract with the wire).
         response = self._client.messages.create(
-            model=self._model,
+            model=self.model,
             max_tokens=self._max_tokens,
             system=cast(Any, system_blocks),
             tools=cast(Any, tool_payload),
