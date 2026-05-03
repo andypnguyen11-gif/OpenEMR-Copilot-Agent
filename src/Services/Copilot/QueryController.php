@@ -191,8 +191,14 @@ final readonly class QueryController
         if ($pid === '' || !ctype_digit($pid)) {
             return null;
         }
+        // ``BIN_TO_UUID(uuid)`` (no swap-flag) — OpenEMR stores patient_data
+        // uuids in canonical byte order, so the default formatter returns
+        // the value the FHIR endpoints index on. Passing ``, 1`` here would
+        // re-swap the halves and produce a uuid the server doesn't resolve
+        // (caught on prod 2026-05-03 when MedicationRequest?patient=
+        // <swapped-uuid> returned an empty bundle).
         $row = QueryUtils::fetchSingleValue(
-            'SELECT BIN_TO_UUID(uuid, 1) AS uuid FROM patient_data WHERE pid = ? LIMIT 1',
+            'SELECT BIN_TO_UUID(uuid) AS uuid FROM patient_data WHERE pid = ? LIMIT 1',
             'uuid',
             [$pid],
         );
