@@ -113,3 +113,23 @@ hit. Daily Brief loses the "cards never quote LLM output" line, but that informa
 lives in PRD / ARCHITECTURE rather than user-facing chrome. The
 ``.copilot-hipaa-banner`` CSS rules added in PR 27 become dead code and are removed in
 the same commit.
+
+## Decision 10: Reconcile deployed-app admin credential with README
+
+User reported the deployed Railway instance has admin password
+``ChangeMe_StrongAdminPass_456`` while README.md documents ``admin`` / ``pass``. A grader
+following the README's credential block would have failed to log into the live demo.
+
+**Options considered:**
+- Option A — Commit the actual ``ChangeMe_StrongAdminPass_456`` value into README.md.
+- Option B — Rotate the deployed password back to ``pass`` so the README stays accurate.
+- Option C — Replace the credential block with an indirection (no value in git).
+
+**Choice:** Option B
+**Rationale:** Avoid committing a real password to git history (even one with a
+``ChangeMe`` prefix — once it lands in ``git log`` it stays there after the demo is
+torn down). Rotation is a 30-second action through the deployed OpenEMR's
+Administration → Users UI; the README needs no change since ``admin`` / ``pass`` is
+the OpenEMR upstream default it already documents. User-driven step — the agent
+cannot change OpenEMR user passwords directly. **Reversibility:** reversible — if
+rotation fails, fall back to A or C.
