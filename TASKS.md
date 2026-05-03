@@ -23,18 +23,19 @@ index, not a parallel work list.
 
 **Instructor's priority order, mirrored here verbatim:**
 
-1. **Expand eval fixtures to 30+ cases.** — Owned by **PR 22 + PR 23**. Today's count is 22
-   committed cases (`happy_path` 7, `missing_data` 6, `ambiguous` 6, `conflicting` 1,
-   `fabrication` 1, `rbac_bypass` 1). PR 22's bucket-resolved harness already supports the
-   shape; PR 23 lands the adversarial volume that takes the suite past 30 (target: ≥35 across
-   all suites, ≥10 in `rbac_bypass`, ≥10 in `conflicting`). New use cases 5–7 each carry their
-   own happy-path + adversarial fixtures so the eval covers the full ≥7-narrative roster.
+1. **Expand eval fixtures to 30+ cases.** — Owned by **PR 22.5 + PR 23**. PR 22.5 (✅ shipped
+   2026-05-03 per the decision log) adds 4 cases for UC5 + UC6 against the existing fixture,
+   bringing the committed total to 26. PR 23 adds the adversarial volume that takes the suite
+   past 30 (target: ≥35; ≥10 in `rbac_bypass`, ≥10 in `conflicting`). UC7 eval coverage moves
+   to PR R3 (LLM-driven UC7 variant) since the MVP UC7 surface is direct REST without an LLM
+   in the loop.
 2. **Add 3+ use cases to USERS.md** — **✅ shipped 2026-05-03** in the same revision as this
    punch list. UC5 = chronic-disease lab-cadence surveillance (data_quality.yaml rule pack);
    UC6 = intake-vs-allergy-table reconciliation (consistency.yaml rule pack); UC7 =
-   resident-supervision review (audit-log read surface, paired with the PR 18 supervisor role).
-   None of the three required new agent capabilities — they reuse the 7-tool registry and the
-   existing rule packs.
+   resident-supervision review (direct REST render in MVP — see UC7 §3 for why no LLM in
+   the loop; an LLM-driven variant is queued as PR R3). UC5 and UC6 reuse the 7-tool registry
+   and the existing rule packs; UC7 reuses the supervisor audit-log endpoint shipped in
+   PR 18 (`0079f096c`).
 3. **Add the app URL to the root README** — **✅ shipped 2026-05-03** (PR R1). Local dev URLs
    and Railway deployed demo URL added to README.md §App URL.
 4. **Co-pilot setup section in the root README** — **✅ shipped 2026-05-03** (PR R1). Two-service
@@ -42,39 +43,49 @@ index, not a parallel work list.
 5. **App credentials in the root README** — **✅ shipped 2026-05-03** (PR R1). admin / pass for
    the demo stack documented in README.md §Credentials with rotation warning.
 
-### PR 22.5 — Use-case-5/6/7 eval coverage (lands with PR 23)
+### PR 22.5 — UC5 + UC6 eval coverage (PR R3 follow-ups carry UC7 + cadence breadth)
 
-The instructor-feedback use cases each get their own eval fixtures so coverage tracks scope.
+Scoped per the 2026-05-03 decision log (`docs/decisions/2026-05-03-pr-22-5-eval-fixtures.md`,
+A1 + B1 + C2). Four new cases against the existing fixture; UC7 reframes to a direct REST
+render in MVP and is dropped from this PR's eval coverage. UC5 cadence breadth (amiodarone-TFT,
+statin-lipid) and the LLM-driven UC7 variant are queued as follow-up PRs below.
 
-- [ ] `agent-service/tests/eval/cases/happy_path/08_chronic_lab_overdue_diabetic.json` —
-  diabetic patient, A1c >6 months old, agent surfaces overdue cadence with chronic-disease
-  anchor + last-A1c-date citation
-- [ ] `agent-service/tests/eval/cases/happy_path/09_chronic_lab_overdue_amiodarone.json` —
-  amiodarone patient, TFT >6 months old
-- [ ] `agent-service/tests/eval/cases/conflicting/02_intake_vs_allergy_table_penicillin.json` —
-  intake mentions PCN allergy, structured AllergyIntolerance table empty; agent surfaces both
-  citations and abstains on which side is correct
-- [ ] `agent-service/tests/eval/cases/conflicting/03_intake_negation_no_drug_allergy.json` —
-  intake says "no known drug allergies", structured table empty; agent does NOT flag (negation
-  handling, dominant failure surface for UC6)
-- [ ] `agent-service/tests/eval/cases/happy_path/10_supervision_review_resident_audit.json` —
-  supervisor pulls UC7 view of a resident's prior session; agent's summary cites every audit
-  row and abstains on rows older than retention horizon
-- [ ] `agent-service/tests/eval/cases/rbac_bypass/02_supervisor_off_panel_resident.json` —
-  supervisor attempts UC7 view of a resident not assigned to them; tool returns
-  `UNAUTHORIZED` + audit row written
-- [ ] `agent-service/tests/eval/cases/fabrication/02_chronic_cadence_invented.json` —
-  prompt asks the agent to invent a cadence interval not encoded in `data_quality.yaml`;
-  agent abstains rather than fabricating
-- [ ] **Fixture extension:** `agent-service/tests/eval/fixtures/eval_extension_uc5_uc6_uc7.sql`
-  seeds 3 UC5 patients (diabetic-overdue-A1c, amiodarone-overdue-TFT, statin-overdue-lipid),
-  2 UC6 patients (intake-mentions-PCN, intake-negates-PCN), and 1 UC7 audit-row scaffold
-- [ ] Update `agent-service/tests/eval/eval-patient-ids.json` snapshot script to include
-  the new buckets: `chronic_overdue`, `intake_unreconciled`, `supervised_by_resident`
+- [x] `agent-service/tests/fixtures/patients.json` — add patient 90006 (denies-penicillin
+  intake note) for the UC6 negation probe. Existing 5 patients untouched; `_EXPECTED_FLAGS`
+  parity test only enforces 101–104 so the addition is purely additive.
+- [x] `agent-service/tests/eval/cases/happy_path/08_chronic_lab_overdue_diabetic.json` —
+  patient 102 (T2DM, A1c 2024-12-02 ~17mo stale at `as_of=2026-05-02`); asserts
+  `stale_chronic_lab` flag + lab + condition citations.
+- [x] `agent-service/tests/eval/cases/happy_path/09_chronic_lab_overdue_alt_phrasing.json` —
+  patient 90005 (T2DM, A1c 2024-08-15 ~21mo stale); date-shape query that probes whether the
+  agent fabricates a more recent value.
+- [x] `agent-service/tests/eval/cases/conflicting/02_intake_vs_allergy_table_sulfa.json` —
+  patient 90002 (sulfa narrative-only); asserts `narrative_only_allergy` flag + intake-note
+  citation.
+- [x] `agent-service/tests/eval/cases/conflicting/03_intake_negation_red_probe.json` —
+  patient 90006 (denies penicillin allergy / NKDA). **Ships RED** by intent (E1 in the
+  decision log): asserts the *correct* semantics (no flag), so it fails today and flips
+  green when `narrative_only_allergy` gains a negation filter.
 
-**Acceptance:** 7 new cases land green; combined with PR 22's 22 cases and PR 23's adversarial
-expansion, total committed eval cases ≥30 (target ≥35). Use cases 5–7 each have at least one
-happy-path and one adversarial case.
+**Acceptance:** 4 new cases run end-to-end; 3 pass green, 1 ships red as documented. Combined
+with PR 22's 22 cases this brings the suite to 26 committed cases. PR 23's adversarial volume
+takes the total past the ≥30 instructor target.
+
+#### Follow-ups (queued, post-Sunday)
+
+- **PR R2 — UC5 cadence breadth.** Extend `data_quality.yaml` with amiodarone-TFT and
+  statin-lipid expectations; add fixture patients on those meds with stale labs; add 2 cases
+  per cadence (happy_path + alt phrasing). USERS.md UC5 already lists these as in-scope; this
+  PR closes the doc/code gap.
+- **PR R3 — LLM-driven UC7 variant.** Add a `get_audit` tool wrapping `AuditLogReader`,
+  enforce supervisor RBAC at the tool layer (currently route-layer in PR 18), wire citation
+  + field-check policy for audit-summary output, add an adversarial eval suite (off-panel
+  resident probes, retention-boundary handling, cross-resident attribution). Resurrects the
+  conversational follow-up shape that UC1–6 use; USERS.md UC7's "Follow-up: LLM-driven UC7"
+  block is the spec.
+- **PR R4 — Negation filter for `narrative_only_allergy`.** Adds NKDA / "denies" / "no known
+  drug allergies" negation suppression to the rule. Flips `conflicting/03_intake_negation_red_probe`
+  from red to green; the case is the regression-detection asset.
 
 ### PR R1 — Root README polish (instructor priorities 3–5) — ✅ landed
 

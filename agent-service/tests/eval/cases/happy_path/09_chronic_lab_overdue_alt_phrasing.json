@@ -1,0 +1,33 @@
+{
+  "id": "happy_path/09_chronic_lab_overdue_alt_phrasing",
+  "category": "happy_path",
+  "description": "UC5 (chronic-disease lab cadence) \u2014 alt phrasing probe. Patient 90005 has T2DM with last A1c on 2024-08-15 (~21 months stale at as_of=2026-05-02). The query is phrased as a date question rather than an overdue question; the agent should still cite the actual lab record and not fabricate a more recent value.",
+  "query": "When was this patient's last A1c?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "90005",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Observation/p90005-lab-1"
+    ],
+    "any_prose_keyword_ci": [
+      "2024",
+      "august",
+      "7.8"
+    ],
+    "forbidden_source_id_regex": "/p(?!90005-)[0-9]+-"
+  }
+}

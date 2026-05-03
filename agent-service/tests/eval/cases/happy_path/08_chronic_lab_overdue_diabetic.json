@@ -1,0 +1,37 @@
+{
+  "id": "happy_path/08_chronic_lab_overdue_diabetic",
+  "category": "happy_path",
+  "description": "UC5 (chronic-disease lab cadence). Patient 102 has T2DM with last A1c on 2024-12-02 \u2014 over 12 months stale relative to the engine's pinned as_of (2026-05-02), so stale_chronic_lab fires. Agent must surface the overdue cadence with the chronic-disease anchor and the most recent A1c date.",
+  "query": "Is this patient overdue for any diabetes monitoring labs?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "102",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Flag/p102-",
+      "Observation/p102-lab-1",
+      "Condition/p102-cond-1"
+    ],
+    "any_prose_keyword_ci": [
+      "overdue",
+      "stale",
+      "a1c",
+      "monitoring",
+      "12 months"
+    ],
+    "forbidden_source_id_regex": "/p(?!102-)[0-9]+-"
+  }
+}

@@ -416,6 +416,33 @@
       "visits": [],
       "notes": []
     },
+    "90006": {
+      "demographics": {
+        "name": "Maya Singh",
+        "age": 38,
+        "sex": "F"
+      },
+      "problems": [],
+      "meds": [],
+      "allergies": [],
+      "labs": [],
+      "visits": [
+        {
+          "source_id": "Encounter/p90006-enc-1",
+          "encounter_type": "Office visit",
+          "visited_on": "2026-04-22",
+          "chief_complaint": "Annual physical"
+        }
+      ],
+      "notes": [
+        {
+          "source_id": "DocumentReference/p90006-note-1",
+          "note_date": "2026-04-22",
+          "author": "Dr. Demo",
+          "body": "Patient denies penicillin allergy. NKDA on intake form."
+        }
+      ]
+    },
     "999": {
       "demographics": {
         "name": "OUT-OF-PANEL Sentinel",

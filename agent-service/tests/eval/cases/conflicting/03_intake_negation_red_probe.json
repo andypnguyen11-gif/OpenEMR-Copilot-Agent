@@ -1,0 +1,26 @@
+{
+  "id": "conflicting/03_intake_negation_red_probe",
+  "category": "conflicting",
+  "description": "UC6 negation probe \u2014 RED case documenting the dominant failure surface USERS.md UC6 already names. Patient 90006's note says 'Patient denies penicillin allergy. NKDA on intake form.' \u2014 the keyword (penicillin) and marker (allergy) co-occur, so the rule fires today. Correct semantics is no flag; this case asserts the correct behavior, so it ships RED until narrative_only_allergy gains a negation filter (NKDA / 'denies' / 'no known drug allergies' suppression). When that lands the case flips green; codifying current-broken-behavior as expected would hide the gap.",
+  "query": "Are there any allergy reconciliation issues to flag for this patient?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "90006",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "forbidden_source_id_regex": "^Flag/p90006-"
+  }
+}

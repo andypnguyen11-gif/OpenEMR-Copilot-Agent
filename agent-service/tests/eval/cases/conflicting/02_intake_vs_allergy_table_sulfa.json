@@ -1,0 +1,37 @@
+{
+  "id": "conflicting/02_intake_vs_allergy_table_sulfa",
+  "category": "conflicting",
+  "description": "UC6 (intake-vs-allergy reconciliation). Patient 90002 has a recent note documenting a sulfa allergy (rash on Bactrim as a teen) but no AllergyIntolerance row in the structured allergy list. narrative_only_allergy fires; agent must surface the gap with citations to both the note and the (absent) structured record.",
+  "query": "Did the patient mention any allergies that aren't on file?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "90002",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Flag/p90002-",
+      "DocumentReference/p90002-note-1"
+    ],
+    "any_prose_keyword_ci": [
+      "sulfa",
+      "intake",
+      "not on file",
+      "allergy list",
+      "narrative",
+      "missing"
+    ],
+    "forbidden_source_id_regex": "/p(?!90002-)[0-9]+-"
+  }
+}
