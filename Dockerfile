@@ -8,7 +8,7 @@
 #   * /src/Services/Copilot/                            (new namespace, PSR-4)
 #   * /apis/routes/_rest_routes_copilot.inc.php         (new gateway routes)
 #   * /apis/routes/_rest_routes_standard.inc.php        (modified — adds the copilot include)
-#   * /interface/copilot/chat.php                       (new)
+#   * /interface/copilot/                                (new — chat / daily brief / side panel)
 #   * /public/copilot/                                  (new — JS/CSS)
 #   * /interface/main/tabs/menu/menus/standard.json     (modified — top-nav entry)
 #
@@ -43,8 +43,8 @@ COPY --chown=apache:apache apis/routes/_rest_routes_copilot.inc.php \
      ${OPENEMR_ROOT}/apis/routes/_rest_routes_copilot.inc.php
 COPY --chown=apache:apache apis/routes/_rest_routes_standard.inc.php \
      ${OPENEMR_ROOT}/apis/routes/_rest_routes_standard.inc.php
-COPY --chown=apache:apache interface/copilot/chat.php \
-     ${OPENEMR_ROOT}/interface/copilot/chat.php
+COPY --chown=apache:apache interface/copilot/ \
+     ${OPENEMR_ROOT}/interface/copilot/
 COPY --chown=apache:apache public/copilot/ \
      ${OPENEMR_ROOT}/public/copilot/
 COPY --chown=apache:apache interface/main/tabs/menu/menus/standard.json \
