@@ -71,3 +71,22 @@ PEM-markers gotcha discovered 2026-05-02. No fork.
 keeps the UI banner change isolated from infra config so a future bisect can localise
 either independently; the TASKS.md tick + this decision log land in the same commit so
 the bookkeeping carries its own justification.
+
+## Decision 7: Tick PR 26 as already-shipped
+
+User pushback caught a doc/code drift: PR 26 (prompt-injection defense + chart-content
+delimitation) was framed as next-up work but every checkbox had already shipped in PRs 9
+(slow-lane system prompt + delimited tool-results channel), 10 (fast-lane system prompt),
+and 23 (`rbac_bypass/02|06|07` injection probes). Original Decision 1 reasoning ("PR 26 is
+making it explicit, lower marginal yield") was directionally right but didn't go all the
+way to "fully done."
+
+**Options considered:**
+- Option A — Tick PR 26 in TASKS.md as a follow-up bookkeeping commit, then stop
+- Option B — Tick + continue to Railway dashboard registration / push / etc.
+- Option C — Hold; leave PR 26 unticked
+
+**Choice:** Option A
+**Rationale:** Honest doc state; deadline-day work-in-flight is shipped; remaining items
+(Railway dashboard registration, demo recording) are user-driven manual steps not gated
+on agent work.
