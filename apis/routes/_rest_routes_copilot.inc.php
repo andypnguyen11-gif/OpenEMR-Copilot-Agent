@@ -105,26 +105,50 @@ $copilotDispatcherFactory = static function (
 // Register the PatientUpdatedEvent subscriber on the kernel dispatcher
 // the first time this route file is loaded for a request. The
 // subscriber is fire-and-forget — see CopilotInvalidationListener for
-// the failure-mode contract — so a missing internal token (or any
-// other dispatcher-side wiring problem) cannot bubble out of a clinical
-// write. The only realistic failure here is :meth:`OEGlobalsBag::getKernel`
-// raising :class:`RuntimeException` when the kernel hasn't been
-// bootstrapped (CLI / install paths); narrowing the catch to that lets
-// real Errors (autoloader misalignment, undefined class) propagate to
-// the global handler where they should.
-try {
-    $copilotKernel = OEGlobalsBag::getInstance()->getKernel();
-    $copilotDispatcher = $copilotDispatcherFactory(
-        OEGlobalsBag::getInstance(),
-        $copilotLogger(),
+// the failure-mode contract — so any dispatcher-side wiring problem
+// must not bubble out of a clinical write.
+//
+// ``OEGlobalsBag::getKernel`` was added to OpenEMR core in upstream
+// commit 86964ca5a (2026-04-13). Our deployed Railway image is built
+// ``FROM openemr/openemr:latest`` and the published Docker Hub tag
+// predates that commit — so the method does not exist on the deployed
+// base. A direct call there throws ``Error: Call to undefined method``,
+// which the project's PHPStan ``forbiddenCatchType`` rule (correctly)
+// stops us from catching with :class:`\Throwable`. The
+// ``method_exists`` guard is the explicit version-skew check; cache
+// invalidation falls back to the 30-min TTL on the agent side until
+// the upstream method lands in a refreshed base image. The inner
+// ``RuntimeException`` catch handles the unrelated kernel-not-
+// bootstrapped path (CLI / install) where ``getKernel`` exists but
+// raises.
+$copilotGlobals = OEGlobalsBag::getInstance();
+// PHPStan sees the local class which has ``getKernel``, so the check
+// is "always true" from its perspective. The deployed Railway base
+// image is the universe where the method is missing — see the comment
+// block above. The suppression is the explicit handshake between the
+// static analyzer and the deployment-version-skew defense.
+// @phpstan-ignore-next-line function.alreadyNarrowedType
+if (method_exists($copilotGlobals, 'getKernel')) {
+    try {
+        $copilotKernel = $copilotGlobals->getKernel();
+        $copilotDispatcher = $copilotDispatcherFactory(
+            $copilotGlobals,
+            $copilotLogger(),
+        );
+        $copilotKernel->getEventDispatcher()->addSubscriber(
+            new CopilotInvalidationListener($copilotDispatcher),
+        );
+    } catch (RuntimeException $e) {
+        $copilotLogger()->warning('Co-Pilot invalidation listener not registered', [
+            'exception' => $e,
+        ]);
+    }
+} else {
+    $copilotLogger()->warning(
+        'Co-Pilot invalidation listener not registered: '
+        . 'OEGlobalsBag::getKernel() unavailable on this OpenEMR base image '
+        . '— falling back to cache TTL for invalidation',
     );
-    $copilotKernel->getEventDispatcher()->addSubscriber(
-        new CopilotInvalidationListener($copilotDispatcher),
-    );
-} catch (RuntimeException $e) {
-    $copilotLogger()->warning('Co-Pilot invalidation listener not registered', [
-        'exception' => $e,
-    ]);
 }
 
 return [
