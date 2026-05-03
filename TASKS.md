@@ -2172,9 +2172,12 @@ ARCHITECTURE §9.4. Cold starts on `agent-service` may break fast-lane budget; m
 - [x] Production env-var checklist documented in `agent-service/README.md` §Production
   deployment — separate tables for the agent service and the OpenEMR PHP service, plus the
   OAUTH_PRIVATE_KEY_PEM PEM-markers gotcha (incident on prod 2026-05-02).
-- [x] HIPAA caveat banner — extended beyond Daily Brief to **all three copilot surfaces**
-  (`chat.php`, `daily_brief.php`, `side_panel.php`); dismissable Bootstrap-4 alert at the top
-  of the shell. Decision 2 in the deployment-polish log explains the scope expansion.
+- [x] HIPAA caveat banner — landed across all three copilot surfaces, then **reverted**
+  before submission per Decision 8 in the deployment-polish log. The banner read as
+  excessive in the deployed UI; the demo-data caveat now lives in README.md and the
+  product-side documentation only. The chat, Daily Brief, and side-panel headers are
+  bare H1s as a result; the `.copilot-hipaa-banner` CSS was deleted in the same commit
+  to avoid leaving dead style rules.
 - [ ] Inter-service call uses Railway private domains; agent service not publicly routable —
   **deferred per Decision 4 in the deployment-polish log.** The flip needs project-level
   private networking enabled + a coordinated env-var swap on OpenEMR + warmer + a smoke-test

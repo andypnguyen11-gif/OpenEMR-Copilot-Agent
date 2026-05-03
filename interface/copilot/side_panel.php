@@ -114,13 +114,6 @@ if ($pid !== '') {
         data-copilot-pid="<?php echo attr($pid); ?>"
         data-copilot-lane="fast"
     >
-        <div class="alert alert-warning alert-dismissible copilot-hipaa-banner" role="alert">
-            <strong><?php echo xlt('Demo data only'); ?>.</strong>
-            <?php echo xlt('Synthetic fixture patients. Not HIPAA-compliant. Not for clinical use.'); ?>
-            <button type="button" class="close" data-dismiss="alert" aria-label="<?php echo xla('Close'); ?>">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
         <header class="copilot-header">
             <h1><?php echo xlt('Co-Pilot'); ?></h1>
             <?php if ($pid === '') : ?>

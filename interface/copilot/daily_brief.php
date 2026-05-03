@@ -238,22 +238,8 @@ $hasText = static fn(mixed $value): bool =>
 </head>
 <body class="bg-light">
     <div class="container-fluid copilot-shell" data-copilot-shell>
-        <div class="alert alert-warning alert-dismissible copilot-hipaa-banner" role="alert">
-            <strong><?php echo xlt('Demo data only'); ?>.</strong>
-            <?php echo xlt('This Co-Pilot is wired to synthetic fixture patients for case-study evaluation. It is not HIPAA-compliant, is not a registered medical device, and must not be used for live patient care or connected to a production EHR.'); ?>
-            <button type="button" class="close" data-dismiss="alert" aria-label="<?php echo xla('Close'); ?>">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
         <header class="copilot-header">
             <h1><?php echo xlt('Daily Brief'); ?></h1>
-            <p class="copilot-subtitle">
-                <?php echo xlt('Today\'s panel — record-based snapshot plus engine-detected discrepancies. Cards never quote LLM output; flags come from deterministic rule evaluation.'); ?>
-            </p>
-            <p class="copilot-disclaimer">
-                <strong><?php echo xlt('Demo'); ?>:</strong>
-                <?php echo xlt('Hand-encoded fixture patients only. Not a diagnostic device.'); ?>
-            </p>
         </header>
 
         <?php if ($cards === []) : ?>

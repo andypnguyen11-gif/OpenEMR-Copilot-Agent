@@ -90,3 +90,26 @@ way to "fully done."
 **Rationale:** Honest doc state; deadline-day work-in-flight is shipped; remaining items
 (Railway dashboard registration, demo recording) are user-driven manual steps not gated
 on agent work.
+
+## Decision 8: Strip the demo-data chrome from every Co-Pilot surface
+
+User reviewed chat.php in a browser and asked to remove the HIPAA banner, the "Demo:
+Hand-encoded fixture patients..." disclaimer line, and the "Chart review assistant —
+every claim is cited..." tagline subtitle. Reverses Decision 2 in part — the banner I
+recommended for grader visibility is now removed before submission.
+
+**Options considered:**
+- Option A — Strip the chat pattern from all three surfaces (HIPAA banner everywhere;
+  Daily Brief's "record-based snapshot..." subtitle + Demo disclaimer; side panel's
+  HIPAA banner). Functional subtitles (patient name on side panel) and the
+  "switch to a seeded patient" empty-state hint stay.
+- Option B — Strip the HIPAA banner only; keep the pre-existing subtitles + disclaimers
+  that predate PR 27.
+- Option C — Chat.php only.
+
+**Choice:** Option A
+**Rationale:** Consistent demo aesthetic across every surface a grader / recording will
+hit. Daily Brief loses the "cards never quote LLM output" line, but that information
+lives in PRD / ARCHITECTURE rather than user-facing chrome. The
+``.copilot-hipaa-banner`` CSS rules added in PR 27 become dead code and are removed in
+the same commit.

@@ -85,22 +85,8 @@ if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
 </head>
 <body class="bg-light">
     <div class="container-fluid copilot-shell" data-copilot-shell>
-        <div class="alert alert-warning alert-dismissible copilot-hipaa-banner" role="alert">
-            <strong><?php echo xlt('Demo data only'); ?>.</strong>
-            <?php echo xlt('This Co-Pilot is wired to synthetic fixture patients for case-study evaluation. It is not HIPAA-compliant, is not a registered medical device, and must not be used for live patient care or connected to a production EHR.'); ?>
-            <button type="button" class="close" data-dismiss="alert" aria-label="<?php echo xla('Close'); ?>">
-                <span aria-hidden="true">&times;</span>
-            </button>
-        </div>
         <header class="copilot-header">
             <h1><?php echo xlt('Clinical Co-Pilot'); ?></h1>
-            <p class="copilot-subtitle">
-                <?php echo xlt('Chart review assistant — every claim is cited; the agent abstains when it cannot be sure.'); ?>
-            </p>
-            <p class="copilot-disclaimer">
-                <strong><?php echo xlt('Demo'); ?>:</strong>
-                <?php echo xlt('Hand-encoded fixture patients only. No live FHIR. Not a diagnostic device.'); ?>
-            </p>
         </header>
 
         <section class="copilot-toolbar">

@@ -13,23 +13,6 @@
     color: #111;
 }
 
-.copilot-hipaa-banner {
-    margin: 0 0 1rem 0;
-    font-size: 0.9rem;
-    line-height: 1.4;
-}
-
-.copilot-hipaa-banner strong {
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-}
-
-.copilot-shell-side .copilot-hipaa-banner {
-    font-size: 0.8rem;
-    padding: 0.35rem 0.6rem;
-    margin-bottom: 0.6rem;
-}
-
 .copilot-header {
     border-bottom: 1px solid #d8d8d8;
     padding-bottom: 1rem;
