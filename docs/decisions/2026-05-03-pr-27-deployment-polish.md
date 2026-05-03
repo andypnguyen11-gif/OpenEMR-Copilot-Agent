@@ -125,11 +125,13 @@ following the README's credential block would have failed to log into the live d
 - Option B — Rotate the deployed password back to ``pass`` so the README stays accurate.
 - Option C — Replace the credential block with an indirection (no value in git).
 
-**Choice:** Option B
-**Rationale:** Avoid committing a real password to git history (even one with a
-``ChangeMe`` prefix — once it lands in ``git log`` it stays there after the demo is
-torn down). Rotation is a 30-second action through the deployed OpenEMR's
-Administration → Users UI; the README needs no change since ``admin`` / ``pass`` is
-the OpenEMR upstream default it already documents. User-driven step — the agent
-cannot change OpenEMR user passwords directly. **Reversibility:** reversible — if
-rotation fails, fall back to A or C.
+**Choice:** Option B initially, **revised to Option A on 2026-05-03** — the deployed
+OpenEMR has password-strength enforcement enabled and rejects ``pass`` as too short.
+Disabling password-strength globally to land a 4-character password just to keep
+the README unchanged was net worse than committing the actual disposable demo
+credential. README now carries a per-environment table: local stack stays
+``admin`` / ``pass``, deployed Railway documents
+``admin`` / ``ChangeMe_StrongAdminPass_456`` with an explicit "torn down post-review"
+caveat. Trade-off accepted: the credential lives in ``git log`` forever, but the
+``ChangeMe`` prefix, the short-lived demo posture, and the synthetic-data scope of
+the deployed instance bound the blast.

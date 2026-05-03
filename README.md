@@ -37,12 +37,12 @@ This fork adds a **Clinical Co-Pilot** — a verified, lane-aware agent for cros
 
 ### Credentials (demo only)
 
-| Field | Value |
-|---|---|
-| Username | `admin` |
-| Password | `pass` |
+| Environment | Username | Password |
+|---|---|---|
+| Local Docker stack | `admin` | `pass` |
+| Deployed demo (Railway) | `admin` | `ChangeMe_StrongAdminPass_456` |
 
-These are the upstream OpenEMR demo defaults. They exist only for the local Docker stack and the Railway demo deployment; they **must be rotated** before any non-demo use. The Co-Pilot inherits OpenEMR's RBAC at the FHIR/REST layer — login as `admin` to exercise the attending workflow; the resident/supervisor roles in [USERS.md §1.4](USERS.md) are provisioned via Admin → Users on the running stack.
+The local-stack values are the upstream OpenEMR demo defaults; the deployed instance has password-strength enforcement enabled, so its admin password is the longer string above. Both exist only for case-study evaluation and **must be rotated** before any non-demo use — the deployed credential will be invalidated when the Railway demo is torn down post-review. The Co-Pilot inherits OpenEMR's RBAC at the FHIR/REST layer — login as `admin` to exercise the attending workflow; the resident/supervisor roles in [USERS.md §1.4](USERS.md) are provisioned via Admin → Users on the running stack.
 
 ### Setup
 
