@@ -1,0 +1,30 @@
+{
+  "id": "happy_path/05_recent_encounters",
+  "category": "happy_path",
+  "description": "Use case 4: agent surfaces recent encounters (full_chart bucket has \u22651 Encounter).",
+  "query": "When was this patient last seen and what for?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 3
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Encounter/"
+    ]
+  }
+}

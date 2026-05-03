@@ -1,0 +1,30 @@
+{
+  "id": "happy_path/03_medications",
+  "category": "happy_path",
+  "description": "Use case 1: agent enumerates current medications with at least one MedicationRequest citation.",
+  "query": "What medications is this patient currently taking?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 1
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "MedicationRequest/"
+    ]
+  }
+}

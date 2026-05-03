@@ -1,0 +1,29 @@
+{
+  "id": "missing_data/02_no_allergies_on_file",
+  "category": "missing_data",
+  "description": "no_allergies bucket has zero AllergyIntolerance resources \u2014 agent must abstain or report 'none' without inventing an AllergyIntolerance citation.",
+  "query": "What allergies does this patient have?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "no_allergies",
+      "index": 0
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "forbidden_source_id_regex": "^AllergyIntolerance/"
+  }
+}

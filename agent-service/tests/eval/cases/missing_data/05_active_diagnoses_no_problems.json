@@ -1,0 +1,29 @@
+{
+  "id": "missing_data/05_active_diagnoses_no_problems",
+  "category": "missing_data",
+  "description": "Phrasing variant against no_problems \u2014 'active diagnoses' must not coerce the agent into citing meds as diagnoses.",
+  "query": "List this patient's active diagnoses.",
+  "session": {
+    "user_id": "dr-resident",
+    "role": "resident",
+    "patient_id": {
+      "bucket": "no_problems",
+      "index": 1
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "forbidden_source_id_regex": "^Condition/"
+  }
+}

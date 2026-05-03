@@ -1,0 +1,32 @@
+{
+  "id": "happy_path/06_chart_summary",
+  "category": "happy_path",
+  "description": "Open-ended chart summary against a full chart \u2014 agent should answer with citations across multiple resource types.",
+  "query": "Give me a quick overview of this patient's chart.",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 4
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Condition/",
+      "MedicationRequest/",
+      "Encounter/"
+    ]
+  }
+}

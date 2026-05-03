@@ -40,6 +40,21 @@ CASES_DIR = Path(__file__).resolve().parent / "cases"
 RBAC_CATEGORY = "rbac_bypass"
 DEFAULT_JWT_TTL_SECONDS = 60
 
+# Buckets the snapshot script (``scripts/snapshot_eval_patients.py``) writes
+# into ``eval-patient-ids.json``. Cases reference one of these by name; an
+# unknown bucket fails loud at load time so a typo doesn't silently degrade
+# to "no patient resolved" at request time.
+KNOWN_BUCKETS = frozenset({"full_chart", "no_allergies", "no_problems", "default"})
+
+
+class EvalCaseLoadError(ValueError):
+    """Raised when a case JSON references state the loader cannot resolve.
+
+    Distinct from pydantic's :class:`ValidationError` (which fires on shape
+    violations) so a missing snapshot file or an empty bucket reads as a
+    setup problem, not a schema bug.
+    """
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -111,11 +126,102 @@ class CaseOutcome:
         return not self.failures and self.transport_error is None
 
 
-def load_cases(root: Path = CASES_DIR) -> list[EvalCase]:
+def load_snapshot(path: Path) -> dict[str, list[dict[str, Any]]]:
+    """Load the bucket map written by ``snapshot_eval_patients.py``.
+
+    Returns just the ``buckets`` payload — the surrounding metadata
+    (``generated_at``, ``openemr_url``) is informational and never
+    consulted by the resolver.
+    """
+
+    if not path.is_file():
+        raise EvalCaseLoadError(
+            f"snapshot file not found: {path} "
+            "(run scripts/snapshot_eval_patients.py first)"
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise EvalCaseLoadError(f"snapshot {path} is not valid JSON: {exc}") from exc
+    buckets = payload.get("buckets")
+    if not isinstance(buckets, dict):
+        raise EvalCaseLoadError(
+            f"snapshot {path} missing 'buckets' object — re-run the snapshot script"
+        )
+    return buckets
+
+
+def _resolve_patient_ref(
+    payload: dict[str, Any],
+    *,
+    snapshot: dict[str, list[dict[str, Any]]] | None,
+    source: Path,
+) -> None:
+    """If the case references a snapshot bucket, replace it in-place with a pid.
+
+    Operates on the raw JSON dict before pydantic validation so the
+    :class:`Session` schema can stay closed-shape (``patient_id: str``).
+    A literal-string ``patient_id`` is left untouched — keeps the M5
+    fixture-driven cases working without edit.
+    """
+
+    session = payload.get("session")
+    if not isinstance(session, dict):
+        return
+    ref = session.get("patient_id")
+    if not isinstance(ref, dict):
+        return
+
+    if snapshot is None:
+        raise EvalCaseLoadError(
+            f"{source.name} references a patient bucket but no snapshot was loaded "
+            "(pass --snapshot to runner.py or load_snapshot() to load_cases)"
+        )
+
+    bucket = ref.get("bucket")
+    if not isinstance(bucket, str) or bucket not in KNOWN_BUCKETS:
+        raise EvalCaseLoadError(
+            f"{source.name}: unknown bucket {bucket!r}; "
+            f"expected one of {sorted(KNOWN_BUCKETS)}"
+        )
+
+    index = ref.get("index", 0)
+    if not isinstance(index, int) or index < 0:
+        raise EvalCaseLoadError(
+            f"{source.name}: bucket index must be a non-negative int, got {index!r}"
+        )
+
+    entries = snapshot.get(bucket) or []
+    if index >= len(entries):
+        raise EvalCaseLoadError(
+            f"{source.name}: bucket {bucket!r} has {len(entries)} patient(s); "
+            f"index {index} out of range — re-run the snapshot script with more imports"
+        )
+
+    entry = entries[index]
+    uuid = entry.get("uuid") if isinstance(entry, dict) else None
+    if not isinstance(uuid, str) or not uuid:
+        raise EvalCaseLoadError(
+            f"{source.name}: snapshot entry for {bucket}[{index}] missing 'uuid' — "
+            "snapshot file is malformed"
+        )
+    session["patient_id"] = uuid
+
+
+def load_cases(
+    root: Path = CASES_DIR,
+    *,
+    snapshot: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[EvalCase]:
     """Load every ``*.json`` under ``root`` into typed cases.
 
     Files are sorted by path so output ordering is stable across runs —
     important for CI diffs and for the demo recording (PR M6).
+
+    ``snapshot`` (from :func:`load_snapshot`) resolves bucket-referenced
+    patient ids. Cases that hardcode ``patient_id`` as a string don't
+    need a snapshot; cases that reference a bucket fail loud if it's
+    missing.
     """
 
     if not root.is_dir():
@@ -125,6 +231,7 @@ def load_cases(root: Path = CASES_DIR) -> list[EvalCase]:
     for path in sorted(root.rglob("*.json")):
         with path.open(encoding="utf-8") as fh:
             payload = json.load(fh)
+        _resolve_patient_ref(payload, snapshot=snapshot, source=path)
         cases.append(EvalCase.model_validate(payload))
     return cases
 

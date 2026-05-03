@@ -1,0 +1,28 @@
+{
+  "id": "ambiguous/04_how_are_they",
+  "category": "ambiguous",
+  "description": "Vague status query \u2014 agent should ground any 'how is the patient' answer in cited resources or abstain.",
+  "query": "How is the patient doing?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "default",
+      "index": 24
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}

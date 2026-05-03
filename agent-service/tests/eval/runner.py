@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,11 +39,18 @@ from tests.eval.harness import (
     EvalCase,
     evaluate,
     load_cases,
+    load_snapshot,
     mint_jwt,
 )
+from tests.eval.persistence import EvalRunWriter, writer_from_database_url
 
 DEFAULT_BASE_URL = "http://localhost:8000"
 DEFAULT_TIMEOUT_SECONDS = 60.0
+# Snapshot file lives at the agent-service root by convention (next to the
+# scripts/ that produces it). The default lookup is relative to the cases
+# dir's grandparent — ``tests/eval/cases/`` → ``agent-service/`` — so a
+# vanilla ``make eval`` run finds it without an extra flag.
+DEFAULT_SNAPSHOT_PATH = CASES_DIR.parent.parent.parent / "eval-patient-ids.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +59,8 @@ class RunnerConfig:
     secret: str
     cases_dir: Path
     timeout_seconds: float
+    snapshot_path: Path | None
+    database_url: str | None
 
 
 def parse_args(argv: list[str]) -> RunnerConfig:
@@ -80,14 +90,37 @@ def parse_args(argv: list[str]) -> RunnerConfig:
         default=DEFAULT_TIMEOUT_SECONDS,
         help="Per-request HTTP timeout in seconds.",
     )
+    parser.add_argument(
+        "--snapshot",
+        type=Path,
+        default=None,
+        help=(
+            "Path to eval-patient-ids.json (output of snapshot_eval_patients.py). "
+            "Required when any case references a snapshot bucket; ignored otherwise. "
+            f"Defaults to {DEFAULT_SNAPSHOT_PATH} if it exists."
+        ),
+    )
+    parser.add_argument(
+        "--database-url",
+        default=os.environ.get("DATABASE_URL"),
+        help=(
+            "SQLAlchemy URL for the agent-db (eval_runs persistence). "
+            "Defaults to $DATABASE_URL; unset disables persistence."
+        ),
+    )
     args = parser.parse_args(argv)
     if not args.secret:
         parser.error("--secret or COPILOT_HMAC_SECRET is required")
+    snapshot_path = args.snapshot
+    if snapshot_path is None and DEFAULT_SNAPSHOT_PATH.is_file():
+        snapshot_path = DEFAULT_SNAPSHOT_PATH
     return RunnerConfig(
         base_url=str(args.base_url).rstrip("/"),
         secret=str(args.secret),
         cases_dir=Path(args.cases),
         timeout_seconds=float(args.timeout),
+        snapshot_path=snapshot_path,
+        database_url=args.database_url or None,
     )
 
 
@@ -181,12 +214,16 @@ def summarize(outcomes: list[CaseOutcome]) -> tuple[str, bool]:
 
 def main(argv: list[str] | None = None) -> int:
     config = parse_args(sys.argv[1:] if argv is None else argv)
-    cases = load_cases(config.cases_dir)
+    snapshot = load_snapshot(config.snapshot_path) if config.snapshot_path else None
+    cases = load_cases(config.cases_dir, snapshot=snapshot)
     if not cases:
         print(f"no cases found under {config.cases_dir}", file=sys.stderr)
         return 2
 
-    print(f"Running {len(cases)} cases against {config.base_url} ...\n")
+    run_id = uuid.uuid4().hex
+    writer: EvalRunWriter = writer_from_database_url(config.database_url)
+
+    print(f"Running {len(cases)} cases against {config.base_url} (run_id={run_id}) ...\n")
     outcomes: list[CaseOutcome] = []
     with httpx.Client() as client:
         for case in cases:
@@ -194,9 +231,12 @@ def main(argv: list[str] | None = None) -> int:
             outcomes.append(outcome)
             print(format_outcome(outcome))
 
+    persisted = writer.write(outcomes, run_id=run_id)
     summary, rbac_passed = summarize(outcomes)
     print()
     print(summary)
+    if persisted:
+        print(f"Persisted {persisted} eval_runs row(s) under run_id={run_id}")
     return 0 if rbac_passed else 1
 
 

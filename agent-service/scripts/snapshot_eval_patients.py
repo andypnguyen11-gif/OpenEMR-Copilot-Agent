@@ -146,27 +146,34 @@ async def _profile_patient(
     fhir_base: str,
     token: str,
     patient: dict,
+    semaphore: asyncio.Semaphore,
 ) -> dict:
     pid = str(patient["id"])
     name = _short_name(patient)
-    counts = await asyncio.gather(
-        _count_for_patient(
-            http, fhir_base=fhir_base, token=token,
-            resource_type="Condition", patient_id=pid,
-        ),
-        _count_for_patient(
-            http, fhir_base=fhir_base, token=token,
-            resource_type="MedicationRequest", patient_id=pid,
-        ),
-        _count_for_patient(
-            http, fhir_base=fhir_base, token=token,
-            resource_type="AllergyIntolerance", patient_id=pid,
-        ),
-        _count_for_patient(
-            http, fhir_base=fhir_base, token=token,
-            resource_type="Encounter", patient_id=pid,
-        ),
-    )
+    # Cap in-flight requests for this patient to a small number so the
+    # outer semaphore-bound concurrency cleanly translates into total
+    # in-flight work (concurrency × 4 ≤ pool size). Without an inner
+    # gather, profiling is sequential — the semaphore is what bounds
+    # parallelism across patients.
+    async with semaphore:
+        counts = await asyncio.gather(
+            _count_for_patient(
+                http, fhir_base=fhir_base, token=token,
+                resource_type="Condition", patient_id=pid,
+            ),
+            _count_for_patient(
+                http, fhir_base=fhir_base, token=token,
+                resource_type="MedicationRequest", patient_id=pid,
+            ),
+            _count_for_patient(
+                http, fhir_base=fhir_base, token=token,
+                resource_type="AllergyIntolerance", patient_id=pid,
+            ),
+            _count_for_patient(
+                http, fhir_base=fhir_base, token=token,
+                resource_type="Encounter", patient_id=pid,
+            ),
+        )
     cond, med, allergy, enc = counts
     return {
         "uuid": pid,
@@ -232,14 +239,16 @@ async def main_async(args: argparse.Namespace) -> int:
     # validates against must match its ``site_addr_oath`` global, which for
     # local is ``https://localhost:9300`` — so HTTP via 8300 won't work even
     # though the registration endpoint accepts it.
-    # Pool default (max_connections=10) is too small: profiling fans out
-    # 4 searches × ~50 patients = ~200 in-flight; saturating the pool
-    # surfaces as PoolTimeout, not a slow run.
+    # Bound in-flight work via a semaphore (max ``args.concurrency`` patients
+    # × 4 searches each) rather than scaling with patient count. The earlier
+    # all-at-once gather over ``len(patients)`` saturated the connection pool
+    # for any non-trivial import (PoolTimeout at ~100 patients).
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(60.0),
         verify=not args.insecure,
         limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
     ) as http:
+        semaphore = asyncio.Semaphore(args.concurrency)
         oauth = OAuthClient(
             token_url=token_url,
             client_id=args.client_id,
@@ -263,7 +272,13 @@ async def main_async(args: argparse.Namespace) -> int:
 
         profiles = await asyncio.gather(
             *(
-                _profile_patient(http, fhir_base=fhir_base, token=token, patient=p)
+                _profile_patient(
+                    http,
+                    fhir_base=fhir_base,
+                    token=token,
+                    patient=p,
+                    semaphore=semaphore,
+                )
                 for p in patients
             )
         )
@@ -294,6 +309,16 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         default=Path("eval-patient-ids.json"),
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=10,
+        help=(
+            "Max patients profiled in parallel. Each holds 4 in-flight FHIR "
+            "searches; keep concurrency × 4 ≤ pool size (50) to avoid "
+            "PoolTimeout."
+        ),
     )
     parser.add_argument(
         "--insecure",

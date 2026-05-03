@@ -1,0 +1,28 @@
+{
+  "id": "ambiguous/02_what_about_them",
+  "category": "ambiguous",
+  "description": "Pronoun-only query with no clear topic \u2014 agent should answer with a chart overview or ask for specifics, never invent.",
+  "query": "What about them?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "default",
+      "index": 7
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}

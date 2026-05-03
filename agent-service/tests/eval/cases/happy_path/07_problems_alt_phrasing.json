@@ -1,0 +1,30 @@
+{
+  "id": "happy_path/07_problems_alt_phrasing",
+  "category": "happy_path",
+  "description": "Phrasing variant of use case 2 \u2014 'conditions' instead of 'problems' should still drive the agent to get_problems.",
+  "query": "What conditions is this patient being treated for?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 5
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Condition/"
+    ]
+  }
+}

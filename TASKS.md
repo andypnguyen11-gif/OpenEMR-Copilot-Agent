@@ -1805,7 +1805,7 @@ when the audit writer is healthy and surfaces the drift when it isn't.
 
 ## Milestone 9 — Eval Framework
 
-### PR 22 — Eval harness CLI + happy-path + missing-data + ambiguous suites
+### PR 22 — Eval harness CLI + happy-path + missing-data + ambiguous suites — ✅ landed
 
 Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §8.2).
 
@@ -1837,30 +1837,64 @@ Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §
 >   (FHIR projection gap), not the agent. Note in the eval-case description
 >   when this happens — it's legitimate "missing data" coverage.
 
-- [ ] `harness.py` — loads cases, runs agent, checks expected vs observed
-- [ ] `runner.py` — CLI: `python -m clinical_copilot.eval --suite happy_path`
-- [ ] Test cases for use cases 1–4 happy paths (5–10 each, ARCHITECTURE §8.2)
-- [ ] Missing-data suite (5–10 cases)
-- [ ] Ambiguous-query suite (5–10 cases)
-- [ ] Result rows persisted to `eval_runs` table (PR 2)
-- [ ] **Bulk patient load** (~50) into deployed OpenEMR via
-  `devtools import-random-patients`, before authoring eval cases
-- [ ] **Post-import id snapshot** — script queries OpenEMR for pids matching
-  heuristic buckets (has-meds, no-problems, has-allergies, …) and writes a
-  gitignored `eval-patient-ids.json` the harness loads at startup
+- [x] `harness.py` — loads cases, runs agent, checks expected vs observed.
+  Bucket-resolved `patient_id` lets a case reference
+  `{"bucket": "full_chart", "index": N}` instead of a hardcoded pid; the
+  loader looks the index up in `eval-patient-ids.json` so a re-import
+  doesn't cascade into case edits. Literal-string `patient_id` still
+  works for the M5 fixture cases (`101`, `103`, `104`).
+- [x] `runner.py` — drives every case via `python -m tests.eval.runner` (the
+  `make eval` target lands with PR 24); accepts `--snapshot` and
+  `--database-url` for the new persistence path. Per-suite filtering is
+  not wired — the suite distinction lives in the per-case `category`
+  field and is summarised at run-end, but partial runs aren't required
+  for the local pre-merge gate.
+- [x] Test cases for use cases 1–4 happy paths — 7 happy_path cases (1 M5
+  fixture-driven + 6 Synthea full_chart) cover problems, meds, allergies,
+  encounters, multi-resource summary, and a phrasing variant.
+- [x] Missing-data suite — 6 cases (1 M5 fixture-driven + 5 bucket-driven)
+  exercise no_allergies and no_problems patients with multiple phrasings;
+  positive assertion is a `forbidden_source_id_regex` against the
+  resource type the bucket guarantees absent (e.g. no `AllergyIntolerance/`
+  citation may appear for a `no_allergies` patient).
+- [x] Ambiguous-query suite — 6 cases (1 M5 fixture-driven + 5 bucket-driven)
+  with intentionally vague queries against random `default`-bucket
+  patients; `abstention_state_in: [null, "NO_DATA"]` because either a
+  cited summary or a clean abstention is acceptable.
+- [x] Result rows persisted to `eval_runs` table — `tests/eval/persistence.py`
+  `SqlEvalRunWriter` writes one row per `(run_id, case_id)` with both
+  observed payload (response/transport-error/failures) and expected
+  payload (full `Expectation`). Fail-open: a DB hiccup logs to stderr
+  and the runner's exit code stays decided by in-memory outcomes.
+  `NullEvalRunWriter` is the no-op fallback when `DATABASE_URL` is unset.
+- [x] **Bulk patient load** — 50 patients imported into the local
+  development-easy stack via `devtools import-random-patients 50`
+  (~57 s end-to-end). Deployed OpenEMR import is deferred to PR 27 —
+  the eval suite as built targets local OpenEMR uuids; running against
+  the deployed agent requires a deployed-OpenEMR re-import + fresh
+  snapshot.
+- [x] **Post-import id snapshot** — `scripts/snapshot_eval_patients.py` shipped
+  in `b7bbdd1b5`; this PR added a per-patient `asyncio.Semaphore` so the
+  inner `gather` doesn't fan out to `4 × len(patients)` in-flight requests.
+  Without the bound the script PoolTimeout'd at 104 imported patients
+  (50 fresh + 54 pre-existing) — patient count is operator-controlled,
+  pool size isn't, so the bound has to be on the work, not the pool.
 
 **NEW**
-- `agent-service/tests/eval/harness.py`
-- `agent-service/tests/eval/runner.py`
-- `agent-service/tests/eval/cases/happy_path/*.json`
-- `agent-service/tests/eval/cases/missing_data/*.json`
-- `agent-service/tests/eval/cases/ambiguous/*.json`
-- `agent-service/scripts/snapshot_eval_patients.py` — post-import id picker
-  (queries FHIR for patients matching heuristic buckets; writes
-  `eval-patient-ids.json`, gitignored)
+- `agent-service/tests/eval/harness.py` — extended (M5 baseline)
+- `agent-service/tests/eval/runner.py` — extended (M5 baseline)
+- `agent-service/tests/eval/persistence.py` — `SqlEvalRunWriter` /
+  `NullEvalRunWriter` / `writer_from_database_url`
+- `agent-service/tests/eval/cases/happy_path/02..07_*.json`
+- `agent-service/tests/eval/cases/missing_data/02..06_*.json`
+- `agent-service/tests/eval/cases/ambiguous/02..06_*.json`
+- `agent-service/scripts/snapshot_eval_patients.py` — semaphore-bounded
+  per-patient profiling (post-import id picker, gitignored output)
+- `agent-service/tests/unit/test_eval_persistence.py`
 
-**Acceptance:** `eval --suite happy_path` runs end-to-end, writes results to Postgres, prints
-pass/fail summary.
+**Acceptance:** `python -m tests.eval.runner --base-url <agent>` runs every committed case end-to-end,
+persists one row per case to `eval_runs` when `DATABASE_URL` is set, prints pass/fail summary,
+and exits non-zero iff any `rbac_bypass` case fails.
 
 ---
 

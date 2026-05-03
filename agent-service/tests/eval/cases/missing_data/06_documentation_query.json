@@ -1,0 +1,28 @@
+{
+  "id": "missing_data/06_documentation_query",
+  "category": "missing_data",
+  "description": "Synthea CCDA imports rarely produce DocumentReference entries; agent must not invent a note when no_allergies bucket also lacks documents.",
+  "query": "Are there any clinic notes or documents on file for this patient?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "no_allergies",
+      "index": 2
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}

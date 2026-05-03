@@ -1,0 +1,30 @@
+{
+  "id": "happy_path/04_allergies",
+  "category": "happy_path",
+  "description": "Agent reports allergies (full_chart bucket guarantees \u22651 AllergyIntolerance) with a citation, no abstention.",
+  "query": "Does this patient have any documented allergies?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 2
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "AllergyIntolerance/"
+    ]
+  }
+}

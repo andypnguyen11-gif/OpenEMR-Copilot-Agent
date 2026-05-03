@@ -1,0 +1,30 @@
+{
+  "id": "happy_path/02_problems_full_chart",
+  "category": "happy_path",
+  "description": "Use case 2 against a Synthea-imported full chart: agent enumerates active problems with at least one Condition citation.",
+  "query": "What active problems does this patient have?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "full_chart",
+      "index": 0
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null
+    ],
+    "any_source_id_prefix": [
+      "Condition/"
+    ]
+  }
+}

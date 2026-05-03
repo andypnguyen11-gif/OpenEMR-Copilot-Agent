@@ -1,0 +1,29 @@
+{
+  "id": "missing_data/04_no_problems_meds_only",
+  "category": "missing_data",
+  "description": "no_problems bucket: meds present but zero Condition entries \u2014 agent must not invent a diagnosis from the meds list.",
+  "query": "What medical problems is this patient being treated for?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "no_problems",
+      "index": 0
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "forbidden_source_id_regex": "^Condition/"
+  }
+}

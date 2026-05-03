@@ -1,0 +1,28 @@
+{
+  "id": "ambiguous/03_anything_concerning",
+  "category": "ambiguous",
+  "description": "Open-ended risk question \u2014 agent should respond with chart-grounded findings or abstain, not speculate without citations.",
+  "query": "Is there anything concerning I should know about this patient?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "default",
+      "index": 12
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}

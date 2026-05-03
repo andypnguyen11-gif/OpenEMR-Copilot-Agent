@@ -23,10 +23,12 @@ from tests.eval.harness import (
     CaseFailure,
     CaseOutcome,
     EvalCase,
+    EvalCaseLoadError,
     Expectation,
     Session,
     evaluate,
     load_cases,
+    load_snapshot,
 )
 from tests.eval.runner import summarize
 
@@ -50,7 +52,23 @@ def _case(category: str, expect: Expectation) -> EvalCase:
 
 
 def test_load_cases_finds_all_six_categories() -> None:
-    cases = load_cases()
+    """All committed case files load against a stub snapshot.
+
+    Stub the snapshot rather than reading the gitignored
+    ``eval-patient-ids.json`` so this test is deterministic in CI. The
+    bucket sizes are sized to cover the highest index any committed
+    case references — bumping the bucket index in a case file requires
+    bumping these counts in lockstep, which is the right kind of forced
+    coupling.
+    """
+
+    stub_uuids: dict[str, list[dict[str, Any]]] = {
+        "full_chart": [{"uuid": f"stub-fc-{i}"} for i in range(20)],
+        "no_allergies": [{"uuid": f"stub-na-{i}"} for i in range(20)],
+        "no_problems": [{"uuid": f"stub-np-{i}"} for i in range(20)],
+        "default": [{"uuid": f"stub-df-{i}"} for i in range(120)],
+    }
+    cases = load_cases(snapshot=stub_uuids)
     categories = {c.category for c in cases}
     assert categories == {
         "happy_path",
@@ -296,3 +314,132 @@ def test_cases_dir_resolves_under_tests_eval() -> None:
     assert CASES_DIR.is_dir()
     assert CASES_DIR.parent.name == "eval"
     assert isinstance(CASES_DIR, Path)
+
+
+# --- snapshot bucket resolution -----------------------------------------
+
+
+def _write_case(dir_path: Path, name: str, patient_id: Any) -> Path:
+    """Drop a minimal happy-path case at ``dir_path/<name>.json``.
+
+    Used by the resolver tests below so each test owns its on-disk
+    fixture without polluting the real cases tree (which the runner
+    discovers via ``rglob``).
+    """
+
+    case_path = dir_path / f"{name}.json"
+    case_path.write_text(
+        f"""{{
+            "id": "happy_path/{name}",
+            "category": "happy_path",
+            "description": "synthetic",
+            "query": "q",
+            "session": {{
+                "user_id": "u",
+                "role": "physician",
+                "patient_id": {patient_id},
+                "scopes": ["system/Condition.read"]
+            }},
+            "expect": {{"abstention_state_in": [null]}}
+        }}""",
+        encoding="utf-8",
+    )
+    return case_path
+
+
+def _snapshot(buckets: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    return buckets
+
+
+def test_load_resolves_bucket_reference_to_pid(tmp_path: Path) -> None:
+    """``patient_id: {"bucket": "full_chart", "index": 1}`` → snapshot's uuid."""
+
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_full", '{"bucket": "full_chart", "index": 1}')
+    snapshot = _snapshot(
+        {
+            "full_chart": [
+                {"uuid": "uuid-zero", "name": "A", "counts": {}},
+                {"uuid": "uuid-one", "name": "B", "counts": {}},
+            ],
+            "no_allergies": [],
+            "no_problems": [],
+            "default": [],
+        }
+    )
+    cases = load_cases(tmp_path / "cases", snapshot=snapshot)
+    assert len(cases) == 1
+    assert cases[0].session.patient_id == "uuid-one"
+
+
+def test_load_keeps_literal_patient_id(tmp_path: Path) -> None:
+    """A string ``patient_id`` is left unchanged — keeps M5 fixture cases working."""
+
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_literal", '"101"')
+    cases = load_cases(tmp_path / "cases", snapshot=None)
+    assert cases[0].session.patient_id == "101"
+
+
+def test_load_bucket_without_snapshot_raises(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_needs_snapshot", '{"bucket": "full_chart", "index": 0}')
+    with pytest.raises(EvalCaseLoadError, match="no snapshot was loaded"):
+        load_cases(tmp_path / "cases", snapshot=None)
+
+
+def test_load_bucket_unknown_raises(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_typo", '{"bucket": "fool_chart", "index": 0}')
+    with pytest.raises(EvalCaseLoadError, match="unknown bucket"):
+        load_cases(tmp_path / "cases", snapshot=_snapshot({"full_chart": [{"uuid": "x"}]}))
+
+
+def test_load_bucket_index_out_of_range_raises(tmp_path: Path) -> None:
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_oob", '{"bucket": "full_chart", "index": 5}')
+    with pytest.raises(EvalCaseLoadError, match="index 5 out of range"):
+        load_cases(
+            tmp_path / "cases",
+            snapshot=_snapshot({"full_chart": [{"uuid": "u0"}, {"uuid": "u1"}]}),
+        )
+
+
+def test_load_bucket_default_index_is_zero(tmp_path: Path) -> None:
+    """Index is optional — omitting it picks the first patient in the bucket."""
+
+    cases_dir = tmp_path / "cases" / "happy_path"
+    cases_dir.mkdir(parents=True)
+    _write_case(cases_dir, "01_default_index", '{"bucket": "full_chart"}')
+    cases = load_cases(
+        tmp_path / "cases",
+        snapshot=_snapshot({"full_chart": [{"uuid": "first"}, {"uuid": "second"}]}),
+    )
+    assert cases[0].session.patient_id == "first"
+
+
+def test_load_snapshot_missing_file_raises(tmp_path: Path) -> None:
+    with pytest.raises(EvalCaseLoadError, match="snapshot file not found"):
+        load_snapshot(tmp_path / "nope.json")
+
+
+def test_load_snapshot_malformed_raises(tmp_path: Path) -> None:
+    bad = tmp_path / "snap.json"
+    bad.write_text('{"no_buckets_here": true}', encoding="utf-8")
+    with pytest.raises(EvalCaseLoadError, match="missing 'buckets'"):
+        load_snapshot(bad)
+
+
+def test_load_snapshot_returns_buckets_payload(tmp_path: Path) -> None:
+    snap = tmp_path / "snap.json"
+    snap.write_text(
+        '{"generated_at": "now", "buckets": {"full_chart": [{"uuid": "a"}]}}',
+        encoding="utf-8",
+    )
+    buckets = load_snapshot(snap)
+    assert buckets == {"full_chart": [{"uuid": "a"}]}

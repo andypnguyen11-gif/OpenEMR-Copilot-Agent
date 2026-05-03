@@ -1,0 +1,28 @@
+{
+  "id": "ambiguous/06_anything_else",
+  "category": "ambiguous",
+  "description": "Conversational follow-up with no anchor \u2014 agent must not invent prior turn context.",
+  "query": "Anything else?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "default",
+      "index": 50
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}

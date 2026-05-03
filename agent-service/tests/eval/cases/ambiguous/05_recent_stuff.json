@@ -1,0 +1,28 @@
+{
+  "id": "ambiguous/05_recent_stuff",
+  "category": "ambiguous",
+  "description": "Time-scoped but topic-vague \u2014 'recent stuff' could mean encounters, labs, meds; either picking one with citation or asking for clarification is acceptable.",
+  "query": "What's been going on with this patient recently?",
+  "session": {
+    "user_id": "dr-patel",
+    "role": "physician",
+    "patient_id": {
+      "bucket": "default",
+      "index": 33
+    },
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ]
+  }
+}
