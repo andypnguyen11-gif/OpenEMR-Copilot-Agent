@@ -1752,26 +1752,54 @@ LLM child span.
 
 ---
 
-### PR 21 — Internal metrics endpoints
+### PR 21 — Internal metrics endpoints — ✅ landed
 
-ARCHITECTURE §8.1 "beyond the minimum". A small `/agent/internal/metrics` endpoint and a
-dashboard-friendly summary written to Postgres.
+ARCHITECTURE §8.1 "beyond the minimum". A small `/api/agent/internal/metrics` endpoint and
+a windowed summary backed by a per-request `request_outcomes` table. Internal-token gated;
+no clinician JWT context. The completeness check is **synchronous at scrape time** rather
+than a background job — the service has no scheduler today, and adding APScheduler for one
+rollup is a new failure mode (drift, deploy semantics, thread leaks). Any external poller
+(Railway healthcheck, future PR 27 warm-keep cron, Daily Brief admin tab) plays the role of
+the cron.
 
-- [ ] Per-request: verification outcome rate (verified / abstained / failed)
-- [ ] Discrepancy flag distribution (which rules fire most)
-- [ ] RBAC-denial rate
-- [ ] Cache hit rate (fast lane)
-- [ ] Audit-log completeness check (background job, asserts every PHI access has an audit row)
+- [x] Per-request: verification outcome rate (verified / abstained / failed) — sourced from
+  `request_outcomes`; headline buckets distinct from the precise `AbstentionState` value
+- [x] Discrepancy flag distribution (which rules fire most) — deduped union of
+  `FlagRecord.rule_id` per request, persisted as JSON on the outcome row
+- [x] RBAC-denial rate — derived from `audit_log` `UNAUTHORIZED` rows; `null` on an empty
+  window (distinct from `0.0` so a fresh deploy isn't misread as healthy)
+- [x] Cache hit rate (fast lane) — cumulative-since-startup counters on `DiscrepancyCache`
+  (a windowed rate would have doubled the write traffic for a metric the dashboard doesn't
+  need windowed)
+- [x] Audit-log completeness — `Σ tool_calls (in window) - count(audit_log SUCCESS)`,
+  evaluated when `/metrics` is scraped. Should be `0` by construction (PR 19's fail-closed
+  audit writer); non-zero is real drift the operator needs to see
+
+**Design choices documented in code:**
+- `MetricsService.record` is **fail-open**: a DB hiccup logs + bumps a process-local
+  `metrics_failed_writes_since_startup` counter (surfaced in the summary), never raised.
+  Inverse of PR 19's audit writer — outcomes are observability, not the trust surface.
+- Window clamped to `MAX_WINDOW = 24h` so a malformed query string can't scan the whole
+  table; FastAPI `Query(le=...)` is the first-line defense, the summarize clamp is the
+  last-line.
 
 **NEW**
 - `agent-service/src/clinical_copilot/observability/metrics.py`
+- `agent-service/src/clinical_copilot/db/migrations/versions/0003_request_outcomes.py`
+- `agent-service/tests/unit/test_metrics.py`
+- `agent-service/tests/integration/test_metrics_route.py`
 
 **EDIT**
-- `agent-service/src/clinical_copilot/main.py` — register metrics route
-- `agent-service/src/clinical_copilot/db/migrations/versions/0003_metrics.py`
+- `agent-service/src/clinical_copilot/main.py` — register `GET /api/agent/internal/metrics`
+- `agent-service/src/clinical_copilot/app_state.py` — wire `MetricsService` onto `AppState`
+- `agent-service/src/clinical_copilot/orchestrator/agent.py` — track `tool_calls`, write
+  one outcome row per `/api/agent/query` (fail-open)
+- `agent-service/src/clinical_copilot/discrepancy/cache.py` — atomic hit/miss counters
+- `agent-service/src/clinical_copilot/db/models.py` — add `RequestOutcome`
 
-**Acceptance:** Metrics endpoint returns JSON; cache hit rate visibly rises after warm pass;
-audit-log completeness check passes on demo data.
+**Acceptance:** Metrics endpoint returns JSON; integration test drives `/api/agent/query`
+end-to-end and asserts the row lands in `request_outcomes`; completeness ties out to zero
+when the audit writer is healthy and surfaces the drift when it isn't.
 
 ---
 

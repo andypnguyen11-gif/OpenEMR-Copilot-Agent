@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException, Path, Query, Response, status
@@ -31,6 +31,7 @@ from clinical_copilot.auth.role import Role
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.discrepancy.background import BackgroundRunner
 from clinical_copilot.logging import configure_logging, get_logger
+from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.schemas import AgentResponse
@@ -299,6 +300,28 @@ def create_app(
         # for the gateway it can't action.
         resolved_state.discrepancy_cache.invalidate(patient_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/api/agent/internal/metrics", tags=["internal"])
+    async def metrics_route(
+        window_seconds: int = Query(
+            default=int(DEFAULT_WINDOW.total_seconds()),
+            ge=1,
+            le=int(MAX_WINDOW.total_seconds()),
+            description="Aggregation window in seconds; clamped to MAX_WINDOW (24h).",
+        ),
+        _: None = internal_dep,
+    ) -> dict[str, object]:
+        # Internal-token-protected; no clinician JWT context. The summary
+        # contains hashed patient ids only via the audit-log totals — raw
+        # PHI never enters the response shape (see :class:`MetricsService`).
+        # ``summarize`` is synchronous on the request thread; the spec's
+        # "background job" for completeness becomes "checked when /metrics
+        # is scraped" — any external poller plays the cron's role and the
+        # service avoids an in-process scheduler.
+        return resolved_state.metrics_service.summarize(
+            window=timedelta(seconds=window_seconds),
+            cache=resolved_state.discrepancy_cache,
+        )
 
     @app.get(
         "/api/agent/internal/flags/{patient_id}",

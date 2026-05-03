@@ -72,7 +72,7 @@ from clinical_copilot.discrepancy.chart_provider import (
 )
 from clinical_copilot.discrepancy.engine import DiscrepancyEngine
 from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
-from clinical_copilot.observability import configure_tracing
+from clinical_copilot.observability import MetricsService, configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
@@ -123,6 +123,7 @@ class AppState:
     orchestrator: Orchestrator
     session_store: SessionStore
     discrepancy_cache: DiscrepancyCache
+    metrics_service: MetricsService
     audit_reader: AuditLogReader | None
     bridge: AsyncBridge | None
 
@@ -236,6 +237,14 @@ def build_app_state(
 
     verifier_mw = VerificationMiddleware()
 
+    # Metrics writer is fail-open against the same session_factory the
+    # audit writer uses (PR 21). When ``session_factory`` is None — the
+    # test path that overrides ``audit`` — the service becomes a no-op
+    # writer, ``summarize`` raises, and the metrics route is responsible
+    # for not registering itself; that's safer than silently returning
+    # zero counts that look like a healthy steady state.
+    metrics_service = MetricsService(session_factory=session_factory)
+
     # Lane gateways: when ``llm`` is supplied (test path), the same
     # stub drives both lanes — unit tests assert on which prompt /
     # tool subset was sent rather than which model. Production builds
@@ -275,6 +284,7 @@ def build_app_state(
         registry=registry,
         verifier=verifier_mw,
         sessions=session_store,
+        metrics=metrics_service,
     )
 
     return AppState(
@@ -283,6 +293,7 @@ def build_app_state(
         orchestrator=orchestrator,
         session_store=session_store,
         discrepancy_cache=discrepancy_cache,
+        metrics_service=metrics_service,
         audit_reader=audit_reader,
         bridge=bridge,
     )

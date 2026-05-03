@@ -6,6 +6,11 @@ stable name rather than reaching into ``tracing`` directly.
 
 from __future__ import annotations
 
+from clinical_copilot.observability.metrics import (
+    MetricsService,
+    OutcomeRecord,
+    build_outcome,
+)
 from clinical_copilot.observability.tracing import (
     configure_tracing,
     traceable_llm_complete,
@@ -14,6 +19,9 @@ from clinical_copilot.observability.tracing import (
 )
 
 __all__ = [
+    "MetricsService",
+    "OutcomeRecord",
+    "build_outcome",
     "configure_tracing",
     "traceable_llm_complete",
     "traceable_orchestrator_run",

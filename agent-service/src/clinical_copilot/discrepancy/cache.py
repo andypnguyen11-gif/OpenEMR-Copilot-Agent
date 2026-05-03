@@ -65,6 +65,32 @@ class _CachedFlags:
     expires_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class CacheCounters:
+    """Process-local cumulative counters since the cache was constructed.
+
+    The metrics endpoint (PR 21) returns these as ``cache.hit_rate_since_startup``
+    rather than a windowed rate. A windowed rate would need a per-lookup row
+    (or a periodic snapshot table); for the volume we have, "since process
+    start" plus a ``samples`` field is honest and a 20-line refactor away
+    from a sliding window if the dashboard ever asks for one.
+    """
+
+    hits_memory: int
+    hits_durable: int
+    misses: int
+
+    @property
+    def total(self) -> int:
+        return self.hits_memory + self.hits_durable + self.misses
+
+    @property
+    def hit_rate(self) -> float | None:
+        if self.total == 0:
+            return None
+        return (self.hits_memory + self.hits_durable) / self.total
+
+
 class DiscrepancyCache:
     """In-process TTL + optional Postgres durable tier."""
 
@@ -86,6 +112,12 @@ class DiscrepancyCache:
         self._clock = clock or _utcnow
         self._lock = threading.Lock()
         self._memory: dict[str, _CachedFlags] = {}
+        # Counter writes piggyback on ``self._lock``; every increment is
+        # already inside a critical section that holds the lock for cache
+        # mutation, so no separate counter lock is needed.
+        self._hits_memory = 0
+        self._hits_durable = 0
+        self._misses = 0
 
     def get_flags(self, patient_id: str) -> list[FlagRecord]:
         """Return cached flags for ``patient_id``, recomputing on miss."""
@@ -98,6 +130,7 @@ class DiscrepancyCache:
         with self._lock:
             cached = self._memory.get(patient_id)
             if cached is not None and cached.expires_at > now:
+                self._hits_memory += 1
                 logger.debug(
                     "discrepancy_cache_hit_memory",
                     patient_id=patient_id,
@@ -108,17 +141,34 @@ class DiscrepancyCache:
         if durable is not None:
             with self._lock:
                 self._memory[patient_id] = durable
+                self._hits_durable += 1
             logger.debug(
                 "discrepancy_cache_hit_durable",
                 patient_id=patient_id,
             )
             return list(durable.flags)
 
+        with self._lock:
+            self._misses += 1
         logger.debug(
             "discrepancy_cache_miss",
             patient_id=patient_id,
         )
         return self._recompute_and_store(patient_id, now=now)
+
+    def snapshot_counters(self) -> CacheCounters:
+        """Return a frozen snapshot of cumulative hit/miss counters.
+
+        Reads three ints under the lock. Atomic to a caller — every
+        ``get_flags`` either bumps memory, durable, or miss exactly once.
+        """
+
+        with self._lock:
+            return CacheCounters(
+                hits_memory=self._hits_memory,
+                hits_durable=self._hits_durable,
+                misses=self._misses,
+            )
 
     def invalidate(self, patient_id: str) -> None:
         """Drop both tiers for ``patient_id``.

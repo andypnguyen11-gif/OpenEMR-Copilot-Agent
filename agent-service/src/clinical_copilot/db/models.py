@@ -13,6 +13,11 @@ Tables, per ARCHITECTURE §6 / §8:
 * ``discrepancy_cache`` — durable tier of the two-tier flag cache (PR 14).
   One row per patient_id; the JSON blob is the ``FlagRecord`` list the engine
   emitted last, with ``expires_at`` as the TTL boundary.
+* ``request_outcomes`` — one row per ``/api/agent/query`` call, fail-open
+  written from the orchestrator after the response is built. Backs the
+  internal metrics endpoint (PR 21). Distinct from ``audit_log`` (which is
+  fail-closed and HIPAA-relevant) — losing an outcome row is an observability
+  blip, not an integrity violation.
 
 The audit log is the load-bearing table; the others are operational.
 """
@@ -100,6 +105,53 @@ class AuditLog(Base):
     resource_type: Mapped[str] = mapped_column(String(64))
     action: Mapped[str] = mapped_column(String(32))
     request_id: Mapped[str] = mapped_column(String(64), index=True)
+
+
+class RequestOutcome(Base):
+    """One row per ``/api/agent/query`` call (PR 21).
+
+    Written fail-open from :class:`Orchestrator.run` after the response is
+    built — a DB hiccup here logs and increments a process-local counter
+    but never raises into the clinician path. That posture is deliberately
+    weaker than :class:`AuditLog` (PR 19): outcomes are observability;
+    losing one drops a bucket in a chart, not an audit trail.
+
+    ``state`` is the headline bucket on the dashboard: ``verified`` (response
+    trusted, no abstention), ``abstained`` (model declined or verification
+    rejected the draft — ``NO_DATA`` / ``VERIFICATION_FAILED``), or ``failed``
+    (operational/security error that blocked the answer — ``TOOL_FAILURE`` /
+    ``UNAUTHORIZED``). ``abstention_reason`` carries the precise
+    :class:`AbstentionState` value when one was set, ``NULL`` on verified
+    rows. The bucket-vs-reason split lets the metrics endpoint return both
+    a coarse rate (for SLO panels) and a fine distribution (for triage)
+    without joining anything else.
+
+    ``tool_calls`` powers the audit-log completeness check: ``Σ tool_calls``
+    in a window should equal ``count(audit_log SUCCESS)`` in the same window.
+    Comparing one outcome row to one audit row would be wrong — a single
+    chat turn fans out to several FHIR reads, each writing its own SUCCESS
+    audit entry.
+
+    ``fired_rule_ids`` is JSON-serialised text for the same reason
+    ``flags_json`` is opaque on :class:`DiscrepancyCacheRow`: rule-id format
+    changes shouldn't require a migration.
+    """
+
+    __tablename__ = "request_outcomes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+    request_id: Mapped[str] = mapped_column(String(64), index=True)
+    lane: Mapped[str] = mapped_column(String(8), index=True)
+    state: Mapped[str] = mapped_column(String(32))
+    abstention_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tool_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    fired_rule_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
 
 
 class DiscrepancyCacheRow(Base):

@@ -56,7 +56,11 @@ from pydantic import ValidationError
 
 from clinical_copilot.audit.log import AuditLogWriteError
 from clinical_copilot.logging import get_logger
-from clinical_copilot.observability import traceable_orchestrator_run
+from clinical_copilot.observability import (
+    MetricsService,
+    build_outcome,
+    traceable_orchestrator_run,
+)
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
@@ -153,6 +157,7 @@ class Orchestrator:
         registry: ToolRegistry,
         verifier: VerificationMiddleware,
         sessions: SessionStore,
+        metrics: MetricsService | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
     ) -> None:
         if Lane.SLOW not in lanes:
@@ -161,6 +166,11 @@ class Orchestrator:
         self._registry = registry
         self._verifier = verifier
         self._sessions = sessions
+        # ``metrics=None`` is the test default. Production wires a
+        # :class:`MetricsService`; recording is fail-open inside the
+        # service, so plumbing ``None`` here just skips the recorder
+        # entirely (no DB connection attempt, no log noise).
+        self._metrics = metrics
         self._max_turns = max_turns
 
     @traceable_orchestrator_run
@@ -179,7 +189,12 @@ class Orchestrator:
             raise UnknownLaneError(lane) from exc
         canonical_id, prior_state = self._sessions.get_or_create(claims, session_id)
         try:
-            response, persisted_messages, persisted_tool_results = self._execute(
+            (
+                response,
+                persisted_messages,
+                persisted_tool_results,
+                tool_calls,
+            ) = self._execute(
                 query=query,
                 claims=claims,
                 request_id=request_id,
@@ -187,6 +202,20 @@ class Orchestrator:
                 config=config,
                 lane=lane,
             )
+            # Outcome row is fail-open inside :class:`MetricsService`.
+            # Recording before the session update means an error in the
+            # session-store path doesn't suppress the metric, and a
+            # metric write failure can't break the session update either.
+            if self._metrics is not None:
+                self._metrics.record(
+                    build_outcome(
+                        request_id=request_id,
+                        lane=lane,
+                        abstention=response.abstention,
+                        tool_results=response.tool_results,
+                        tool_calls=tool_calls,
+                    ),
+                )
             self._sessions.update(
                 claims,
                 canonical_id,
@@ -199,7 +228,10 @@ class Orchestrator:
         except BaseException:
             # Drop the per-key lock without persisting. The prior state
             # remains in the store unchanged — the next turn restores
-            # it cleanly.
+            # it cleanly. Outcomes are not recorded here: a request that
+            # failed before we built an :class:`AgentResponse` has no
+            # state to bucket, and the audit-log path (PR 19) is the
+            # one that must capture the failure for compliance.
             self._sessions.release(claims, canonical_id)
             raise
 
@@ -212,16 +244,23 @@ class Orchestrator:
         prior_state: SessionState,
         config: LaneConfig,
         lane: Lane,
-    ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult]]:
+    ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult], int]:
         """Run one user turn against the LLM tool-use loop.
 
-        Returns ``(response, persisted_messages, persisted_tool_results)``.
-        On success: ``persisted_messages`` includes the new user turn
-        plus every tool-use round plus the final assistant text turn,
-        and ``persisted_tool_results`` includes every tool result accumulated
-        in this turn.
-        On any abstention path: both lists are the prior state unchanged
-        — abstentions are server synthesis, not part of the chat record.
+        Returns ``(response, persisted_messages, persisted_tool_results,
+        tool_calls)``. On success: ``persisted_messages`` includes the new
+        user turn plus every tool-use round plus the final assistant text
+        turn, and ``persisted_tool_results`` includes every tool result
+        accumulated in this turn. On any abstention path: both lists are
+        the prior state unchanged — abstentions are server synthesis, not
+        part of the chat record.
+
+        ``tool_calls`` is the number of successful tool dispatches in this
+        request — the value the metrics writer needs for completeness math
+        against ``audit_log`` SUCCESS rows. RBAC denials and tool errors
+        do not count: a denial writes an UNAUTHORIZED audit row (so it's
+        accounted for separately in the audit panel) and a tool-error
+        short-circuit didn't produce a SUCCESS row to compare against.
         """
 
         # The static system prompt declares "the session is bound to one
@@ -250,6 +289,7 @@ class Orchestrator:
         persisted_messages: list[dict[str, Any]] = [*prior_state.messages, new_user_turn]
         working_messages: list[dict[str, Any]] = list(persisted_messages)
         tool_results: list[ToolResult] = list(prior_state.tool_results)
+        tool_calls = 0
         retried = False
 
         for _ in range(self._max_turns):
@@ -260,13 +300,14 @@ class Orchestrator:
             )
 
             if turn.tool_uses:
-                tool_messages, abstention = self._dispatch_tools(
+                dispatched, tool_messages, abstention = self._dispatch_tools(
                     turn=turn,
                     claims=claims,
                     request_id=request_id,
                     tool_results=tool_results,
                     allowed_names=config.tool_names,
                 )
+                tool_calls += dispatched
                 if abstention is not None:
                     response = AgentResponse(
                         cards=[],
@@ -274,7 +315,12 @@ class Orchestrator:
                         tool_results=tool_results,
                         abstention=abstention,
                     )
-                    return response, list(prior_state.messages), list(prior_state.tool_results)
+                    return (
+                        response,
+                        list(prior_state.messages),
+                        list(prior_state.tool_results),
+                        tool_calls,
+                    )
                 # Legitimate tool-use round — both message lists track it.
                 persisted_messages.extend(tool_messages)
                 working_messages.extend(tool_messages)
@@ -300,7 +346,12 @@ class Orchestrator:
                             reason="model emitted JSON that failed schema validation twice",
                         ),
                     )
-                    return response, list(prior_state.messages), list(prior_state.tool_results)
+                    return (
+                        response,
+                        list(prior_state.messages),
+                        list(prior_state.tool_results),
+                        tool_calls,
+                    )
                 retried = True
                 # Retry frames go to working_messages only — they must
                 # not pollute turn N+1's restored context. Removing
@@ -328,12 +379,17 @@ class Orchestrator:
                 # Verifier rejected — same rollback contract as a tool
                 # abstention. The model's draft is unreliable; nothing
                 # about this turn belongs in the session record.
-                return verified, list(prior_state.messages), list(prior_state.tool_results)
+                return (
+                    verified,
+                    list(prior_state.messages),
+                    list(prior_state.tool_results),
+                    tool_calls,
+                )
 
             # Success path: commit the final assistant text turn into
             # persisted_messages so turn N+1 sees it.
             persisted_messages.append({"role": "assistant", "content": turn.raw_assistant_blocks})
-            return verified, persisted_messages, tool_results
+            return verified, persisted_messages, tool_results, tool_calls
 
         max_turns_response = AgentResponse(
             cards=[],
@@ -344,7 +400,12 @@ class Orchestrator:
                 reason=f"agent did not converge within {self._max_turns} turns",
             ),
         )
-        return max_turns_response, list(prior_state.messages), list(prior_state.tool_results)
+        return (
+            max_turns_response,
+            list(prior_state.messages),
+            list(prior_state.tool_results),
+            tool_calls,
+        )
 
     def _dispatch_tools(
         self,
@@ -354,10 +415,18 @@ class Orchestrator:
         request_id: str,
         tool_results: list[ToolResult],
         allowed_names: frozenset[str] | None,
-    ) -> tuple[list[dict[str, Any]], Abstention | None]:
+    ) -> tuple[int, list[dict[str, Any]], Abstention | None]:
         """Run every tool the model called this turn, build the next
         user message containing matching ``tool_result`` blocks, and
         return either a continuation or a short-circuit abstention.
+
+        Returns ``(dispatched, next_messages, abstention)``. ``dispatched``
+        is the number of successful tool calls this turn — appended to the
+        run-wide ``tool_calls`` count for completeness math against the
+        audit log. RBAC denials and tool errors do **not** count: a denial
+        already wrote an UNAUTHORIZED audit row (so it shows up in the
+        audit panel under that bucket) and a tool error short-circuited
+        before any SUCCESS row was written.
 
         On the first RBAC denial we surface ``UNAUTHORIZED`` and stop —
         a session that's tried to escape its scope cannot recover by
@@ -373,9 +442,10 @@ class Orchestrator:
         """
 
         result_blocks: list[dict[str, Any]] = []
+        dispatched = 0
         for tool_use in turn.tool_uses:
             if allowed_names is not None and tool_use.name not in allowed_names:
-                return [], Abstention(
+                return dispatched, [], Abstention(
                     state=AbstentionState.TOOL_FAILURE,
                     reason=(
                         f"tool {tool_use.name!r} is not available on this lane; "
@@ -391,7 +461,7 @@ class Orchestrator:
                     request_id=request_id,
                 )
             except UnauthorizedToolCallError as exc:
-                return [], Abstention(
+                return dispatched, [], Abstention(
                     state=AbstentionState.UNAUTHORIZED,
                     reason=f"unauthorized access denied at tool {exc.tool_name!r}",
                 )
@@ -407,17 +477,18 @@ class Orchestrator:
                 # fail-closed contract guards against.
                 raise
             except ToolError as exc:
-                return [], Abstention(
+                return dispatched, [], Abstention(
                     state=AbstentionState.TOOL_FAILURE,
                     reason=f"tool {tool_use.name!r} failed: {exc}",
                 )
             except Exception as exc:
-                return [], Abstention(
+                return dispatched, [], Abstention(
                     state=AbstentionState.TOOL_FAILURE,
                     reason=f"tool {tool_use.name!r} raised an unexpected error: {exc}",
                 )
 
             tool_results.append(result)
+            dispatched += 1
             result_blocks.append(
                 {
                     "type": "tool_result",
@@ -430,4 +501,4 @@ class Orchestrator:
             {"role": "assistant", "content": turn.raw_assistant_blocks},
             {"role": "user", "content": result_blocks},
         ]
-        return next_messages, None
+        return dispatched, next_messages, None
