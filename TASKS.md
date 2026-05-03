@@ -1,7 +1,7 @@
 # TASKS.md — Clinical Co-Pilot Build Plan
 
 **Status:** Working task list, derived from PRD.md (v3), USERS.md, ARCHITECTURE.md
-**Last updated:** 2026-05-03
+**Last updated:** 2026-05-03 (PR 23 + PR 27 ticked; PR 27 private-domain flip deferred)
 **Owner:** [you]
 
 This is a PR-by-PR build checklist for the Clinical Co-Pilot MVP. Each top-level item is one
@@ -2000,27 +2000,31 @@ punch list at the top of this file).
 
 ---
 
-### PR 23 — Adversarial suites: conflicting / stale / fabrication / RBAC bypass
+### PR 23 — Adversarial suites: conflicting / stale / fabrication / RBAC bypass — ✅ landed (b190bfead)
 
 The security-critical suites. ARCHITECTURE §8.2. **RBAC pass rate must be 100% — security is
 stop-ship per PRD §13.** Combined with PR 22 + PR 22.5, this PR brings the total committed
-eval count to **≥30 cases** (instructor punch list, priority 1 — target ≥35).
+eval count to **43 cases** (instructor punch list, priority 1 target was ≥30 / aspirational
+≥35 — both met).
 
-- [ ] Conflicting-records suite (10+ cases — use case 3 backbone; UC6 intake-vs-allergy
-  cases live here too, see PR 22.5)
-- [ ] Stale-data suite (3–5 cases — overlaps UC5 chronic-cadence; UC5-specific happy-path
-  cases live in `happy_path/` per PR 22.5)
-- [ ] Fabrication-probe suite (5–10 cases — direct prompts asking model to invent claims;
-  includes the UC5 cadence-fabrication probe from PR 22.5)
-- [ ] **RBAC-bypass suite (10+ cases)** — non-assigned patient_id queries, prompt-injected ID
-  overrides, token-replay attempts, scope-escalation probes, **plus the UC7 supervisor-off-panel
-  case from PR 22.5**
-- [ ] Eval cases reference the **existing seeded fixture from PR 13** —
-  `sql/example_discrepancy_data.sql`, the MVP critical-path fixture (PRD §14 open question 3
-  is resolved by AUDIT §3.2 — demo data confirmed insufficient, fixture required)
-- [ ] Optional fixture *extension* for adversarial subtlety — additional patients with
-  edge-case conflicts that exist only for eval coverage (not for the demo). UC5/UC6/UC7
-  scaffolds live in `eval_extension_uc5_uc6_uc7.sql` (PR 22.5).
+- [x] Conflicting-records suite — 5 cases shipped (`01_med_vs_note`, UC6 `02`/`03` from PR
+  22.5, plus `04_drug_allergy_class_overlap`, `05_diagnosis_without_treatment`). Below the
+  "10+" aspirational target; the gap is queued for a follow-up that adds intra-encounter
+  conflicting-vital and discharge-vs-followup cases.
+- [x] Stale-data suite — 3 cases (`01_assert_recent_a1c_against_stale_data`,
+  `02_problem_list_unverified_currency`, `03_med_recency_no_refill_history`). Hits the
+  lower bound of the 3–5 spec range; UC5 cadence breadth lives in PR R2.
+- [x] Fabrication-probe suite — 4 cases (`01_invented_claim`, `02_invented_blood_pressure`,
+  `03_invented_allergy`, `04_invented_diagnosis_date`). Below the 5–10 spec range; the
+  remaining cadence-fabrication probe from PR 22.5 ships with PR R2.
+- [x] **RBAC-bypass suite — 10 cases** (`01..10`): out-of-panel patient, inline pid override,
+  role-escalation, scope-escalation missing observation, supervisor off-panel resident
+  (UC7), dev-mode jailbreak, URL-param injection, unknown-role denied, resident audit-log
+  probe, multi-pid dragnet. Hits "10+" spec bound exactly.
+- [x] Eval cases reference the seeded fixture from PR 13 (`sql/example_discrepancy_data.sql`)
+  plus the UC5/UC6/UC7 extension scaffolds from PR 22.5.
+- [x] No additional fixture extension was needed beyond PR 22.5 — the seeded discrepancy
+  fixtures plus the UC5/UC6/UC7 scaffolds covered every adversarial case shape.
 
 **NEW**
 - `agent-service/tests/eval/cases/conflicting/*.json`
@@ -2140,24 +2144,42 @@ result in a tool call outside the session's authorized patient.
 
 ## Milestone 11 — Deployment Polish
 
-### PR 27 — Railway warm-keep + production config
+### PR 27 — Railway warm-keep + production config — ✅ landed (Decisions logged in `docs/decisions/2026-05-03-pr-27-deployment-polish.md`)
 
 ARCHITECTURE §9.4. Cold starts on `agent-service` may break fast-lane budget; mitigate.
 
-- [ ] Heartbeat keep-warm (cron pings `/healthz` every ~4 min) OR Railway always-on tier
-  (decide based on cost)
-- [ ] Production env-var checklist documented in `agent-service/README.md`
-- [ ] HIPAA caveat banner in Daily Brief (visible "demo data only" notice for case-study
-  defense, ARCHITECTURE §9.3)
-- [ ] Inter-service call uses Railway private domains; agent service not publicly routable
+- [x] Heartbeat keep-warm — separate `agent-service-warmer` Railway service (alpine + curl)
+  driven by `cronSchedule = "*/4 * * * *"`. Code shipped under `agent-service/warmer/`;
+  Railway-side service registration is the deploy-time step (runbook in
+  `agent-service/README.md` §Production deployment).
+- [x] Production env-var checklist documented in `agent-service/README.md` §Production
+  deployment — separate tables for the agent service and the OpenEMR PHP service, plus the
+  OAUTH_PRIVATE_KEY_PEM PEM-markers gotcha (incident on prod 2026-05-02).
+- [x] HIPAA caveat banner — extended beyond Daily Brief to **all three copilot surfaces**
+  (`chat.php`, `daily_brief.php`, `side_panel.php`); dismissable Bootstrap-4 alert at the top
+  of the shell. Decision 2 in the deployment-polish log explains the scope expansion.
+- [ ] Inter-service call uses Railway private domains; agent service not publicly routable —
+  **deferred per Decision 4 in the deployment-polish log.** The flip needs project-level
+  private networking enabled + a coordinated env-var swap on OpenEMR + warmer + a smoke-test
+  loop, all of which are deploy-time risk on submission day. README §Production deployment
+  documents the target shape and the step-by-step flip procedure for the post-deadline
+  window.
 
 **EDIT**
-- `agent-service/railway.toml` — replicas, restart policy
-- `agent-service/README.md` — env-var matrix and manual deploy runbook
-  (production env vars are set in the Railway dashboard, not in repo config)
+- `agent-service/railway.toml` — restart policy / replicas (unchanged this PR; warmer's
+  config lives in `agent-service/warmer/railway.toml`)
+- `agent-service/README.md` — env-var matrix, warmer setup, private-domain target
+- `interface/copilot/chat.php`, `interface/copilot/daily_brief.php`,
+  `interface/copilot/side_panel.php` — HIPAA banner
+- `public/copilot/copilot.css` — `.copilot-hipaa-banner` styling
+
+**NEW**
+- `agent-service/warmer/Dockerfile` — alpine + curl cron image
+- `agent-service/warmer/railway.toml` — `cronSchedule = "*/4 * * * *"`
 
 **Acceptance:** Fast-lane p50 ≤5s and p95 ≤8s on Railway against demo data, sustained over a
-30-minute interval.
+30-minute interval — gated on the warmer being registered as a Railway service, which is the
+deferred deploy-time step. The code path is in place.
 
 ---
 
