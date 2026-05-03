@@ -1,4 +1,4 @@
-.PHONY: help install check lint format type test run eval clean
+.PHONY: help install check lint format type test run eval discrepancy-cache-clear clean
 
 UV ?= uv
 
@@ -18,6 +18,7 @@ help:
 	@echo "  test      pytest"
 	@echo "  eval      run the 6-case eval suite against AGENT_BASE_URL"
 	@echo "  run       uvicorn dev server with --reload on :8000"
+	@echo "  discrepancy-cache-clear   wipe durable discrepancy_cache rows (restart agent or call invalidate after — in-memory tier is separate)"
 
 install:
 	$(UV) sync --all-extras --dev
@@ -45,6 +46,13 @@ eval:
 
 run:
 	$(UV) run uvicorn clinical_copilot.main:app --reload --host 0.0.0.0 --port 8000
+
+# Wipes the durable tier of DiscrepancyCache (the discrepancy_cache table).
+# The in-memory tier survives in any running agent process for up to 30
+# minutes after this runs — restart the service or call
+# POST /api/agent/internal/invalidate/{patient_id} to drop both tiers.
+discrepancy-cache-clear:
+	$(UV) run python -m clinical_copilot.scripts.clear_discrepancy_cache
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache

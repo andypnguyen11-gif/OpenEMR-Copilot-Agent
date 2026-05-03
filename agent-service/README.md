@@ -75,6 +75,21 @@ Later PRs add:
 - `make eval` — full eval suite, must pass before deploy (PR 24)
 - `make deploy` — refuses `railway up` unless eval is green (PR 24)
 
+## Discrepancy cache
+
+`DiscrepancyCache` is two-tier (PR 14): an in-process dict + a `discrepancy_cache`
+table. Reads go in-process → durable → recompute, with a 30-minute TTL. After
+editing fixtures or seed data the cache will shadow the change for up to that
+TTL window. To force a refresh:
+
+```bash
+make discrepancy-cache-clear   # wipes the durable tier (Postgres or SQLite)
+```
+
+The in-process tier survives in any running agent — restart the service
+(`make run`) or call `POST /api/agent/internal/invalidate/{patient_id}` per
+affected pid to drop both tiers atomically.
+
 ## Manual deploy
 
 ```bash
