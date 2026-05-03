@@ -27,6 +27,8 @@ declare(strict_types=1);
 require_once(__DIR__ . "/../globals.php");
 
 use OpenEMR\Common\Acl\AclMain;
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 
@@ -71,6 +73,31 @@ if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
     $pid = $pidParam;
 }
 
+// Resolve the patient's name once at render time so the iframe header
+// reads the way a clinician expects (the chart's own header above the
+// iframe shows the same name). Constrained to the assigned-provider
+// rule that PR 17.5 enforces gateway-side, so a clinician who isn't
+// the assigned provider gets the panel-but-no-name shape rather than
+// a friendly name they can't actually query against.
+$patientLabel = '';
+if ($pid !== '') {
+    $authUserIdRaw = SessionWrapperFactory::getInstance()->getActiveSession()->get('authUserID', null);
+    $authUserId = is_int($authUserIdRaw) ? (string) $authUserIdRaw
+        : (is_string($authUserIdRaw) ? $authUserIdRaw : '');
+    if ($authUserId !== '' && ctype_digit($authUserId)) {
+        $row = QueryUtils::querySingleRow(
+            'SELECT fname, lname FROM patient_data '
+            . 'WHERE pid = ? AND providerID = ? AND providerID != 0 LIMIT 1',
+            [$pid, $authUserId],
+        );
+        if (is_array($row)) {
+            $fname = is_string($row['fname'] ?? null) ? $row['fname'] : '';
+            $lname = is_string($row['lname'] ?? null) ? $row['lname'] : '';
+            $patientLabel = trim($fname . ' ' . $lname);
+        }
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html>
@@ -95,8 +122,13 @@ if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
                 </p>
             <?php else : ?>
                 <p class="copilot-subtitle">
-                    <?php echo xlt('Patient'); ?>
-                    <code><?php echo text($pid); ?></code>
+                    <?php if ($patientLabel !== '') : ?>
+                        <strong><?php echo text($patientLabel); ?></strong>
+                        <code class="copilot-side-panel-pid"><?php echo text($pid); ?></code>
+                    <?php else : ?>
+                        <?php echo xlt('Patient'); ?>
+                        <code><?php echo text($pid); ?></code>
+                    <?php endif; ?>
                     &middot;
                     <?php echo xlt('fast lane'); ?>
                 </p>
