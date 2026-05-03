@@ -522,6 +522,39 @@ async def test_search_medications_parses_codeable_concept_and_dosage(
     assert med.dosage_instruction[0].text == "1 tablet daily"
 
 
+async def test_search_medications_tolerates_openemr_empty_dosage_wrapper(
+    transport: _ScriptedTransport, fhir: FhirClient
+) -> None:
+    """OpenEMR projects empty dosage as ``dosageInstruction: [[]]``.
+
+    Synthea-imported meds nearly always hit this path because Synthea
+    doesn't emit dosage detail. Pinning the validator that drops the
+    malformed entry — without this, every meds tool call against
+    Synthea-loaded test data abstains as ``TOOL_FAILURE`` instead of
+    returning the prescription.
+    """
+    body = _bundle(
+        "MedicationRequest",
+        {
+            "resourceType": "MedicationRequest",
+            "id": "m-no-dosage",
+            "status": "active",
+            "medicationCodeableConcept": {"text": "Acetaminophen 325 MG Oral Tablet"},
+            "dosageInstruction": [[]],  # OpenEMR's malformed empty wrapper
+        },
+    )
+    transport.queue(_ok(body))
+
+    result = await fhir.search_medications(patient_id=PATIENT_ID)
+
+    assert len(result) == 1
+    med: MedicationRequest = result[0]
+    assert med.id == "m-no-dosage"
+    # The malformed entry was filtered out, leaving an empty list — not
+    # the same as missing, but the tool layer reads it identically.
+    assert med.dosage_instruction == []
+
+
 async def test_search_allergies_parses_reaction(
     transport: _ScriptedTransport, fhir: FhirClient
 ) -> None:

@@ -25,7 +25,7 @@ Design notes:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _FhirModel(BaseModel):
@@ -210,6 +210,17 @@ class MedicationRequest(_FhirModel):
     medication_reference: Reference | None = Field(default=None, alias="medicationReference")
     authored_on: str | None = Field(default=None, alias="authoredOn")
     dosage_instruction: list[Dosage] = Field(default_factory=list, alias="dosageInstruction")
+
+    @field_validator("dosage_instruction", mode="before")
+    @classmethod
+    def _drop_malformed_dosage_entries(cls, value: object) -> object:
+        # OpenEMR's FHIR projection emits ``dosageInstruction: [[]]`` for
+        # prescriptions with no dosage detail (Synthea-imported records hit
+        # this on nearly every med). Treat non-dict entries as absent rather
+        # than raising — the alternative is a TOOL_FAILURE on every meds call.
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        return value
 
 
 class AllergyIntolerance(_FhirModel):
