@@ -115,6 +115,9 @@ final readonly class QueryController
         if ($body->sessionId !== null) {
             $payload['session_id'] = $body->sessionId;
         }
+        if ($body->lane !== null) {
+            $payload['lane'] = $body->lane;
+        }
 
         try {
             $response = $this->client->post(

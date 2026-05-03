@@ -27,11 +27,13 @@ final readonly class QueryRequest
     public const QUERY_MAX_LENGTH = 4000;
     public const SESSION_ID_MAX_LENGTH = 64;
     public const SESSION_ID_PATTERN = '/^[A-Za-z0-9-]+$/';
+    public const ALLOWED_LANES = ['fast', 'slow'];
 
     public function __construct(
         public string $patientId,
         public string $query,
         public ?string $sessionId = null,
+        public ?string $lane = null,
     ) {
         if ($patientId === '') {
             throw new InvalidArgumentException('patient_id must be non-empty');
@@ -62,6 +64,15 @@ final readonly class QueryRequest
                 );
             }
         }
+        if ($lane !== null && !in_array($lane, self::ALLOWED_LANES, true)) {
+            // Whitelist gateway-side so the agent service's Lane enum never
+            // sees an unknown value — the agent maps an unknown lane to a
+            // 400 with a different error shape, and we'd rather all bad
+            // input collapse to one bad_request shape on the wire.
+            throw new InvalidArgumentException(
+                "lane must be one of " . implode(', ', self::ALLOWED_LANES),
+            );
+        }
     }
 
     /**
@@ -89,6 +100,10 @@ final readonly class QueryRequest
         if ($sessionId !== null && !is_string($sessionId)) {
             throw new InvalidArgumentException('session_id must be a string when present');
         }
-        return new self($patientId, $query, $sessionId);
+        $lane = $payload['lane'] ?? null;
+        if ($lane !== null && !is_string($lane)) {
+            throw new InvalidArgumentException('lane must be a string when present');
+        }
+        return new self($patientId, $query, $sessionId, $lane);
     }
 }

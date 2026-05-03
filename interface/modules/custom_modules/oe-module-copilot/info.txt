@@ -1,0 +1,1 @@
+Clinical Co-Pilot — in-chart side panel (PR 17)

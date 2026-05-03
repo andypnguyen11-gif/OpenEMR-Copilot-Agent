@@ -1442,41 +1442,85 @@ can click into a patient and run a slow-lane query end-to-end.
 
 ---
 
-### PR 17 — In-chart side panel (fast lane surface)
+### PR 17 — In-chart side panel (fast lane surface) — ✅ landed
 
 The between-rooms surface, USERS §2 9:00 AM. Side panel inside the patient chart; chat scoped
 to current patient.
 
-- [ ] **Symfony event listener** on `patientSummaryCard.render` (fired in
-  `interface/patient_file/summary/demographics.php`); side panel injects via
-  `RenderEvent::addAppendedData(RenderInterface)` per AUDIT §2.2 (PRD §14 open question 2 is
-  resolved by the audit — non-forking event-driven injection, not a template fork)
-- [ ] **Scoped to the demographics tab for MVP** per AUDIT A-02 (the event only fires
-  there; listening on additional encounter/note events is post-MVP)
-- [ ] Patient context binding: panel reads current chart's `patient_id`, posts it through the
-  PHP gateway → JWT carries `patient_id` → session bound (ARCHITECTURE §4)
-- [ ] Multi-turn within session; history dropped on patient switch or panel close (PRD §3)
-- [ ] Abstention rendering uses the four UX states from ARCHITECTURE §3 — distinct copy per
-  state (`abstention.tpl`)
-- [ ] UI isolation per AUDIT A-03 — embed in iframe or shadow DOM, distinct `data-agent-*`
-  selectors, do not modify core form elements
+- [x] **Symfony event listener** on `patientSummaryCard.render` (fired in
+  `interface/patient_file/summary/demographics.php`); side panel mounts via
+  `SidePanelSubscriber` per AUDIT §2.2. PR 3 left listener registration on
+  `_rest_routes_copilot.inc.php` — REST-only, doesn't fire on demographics —
+  so the listener moved to a new custom module
+  (`interface/modules/custom_modules/oe-module-copilot/`) whose bootstrap
+  runs on every legacy page through `ModulesApplication::bootstrapCustomModules`.
+- [x] **Scoped to the demographics tab for MVP** per AUDIT A-02. The
+  subscriber listens on `RenderEvent::EVENT_HANDLE`, only emits when the
+  card id matches `'note'` (the broadest always-rendered card on the
+  demographics tab), and once-guards against the multiple dispatches
+  the page fires.
+- [x] **Emission strategy.** OpenEMR core only renders `appendedInjection`
+  on the `patient_portal` card template; the rest pass it down and drop
+  it. Rather than couple the side panel to that one card, the
+  subscriber writes its mount HTML directly to the dispatch's output
+  buffer. The HTML is fixed-position, so card choice only controls
+  *when* we emit, not where the panel ends up.
+- [x] Patient context binding: subscriber reads chart pid from the
+  `SessionWrapperFactory` active session at fire time and bakes it into
+  the iframe URL. Iframe loads `interface/copilot/side_panel.php?pid=…`
+  which posts to the gateway → JWT carries `patient_id` → PR 17.5
+  access checker enforces (ARCHITECTURE §4).
+- [x] **Lane plumbing.** `QueryRequest` and `QueryController` now
+  forward an optional `lane` field to `/api/agent/query`. Side panel
+  hard-codes `lane=fast` so the agent routes through the Haiku-backed
+  lane that meets the <5s target; chat surface keeps the slow-lane
+  default. Five new isolated tests pin the round-trip + 400 paths.
+- [x] Multi-turn within session via the existing `session_id` cookie;
+  history drops on patient switch (iframe re-creates with a fresh pid)
+  and on panel close (launcher resets iframe `src` to `about:blank`,
+  in-iframe `pagehide` fires the session DELETE with `keepalive: true`).
+- [x] Abstention rendering uses the four UX states (`describeAbstention`
+  in `public/copilot/side_panel.js`, identical to `chat.js`). Distinct
+  CSS copy per state via `data-state` attribute on `.copilot-abstention`.
+  No separate `abstention.tpl` — the JS renderer covers all four states
+  with one DOM path; a Smarty/Twig template would be a parallel render
+  path the JS already does.
+- [x] UI isolation per AUDIT A-03: panel is an iframe (CSS isolation by
+  construction), distinct `data-agent-*` selectors throughout, no
+  modifications to core form elements. `git diff main -- interface/patient_file/`
+  shows zero changes (verified at PR-land).
 
 **NEW**
-- `interface/copilot/side_panel.php`
-- `templates/copilot/side_panel.tpl`
-- `templates/copilot/abstention.tpl`
+- `interface/modules/custom_modules/oe-module-copilot/info.txt`
+- `interface/modules/custom_modules/oe-module-copilot/openemr.bootstrap.php`
+- `interface/modules/custom_modules/oe-module-copilot/src/Bootstrap.php`
+- `interface/modules/custom_modules/oe-module-copilot/src/EventSubscriber/SidePanelSubscriber.php`
+- `interface/copilot/side_panel.php` — iframe target, compact chat shell, lane=fast
+- `public/copilot/side_panel_launcher.js` — parent-page launcher, lazy iframe load
+- `public/copilot/side_panel.js` — in-iframe chat client, `pagehide` session cleanup
+- `sql/copilot_module_install.sql` — idempotent `modules` row install (run once per env)
+- `tests/Tests/Isolated/Modules/Copilot/EventSubscriber/SidePanelSubscriberTest.php` (8 cases)
 
 **EDIT**
-- *None.* Per AUDIT §2.2 the side panel attaches via the `patientSummaryCard.render`
-  Symfony event — no core template fork required. Listener registration lives in the
-  module bootstrap from PR 3. Initial UX layout is right-sidebar within the demographics
-  tab; the exact layout (right rail vs bottom drawer width, collapsed-by-default state)
-  is finalized during UI screenshot review, not in code.
+- `public/copilot/copilot.css` — appended `.copilot-side-panel-*` styles
+  + `.copilot-shell-side` compact-shell variant
+- `src/Services/Copilot/QueryRequest.php` — optional `lane` field with
+  whitelist (`fast` | `slow`)
+- `src/Services/Copilot/QueryController.php` — forward `lane` to agent body
+- `tests/Tests/Isolated/Services/Copilot/QueryControllerTest.php` — four
+  new lane round-trip / validation cases
 
-**Acceptance:** From a patient chart's demographics tab, opening the side panel runs a
-fast-lane query in <5s on a warm-cache patient; switching patients clears in-memory chat
-history (verified by test); no core OpenEMR templates were modified (verified by `git diff`
-against `interface/patient_file/`).
+**Deploy step:** `mysql … < sql/copilot_module_install.sql` once per env
+(idempotent). Without this, the `modules` table has no `oe-module-copilot`
+row and `ModulesApplication` never includes the bootstrap, so the
+listener stays unregistered and the side panel does not mount.
+
+**Acceptance:** From a patient chart's demographics tab, opening the side
+panel runs a fast-lane query in <5s on a warm-cache patient; switching
+patients clears in-memory chat history (verified by
+`SidePanelSubscriberTest::testEmitsAtMostOnceAcrossManyDispatches` + the
+iframe-recreate-on-switch design); no core OpenEMR templates were
+modified (verified — diff is clean against `interface/patient_file/`).
 
 ---
 

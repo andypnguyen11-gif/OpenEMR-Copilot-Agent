@@ -425,3 +425,120 @@
     line-height: 1.4;
     color: #222;
 }
+
+/* Side panel (PR 17) --------------------------------------------------------
+ *
+ * Fixed-position launcher + slide-out drawer. The drawer hosts an iframe
+ * whose document is ``interface/copilot/side_panel.php`` — keeping the
+ * chat surface inside an iframe gives us A-03's UI isolation (no host-
+ * page CSS leaks into the panel and vice-versa) without the footgun of
+ * hand-rolling a shadow DOM around a chat tree that already includes
+ * its own form controls.
+ */
+
+.copilot-side-panel-launcher {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1040;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #2a6fb5;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 0.55rem 1.1rem;
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+}
+
+.copilot-side-panel-launcher:hover {
+    background: #1f5a98;
+}
+
+.copilot-side-panel-launcher-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.copilot-side-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(440px, 100vw);
+    background: #fff;
+    border-left: 1px solid #d0d0d0;
+    box-shadow: -3px 0 12px rgba(0, 0, 0, 0.08);
+    z-index: 1050;
+    display: flex;
+    flex-direction: column;
+}
+
+.copilot-side-panel[hidden] {
+    display: none;
+}
+
+.copilot-side-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid #ececec;
+    background: #f7f9fc;
+}
+
+.copilot-side-panel-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.copilot-side-panel-close {
+    background: transparent;
+    border: none;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #555;
+    cursor: pointer;
+    padding: 0 0.3rem;
+}
+
+.copilot-side-panel-close:hover {
+    color: #111;
+}
+
+.copilot-side-panel-frame {
+    flex: 1 1 auto;
+    border: none;
+    width: 100%;
+}
+
+/* Compact chat shell — applied to ``copilot-shell`` when rendered inside
+ * the side panel iframe so the surface fills the drawer instead of the
+ * 960px-wide page layout chat.php uses standalone.
+ */
+.copilot-shell-side {
+    max-width: none;
+    margin: 0;
+    padding: 0.75rem 0.9rem 1rem 0.9rem;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.copilot-shell-side .copilot-header {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.copilot-shell-side .copilot-header h1 {
+    font-size: 1.05rem;
+}
+
+.copilot-shell-side .copilot-thread {
+    flex: 1 1 auto;
+    max-height: none;
+    min-height: 0;
+}

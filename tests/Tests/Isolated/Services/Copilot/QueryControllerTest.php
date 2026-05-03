@@ -334,6 +334,77 @@ final class QueryControllerTest extends TestCase
         ]));
     }
 
+    public function testLaneRoundTripsToAgentBody(): void
+    {
+        // The side-panel surface posts ``lane: 'fast'`` to land on the
+        // Haiku-backed lane that satisfies PR 17's <5s acceptance target.
+        // The gateway's job is to forward the lane verbatim — the agent
+        // decides whether the lane is configured.
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->once())
+            ->method('post')
+            ->with(
+                '/api/agent/query',
+                ['query' => 'meds?', 'lane' => 'fast'],
+                $this->callback(static fn (string $token): bool => $token !== ''),
+            )
+            ->willReturn(new AgentResponse(Response::HTTP_OK, []));
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'meds?',
+            'lane' => 'fast',
+        ]));
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+    }
+
+    public function testLaneOmittedFromAgentBodyWhenNotProvided(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->once())
+            ->method('post')
+            ->with(
+                '/api/agent/query',
+                ['query' => 'hello'],
+                $this->callback(static fn (string $token): bool => $token !== ''),
+            )
+            ->willReturn(new AgentResponse(Response::HTTP_OK, []));
+
+        $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+        ]));
+    }
+
+    public function testInvalidLaneReturns400AndDoesNotCallAgent(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+            'lane' => 'turbo',  // not in QueryRequest::ALLOWED_LANES
+        ]));
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
+    public function testNonStringLaneReturns400AndDoesNotCallAgent(): void
+    {
+        $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
+        $this->agent->expects($this->never())->method('post');
+
+        $response = $controller->query(self::makeRequest([
+            'patient_id' => '101',
+            'query' => 'hello',
+            'lane' => 1,
+        ]));
+
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+    }
+
     public function testAgentNon2xxStatusPassesThrough(): void
     {
         $controller = $this->controllerWithSession(['authUserID' => 'dr-patel']);
