@@ -1,30 +1,38 @@
 """Tool ABC + RBAC enforcement + UNAUTHORIZED audit hook.
 
 Every PHI fetch routes through :meth:`Tool.execute`. The base class enforces
-two layers of authorization:
+three layers of authorization, all *before* ``_run`` is invoked:
 
-1. **JWT-side, before fetch.** ``patient_id`` requested in the call must
-   equal ``claims.patient_id`` (the session-bound patient pinned by the
-   gateway JWT) and the tool's ``required_scope`` must be in
-   ``claims.scopes``. Either miss → UNAUTHORIZED audit row →
-   :class:`UnauthorizedToolCallError`, *before* ``_run`` is invoked.
+1. **Role**, against ``Tool.allowed_roles``. Default allow-list is the three
+   known clinical roles ``{PHYSICIAN, RESIDENT, SUPERVISOR}``;
+   :attr:`Role.UNKNOWN` is denied by omission. Subclasses can narrow the set
+   (e.g. supervisor-only tools) by overriding the ClassVar.
+2. **Patient id**, against the JWT-bound ``claims.patient_id``. A model that
+   emits a foreign id (prompt-injection probe) trips here, not after the
+   fetch.
+3. **Scope**, against ``claims.scopes``. The tool's ``required_scope`` must
+   be present.
 
-2. **FHIR-ACL-side, after fetch attempt.** A subclass's ``_run`` may raise
-   :class:`FhirAuthorizationDeniedError` to signal that the upstream FHIR
-   server returned 401 / 403. The base catches that, writes the same
-   UNAUTHORIZED audit row, and re-raises as
+Any miss → UNAUTHORIZED audit row → :class:`UnauthorizedToolCallError`,
+before ``_run`` runs.
+
+A fourth layer kicks in *after* the fetch attempt:
+
+4. **FHIR ACL**. ``_run`` may raise :class:`FhirAuthorizationDeniedError` to
+   signal the upstream FHIR server returned 401 / 403. The base catches
+   that, writes the same UNAUTHORIZED audit row, and re-raises as
    :class:`UnauthorizedToolCallError` chained from the original. ACL wins
-   when the two layers disagree (ARCHITECTURE §4).
+   when the layers disagree (ARCHITECTURE §4).
 
-Both denial branches produce identical audit and exception surfaces so the
-orchestrator's abstention layer has one shape to handle. The audit write is
-fail-closed via :class:`AuditLogWriter`: a write error surfaces as
+All four denial branches produce identical audit and exception surfaces so
+the orchestrator's abstention layer has one shape to handle. The audit
+write is fail-closed via :class:`AuditLogWriter`: a write error surfaces as
 :class:`AuditLogWriteError` and the request returns 5xx — never
 UNAUTHORIZED without a logged row.
 
-ARCHITECTURE §4 puts the JWT-side check on the *tool side* of the trust
-boundary so a model that emits a foreign ``patient_id`` (prompt-injection
-probe) trips RBAC before the fetch happens, not after.
+ARCHITECTURE §4 puts the JWT-side checks on the *tool side* of the trust
+boundary so neither the model nor the gateway can leak chart data by
+fabricating claims past the verifier.
 """
 
 from __future__ import annotations
@@ -35,8 +43,13 @@ from typing import ClassVar
 
 from clinical_copilot.audit.log import AuditLogWriter, hash_patient_id
 from clinical_copilot.audit.models import AuditEvent
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.tools.records import AnyRecord, ToolResult
+
+DEFAULT_ALLOWED_ROLES: frozenset[Role] = frozenset(
+    {Role.PHYSICIAN, Role.RESIDENT, Role.SUPERVISOR},
+)
 
 
 class ToolError(Exception):
@@ -93,6 +106,12 @@ class Tool(ABC):
     description: ClassVar[str]
     required_scope: ClassVar[str]
     record_kind: ClassVar[str]
+    # Default allow-list covers the three MVP clinical roles. Subclasses
+    # narrow this for role-restricted endpoints (the supervisor audit-log
+    # read tool will set ``frozenset({Role.SUPERVISOR})``). UNKNOWN is
+    # denied by omission, not by special-case — keep it that way so a
+    # future role added to the enum doesn't silently inherit access.
+    allowed_roles: ClassVar[frozenset[Role]] = DEFAULT_ALLOWED_ROLES
 
     def __init__(self, *, audit: AuditLogWriter, audit_salt: str) -> None:
         self._audit = audit
@@ -179,9 +198,10 @@ class Tool(ABC):
         patient_id: str,
         request_id: str,
     ) -> None:
+        role_ok = claims.role in self.allowed_roles
         patient_match = patient_id == claims.patient_id
         scope_ok = self.required_scope in claims.scopes
-        if patient_match and scope_ok:
+        if role_ok and patient_match and scope_ok:
             return
         self._audit.write(
             self._unauthorized_event(
@@ -201,7 +221,10 @@ class Tool(ABC):
     ) -> AuditEvent:
         return AuditEvent(
             user_id=claims.user_id,
-            role=claims.role,
+            # AuditEvent stores the wire format (string), not the enum —
+            # the column is plain text in the audit-log table and rotates
+            # independently of the in-process Role enum's case set.
+            role=claims.role.value,
             patient_id_hash=hash_patient_id(patient_id, salt=self._audit_salt),
             resource_type=self.name,
             action="UNAUTHORIZED",

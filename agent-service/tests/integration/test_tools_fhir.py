@@ -39,6 +39,7 @@ import pytest
 from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.audit.models import AuditEvent
 from clinical_copilot.auth.oauth_client import OAuthClient
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.data.fhir_client import FhirClient
 from clinical_copilot.runtime.async_bridge import AsyncBridge
@@ -142,7 +143,7 @@ def patient_id() -> str:
 def _claims(patient_id: str) -> ClinicianClaims:
     return ClinicianClaims(
         user_id="integration-tester",
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id=patient_id,
         scopes=ALL_SCOPES,
         nonce="n-integration",

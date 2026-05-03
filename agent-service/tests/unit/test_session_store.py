@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.sessions import (
     SessionState,
@@ -39,7 +40,7 @@ class _FakeClock:
 def _claims(*, user_id: str = "dr-patel", patient_id: str = "101") -> ClinicianClaims:
     return ClinicianClaims(
         user_id=user_id,
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id=patient_id,
         scopes=["system/Condition.read"],
         nonce="n",

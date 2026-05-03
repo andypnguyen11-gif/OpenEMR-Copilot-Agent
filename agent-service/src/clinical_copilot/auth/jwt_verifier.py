@@ -25,6 +25,7 @@ import jwt as pyjwt
 from fastapi import Depends, Header, HTTPException, status
 from pydantic import ValidationError
 
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims, NonceStore
 
 if TYPE_CHECKING:
@@ -145,10 +146,15 @@ class JwtVerifier:
 
         scopes_raw = payload["scopes"]
         scopes = list(scopes_raw) if scopes_raw is not None else []
+        # Role.from_claim is forgiving: unrecognised strings (a future PHP
+        # role case the Python side hasn't shipped yet) resolve to UNKNOWN
+        # rather than raising. The tool layer denies UNKNOWN at the next
+        # boundary, so forward-compat fails closed without 5xx-ing the
+        # verifier on a token whose signature is valid.
         try:
             return ClinicianClaims(
                 user_id=str(payload["user_id"]),
-                role=str(payload["role"]),
+                role=Role.from_claim(str(payload["role"])),
                 patient_id=str(payload["patient_id"]),
                 scopes=scopes,
                 nonce=str(payload["nonce"]),

@@ -33,6 +33,7 @@ import pytest
 
 from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.audit.models import AuditEvent
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
@@ -96,7 +97,7 @@ class _ScriptedGateway:
 def claims() -> ClinicianClaims:
     return ClinicianClaims(
         user_id="dr-patel",
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id="101",
         scopes=[
             "system/Condition.read",
@@ -558,7 +559,7 @@ def test_cross_principal_session_id_replay_returns_empty_history(
 
     attacker = ClinicianClaims(
         user_id="dr-evil",
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id=claims.patient_id,
         scopes=list(claims.scopes),
         nonce="n-2",

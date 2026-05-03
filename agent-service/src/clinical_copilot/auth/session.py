@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from clinical_copilot.auth.role import Role
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -31,12 +33,19 @@ class ClinicianClaims(BaseModel):
 
     Strict mode: any claim type mismatch or unexpected extra field at the
     verifier boundary should be a hard rejection, not a silent coercion.
+
+    ``role`` is typed as the closed :class:`Role` enum so the tool layer's
+    ``allowed_roles`` set comparison always works against a known case.
+    The verifier converts the raw JWT string via :meth:`Role.from_claim`
+    before construction, mapping unrecognised values to :attr:`Role.UNKNOWN`
+    rather than raising — forward-compat with a future PHP role case must
+    fail closed at the tool boundary, not 5xx the verifier.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     user_id: str = Field(min_length=1)
-    role: str = Field(min_length=1)
+    role: Role
     patient_id: str = Field(min_length=1)
     scopes: list[str]
     nonce: str = Field(min_length=1)

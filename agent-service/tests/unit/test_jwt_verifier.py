@@ -39,6 +39,7 @@ from clinical_copilot.auth.jwt_verifier import (
     JwtVerifier,
     require_clinician_claims,
 )
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims, NonceStore
 
 # 64 bytes — meets the strictest HMAC key-length recommendation (HS512) so
@@ -116,10 +117,23 @@ def test_well_formed_token_decodes_to_clinician_claims(verifier: JwtVerifier) ->
 
     assert isinstance(claims, ClinicianClaims)
     assert claims.user_id == "user-42"
-    assert claims.role == "physician"
+    assert claims.role is Role.PHYSICIAN
     assert claims.patient_id == "patient-7"
     assert claims.scopes == ["patient/Patient.read"]
     assert claims.nonce == "nonce-abc"
+
+
+def test_unrecognised_role_string_resolves_to_unknown(verifier: JwtVerifier) -> None:
+    # Forward-compat: a future PHP role case ("fellow") that ships before
+    # the agent service's matching enum case would otherwise crash the
+    # verifier on a token whose signature is valid. Role.from_claim maps
+    # unknowns to UNKNOWN; the tool layer denies UNKNOWN at the next
+    # boundary so the request still fails closed without a 5xx.
+    token = _mint(role="fellow", jti="jti-fellow")
+
+    claims = verifier.verify(token)
+
+    assert claims.role is Role.UNKNOWN
 
 
 def test_tampered_signature_is_rejected(verifier: JwtVerifier) -> None:

@@ -36,6 +36,7 @@ from anthropic import Anthropic
 from clinical_copilot.app_state import _SYSTEM_FAST_PATH, _SYSTEM_SLOW_PATH
 from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.audit.models import AuditEvent
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.config import DEFAULT_MODEL_FAST, DEFAULT_MODEL_SLOW
 from clinical_copilot.orchestrator.agent import Orchestrator
@@ -82,7 +83,7 @@ class _NullAudit(AuditLogWriter):
 def claims() -> ClinicianClaims:
     return ClinicianClaims(
         user_id="dr-patel",
-        role="physician",
+        role=Role.PHYSICIAN,
         # Patient 102 in the fixture has non-empty flags so the
         # flag-first prompt has something real to surface — closer to
         # the production fast-lane shape than an empty result.

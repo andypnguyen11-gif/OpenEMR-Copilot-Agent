@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.observability.redaction import (
     redact_llm_inputs,
@@ -254,7 +255,7 @@ def _claims_with_secrets() -> ClinicianClaims:
 
     return ClinicianClaims(
         user_id="dr-patel",
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id="101",
         scopes=["system/Condition.read", "system/DocumentReference.read"],
         nonce="nonce-secret-must-not-leak",

@@ -29,6 +29,7 @@ import pytest
 
 from clinical_copilot.audit.log import AuditLogWriter
 from clinical_copilot.audit.models import AuditEvent
+from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.agent import Orchestrator, UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
@@ -77,7 +78,7 @@ class _ScriptedGateway:
 def claims() -> ClinicianClaims:
     return ClinicianClaims(
         user_id="dr-patel",
-        role="physician",
+        role=Role.PHYSICIAN,
         patient_id="101",
         scopes=[
             "system/Condition.read",
