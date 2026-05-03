@@ -1,7 +1,7 @@
 """Thin wrapper over the Anthropic SDK.
 
 The orchestrator depends on the :class:`LlmGateway` protocol, not on the
-concrete SDK class. That serves two ends:
+concrete SDK class. That serves three ends:
 
 * **Testability.** Unit tests pass a stub gateway with canned turns so
   the tool-use loop can be exercised without a real API call.
@@ -9,6 +9,12 @@ concrete SDK class. That serves two ends:
   module; the orchestrator does not know prompt caching exists. PRD §13
   cost budget depends on this — moving the markers is a single-file
   change.
+* **SDK exception isolation.** Transient API failures (timeouts, rate
+  limits, 5xx) are translated to :class:`LlmGatewayError` here, so
+  ``agent.py`` catches one local exception class instead of importing
+  the Anthropic SDK's hierarchy. Programming-time errors (bad SDK
+  arguments, ``AnthropicError`` subclasses that aren't ``APIError``)
+  are left to propagate as bugs.
 """
 
 from __future__ import annotations
@@ -17,10 +23,29 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from anthropic import APIError
+
 from clinical_copilot.observability import traceable_llm_complete
 
 if TYPE_CHECKING:
     from anthropic import Anthropic
+
+
+class LlmGatewayError(Exception):
+    """Raised when an :class:`LlmGateway.complete` call fails transiently.
+
+    Wraps Anthropic ``APIError`` subclasses (``APITimeoutError``,
+    ``APIConnectionError``, ``RateLimitError``, ``APIStatusError``).
+    The orchestrator catches this and emits a ``TOOL_FAILURE``
+    abstention; callers should never see the wrapped SDK exception
+    message because it can carry internal request-id and URL details.
+    """
+
+    def __init__(self, kind: str, *, cause: BaseException | None = None) -> None:
+        super().__init__(kind)
+        self.kind = kind
+        if cause is not None:
+            self.__cause__ = cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,13 +138,20 @@ class AnthropicLlmGateway:
         # than importing the SDK's narrow union types (each is a moving
         # target across SDK versions and adds zero safety here — the
         # JSON-Schema dicts are the actual contract with the wire).
-        response = self._client.messages.create(
-            model=self.model,
-            max_tokens=self._max_tokens,
-            system=cast(Any, system_blocks),
-            tools=cast(Any, tool_payload),
-            messages=cast(Any, list(messages)),
-        )
+        try:
+            response = self._client.messages.create(
+                model=self.model,
+                max_tokens=self._max_tokens,
+                system=cast(Any, system_blocks),
+                tools=cast(Any, tool_payload),
+                messages=cast(Any, list(messages)),
+            )
+        except APIError as exc:
+            # Translate the SDK's transient errors to a local class so
+            # the orchestrator doesn't have to import anthropic. ``kind``
+            # is the SDK class name — useful in logs, safe to surface
+            # because it carries no PHI or request-specific detail.
+            raise LlmGatewayError(type(exc).__name__, cause=exc) from exc
 
         text_parts: list[str] = []
         tool_uses: list[ToolUse] = []

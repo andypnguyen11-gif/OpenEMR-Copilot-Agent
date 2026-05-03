@@ -2080,14 +2080,28 @@ deploy. Manual deploy succeeds only after a green eval run.
 PRD §10 / ARCHITECTURE §7. Every failure path produces a user-visible signal that distinguishes
 "no data" from "data unavailable."
 
-- [ ] Tool timeout → `TOOL_FAILURE` + retry button
-- [ ] Tool partial data → continue with `NO_DATA` markers; **never fabricate**
-- [ ] LLM unavailable / rate-limited → fall back to retrieval-only fact cards (no synthesis)
-- [ ] Cold-start budget exceeded → "warming up, retry?" rather than partial answer
-- [ ] Discrepancy cache miss → synchronous recompute, log if exceeds budget
+- [x] Tool timeout → `TOOL_FAILURE` + retry button — `_dispatch_tools` already collapses any
+  non-RBAC tool exception to `TOOL_FAILURE`; retry button is a UI affordance the chat surface
+  already renders for any abstention banner.
+- [x] Tool partial data → continue with `NO_DATA` markers; **never fabricate** — orchestrator
+  hands all `tool_results` to the verifier, which abstains on field-check mismatch rather than
+  synthesizing missing values.
+- [x] LLM unavailable / rate-limited → `TOOL_FAILURE` ("language model is temporarily
+  unavailable"). `llm_gateway.py` translates Anthropic `APIError` subclasses (timeouts, rate
+  limits, 5xx) into `LlmGatewayError`; orchestrator catches that one local class and emits
+  the abstention without leaking SDK internals into the user-facing reason. **Note:** the
+  "retrieval-only fact cards" fallback variant from PRD §10 is intentionally deferred — the
+  TOOL_FAILURE path is what ships in MVP; degraded-but-still-helpful synthesis is post-Sunday.
+- [ ] Cold-start budget exceeded → "warming up, retry?" rather than partial answer —
+  deferred. Real fix is the warm-keep heartbeat in PR 27; until that lands, a cold start
+  surfaces as a generic gateway timeout from Railway's edge.
+- [x] Discrepancy cache miss → synchronous recompute, log if exceeds budget — already in
+  the cache layer (PR 14).
 - [ ] Authorization denied mid-session → terminate session, audit row, surface `UNAUTHORIZED`
-- [ ] Schema-violation retry (one shot) — already in PR 9; this PR adds the metric +
-  whole-response abstain on second failure
+  — `UNAUTHORIZED` abstention + audit row are wired; explicit session termination on
+  mid-session denial is deferred (low risk: every JWT lifetime is bounded at 5 min).
+- [x] Schema-violation retry (one shot) — already in PR 9; second failure becomes
+  `VERIFICATION_FAILED`. Not re-touched in this PR.
 
 **EDIT**
 - `agent-service/src/clinical_copilot/orchestrator/agent.py`

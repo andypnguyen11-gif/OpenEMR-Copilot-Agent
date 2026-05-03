@@ -37,7 +37,7 @@ from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
-from clinical_copilot.orchestrator.llm_gateway import LlmTurn, ToolUse
+from clinical_copilot.orchestrator.llm_gateway import LlmGatewayError, LlmTurn, ToolUse
 from clinical_copilot.orchestrator.sessions import SessionStore
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.registry import ToolRegistry
@@ -631,3 +631,161 @@ def test_session_lock_dropped_on_uncaught_exception(
         session_id=sid_seed,
     )
     assert response.abstention is None
+
+
+# --- LLM transient-error handling ---------------------------------------
+#
+# The orchestrator catches LlmGatewayError (which llm_gateway translates
+# from APIError subclasses — timeouts, rate limits, 5xx) and emits a
+# TOOL_FAILURE abstention with a generic reason. These tests pin the
+# contract: the SDK class name leaks into structured logs only, never
+# into the user-facing reason string.
+
+
+class _RaisingGateway:
+    """LlmGateway stub that raises ``LlmGatewayError`` after ``raise_after``
+    successful calls.
+
+    Defaulting to 0 means the very first call throws — useful for the
+    "first-call failure" case. Setting it higher lets a test seed one or
+    more legitimate turns before the gateway starts failing, which is
+    how we exercise the "tool ran successfully, then LLM died" path.
+    """
+
+    def __init__(self, *, kind: str, raise_after: int = 0, prelude: Sequence[LlmTurn] = ()) -> None:
+        self._kind = kind
+        self._raise_after = raise_after
+        self._prelude: deque[LlmTurn] = deque(prelude)
+        self.calls = 0
+
+    def complete(
+        self,
+        *,
+        system: str,
+        tools: Sequence[dict[str, Any]],
+        messages: Sequence[dict[str, Any]],
+    ) -> LlmTurn:
+        self.calls += 1
+        if self.calls > self._raise_after:
+            raise LlmGatewayError(self._kind)
+        return self._prelude.popleft()
+
+
+def test_llm_gateway_error_on_first_call_returns_tool_failure(
+    claims: ClinicianClaims,
+    registry: ToolRegistry,
+    verifier: VerificationMiddleware,
+    sessions: SessionStore,
+) -> None:
+    """Transient LLM failure on the first call → TOOL_FAILURE with a
+    generic reason. The SDK class name must not appear in the abstention
+    reason — it can carry internal request-id / URL detail."""
+
+    gateway = _RaisingGateway(kind="RateLimitError")
+    orch = Orchestrator(
+        lanes=_slow_only(gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+
+    response = orch.run(query="anything", claims=claims, request_id="r-llm-down")
+
+    assert response.abstention is not None
+    assert response.abstention.state == AbstentionState.TOOL_FAILURE
+    # Reason is the user-facing string; no SDK class names, no PHI.
+    assert "language model" in response.abstention.reason.lower()
+    assert "RateLimitError" not in response.abstention.reason
+    # No tool turns ran, so tool_results stays empty.
+    assert response.tool_results == []
+    # Exactly one call attempted before the loop bailed.
+    assert gateway.calls == 1
+
+
+def test_llm_gateway_error_after_tool_use_preserves_tool_results(
+    claims: ClinicianClaims,
+    registry: ToolRegistry,
+    verifier: VerificationMiddleware,
+    sessions: SessionStore,
+) -> None:
+    """A tool ran successfully, *then* the next LLM turn fails. The
+    abstention preserves the in-flight ``tool_results`` so the audit
+    trail and observability metrics still see what was fetched before
+    the LLM dropped — important for distinguishing "LLM died after
+    fetching data" from "LLM died before any tool ran"."""
+
+    tool_use_turn = _tool_use_turn(
+        ToolUse(id="tu-1", name="get_problems", input={"patient_id": "101"})
+    )
+    gateway = _RaisingGateway(
+        kind="APITimeoutError",
+        raise_after=1,
+        prelude=[tool_use_turn],
+    )
+    orch = Orchestrator(
+        lanes=_slow_only(gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+
+    response = orch.run(query="problems please", claims=claims, request_id="r-llm-mid")
+
+    assert response.abstention is not None
+    assert response.abstention.state == AbstentionState.TOOL_FAILURE
+    # The successful pre-failure tool call is still surfaced.
+    assert len(response.tool_results) == 1
+    assert response.tool_results[0].tool_name == "get_problems"
+    # First call returned tool_use; second raised. No third call.
+    assert gateway.calls == 2
+
+
+def test_llm_gateway_error_does_not_persist_into_session_history(
+    claims: ClinicianClaims,
+    registry: ToolRegistry,
+    verifier: VerificationMiddleware,
+    sessions: SessionStore,
+) -> None:
+    """A failed run must leave session history untouched so the next
+    turn doesn't inherit a half-built conversation. Mirrors the
+    abstention-path persistence rule the schema-violation test pins."""
+
+    sid, _ = sessions.get_or_create(claims, None)
+    sessions.release(claims, sid)
+
+    failing_gateway = _RaisingGateway(kind="APIConnectionError")
+    orch = Orchestrator(
+        lanes=_slow_only(failing_gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+    failed = orch.run(
+        query="first try",
+        claims=claims,
+        request_id="r-fail-1",
+        session_id=sid,
+    )
+    assert failed.abstention is not None
+    assert failed.abstention.state == AbstentionState.TOOL_FAILURE
+
+    # Now a recovery turn with the same session_id should see an empty
+    # history — the failed turn left no residue.
+    recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[],"prose":[]}')])
+    orch_recover = Orchestrator(
+        lanes=_slow_only(recovery_gateway),
+        registry=registry,
+        verifier=verifier,
+        sessions=sessions,
+    )
+    orch_recover.run(
+        query="second try",
+        claims=claims,
+        request_id="r-fail-2",
+        session_id=sid,
+    )
+    # The recovery call's `messages` should contain only the new user
+    # turn — no echoes of the failed query, no orphan tool_use blocks.
+    assert len(recovery_gateway.calls) == 1
+    second_messages = recovery_gateway.calls[0]["messages"]
+    assert second_messages == [{"role": "user", "content": "second try"}]

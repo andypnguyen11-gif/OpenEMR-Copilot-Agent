@@ -31,6 +31,10 @@ Failure modes mapped to abstention states:
   against a malformed model output reaching the tool layer.
 * Loop exceeded ``max_turns`` → ``TOOL_FAILURE`` ("agent could not
   converge"); shielding against runaway tool loops.
+* LLM gateway raised :class:`LlmGatewayError` (timeout, rate limit,
+  5xx) → ``TOOL_FAILURE`` ("language model is temporarily unavailable").
+  Wrapping happens in :mod:`llm_gateway`; the orchestrator catches
+  one local exception class instead of importing the SDK hierarchy.
 * Final JSON failed schema validation twice → ``VERIFICATION_FAILED``.
 
 **Persisted-vs-working messages.** The loop maintains two parallel
@@ -62,7 +66,7 @@ from clinical_copilot.observability import (
     traceable_orchestrator_run,
 )
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
-from clinical_copilot.orchestrator.llm_gateway import LlmTurn
+from clinical_copilot.orchestrator.llm_gateway import LlmGatewayError, LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
 from clinical_copilot.orchestrator.sessions import SessionState, SessionStore
 from clinical_copilot.tools.base import (
@@ -293,11 +297,38 @@ class Orchestrator:
         retried = False
 
         for _ in range(self._max_turns):
-            turn = config.llm.complete(
-                system=runtime_system,
-                tools=tool_schemas,
-                messages=working_messages,
-            )
+            try:
+                turn = config.llm.complete(
+                    system=runtime_system,
+                    tools=tool_schemas,
+                    messages=working_messages,
+                )
+            except LlmGatewayError as exc:
+                # Transient LLM failure (timeout, rate limit, 5xx). We
+                # log the SDK class name + request id for triage, but
+                # the abstention.reason is intentionally generic — the
+                # surface that renders this is patient-facing and the
+                # SDK's own message can carry internal URL/headers.
+                _LOG.warning(
+                    "orchestrator.llm_gateway_error",
+                    request_id=request_id,
+                    kind=exc.kind,
+                )
+                response = AgentResponse(
+                    cards=[],
+                    prose=[],
+                    tool_results=tool_results,
+                    abstention=Abstention(
+                        state=AbstentionState.TOOL_FAILURE,
+                        reason="language model is temporarily unavailable",
+                    ),
+                )
+                return (
+                    response,
+                    list(prior_state.messages),
+                    list(prior_state.tool_results),
+                    tool_calls,
+                )
 
             if turn.tool_uses:
                 dispatched, tool_messages, abstention = self._dispatch_tools(
@@ -445,11 +476,15 @@ class Orchestrator:
         dispatched = 0
         for tool_use in turn.tool_uses:
             if allowed_names is not None and tool_use.name not in allowed_names:
-                return dispatched, [], Abstention(
-                    state=AbstentionState.TOOL_FAILURE,
-                    reason=(
-                        f"tool {tool_use.name!r} is not available on this lane; "
-                        "model emitted an out-of-subset tool call"
+                return (
+                    dispatched,
+                    [],
+                    Abstention(
+                        state=AbstentionState.TOOL_FAILURE,
+                        reason=(
+                            f"tool {tool_use.name!r} is not available on this lane; "
+                            "model emitted an out-of-subset tool call"
+                        ),
                     ),
                 )
             patient_id = str(tool_use.input.get("patient_id", ""))
@@ -461,9 +496,13 @@ class Orchestrator:
                     request_id=request_id,
                 )
             except UnauthorizedToolCallError as exc:
-                return dispatched, [], Abstention(
-                    state=AbstentionState.UNAUTHORIZED,
-                    reason=f"unauthorized access denied at tool {exc.tool_name!r}",
+                return (
+                    dispatched,
+                    [],
+                    Abstention(
+                        state=AbstentionState.UNAUTHORIZED,
+                        reason=f"unauthorized access denied at tool {exc.tool_name!r}",
+                    ),
                 )
             except AuditLogWriteError:
                 # Audit-log integrity outranks availability (ARCHITECTURE
@@ -477,14 +516,22 @@ class Orchestrator:
                 # fail-closed contract guards against.
                 raise
             except ToolError as exc:
-                return dispatched, [], Abstention(
-                    state=AbstentionState.TOOL_FAILURE,
-                    reason=f"tool {tool_use.name!r} failed: {exc}",
+                return (
+                    dispatched,
+                    [],
+                    Abstention(
+                        state=AbstentionState.TOOL_FAILURE,
+                        reason=f"tool {tool_use.name!r} failed: {exc}",
+                    ),
                 )
             except Exception as exc:
-                return dispatched, [], Abstention(
-                    state=AbstentionState.TOOL_FAILURE,
-                    reason=f"tool {tool_use.name!r} raised an unexpected error: {exc}",
+                return (
+                    dispatched,
+                    [],
+                    Abstention(
+                        state=AbstentionState.TOOL_FAILURE,
+                        reason=f"tool {tool_use.name!r} raised an unexpected error: {exc}",
+                    ),
                 )
 
             tool_results.append(result)
