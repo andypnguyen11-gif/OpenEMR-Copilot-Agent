@@ -17,12 +17,16 @@
  *   - ``pid`` — current patient context. Co-Pilot routes are per-patient;
  *     without one the gateway has no scope to authorize against.
  *
- * Optional session keys (Co-Pilot-specific, populated by later PRs):
- *   - ``copilot_role`` — defaults to ``"unknown"`` until PR 18 wires the
- *     real role lookup. The agent service's tool layer treats unknown roles
- *     as having no scopes, so the request is denied at the next boundary
- *     even if a placeholder token is minted.
- *   - ``copilot_scopes`` — defaults to an empty list, same rationale.
+ * Role + scope sourcing:
+ *   - ``role`` is resolved from the OpenEMR ``users`` table via the injected
+ *     :class:`Auth\\RoleResolverInterface`. The session itself does not carry
+ *     ``copilot_role`` — that placeholder is gone now that the resolver
+ *     exists.
+ *   - ``scopes`` is taken from the session's ``copilot_scopes`` key when set.
+ *     Per-role scope assignment lives in the agent service's tool layer (the
+ *     next slice); the gateway still passes through whatever the session
+ *     already has so chat callers carrying the MVP fallback set continue to
+ *     work.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -36,6 +40,8 @@ declare(strict_types=1);
 namespace OpenEMR\Services\Copilot;
 
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
+use OpenEMR\Services\Copilot\Auth\DatabaseRoleResolver;
+use OpenEMR\Services\Copilot\Auth\RoleResolverInterface;
 use RuntimeException;
 
 final readonly class SessionMapper
@@ -56,8 +62,10 @@ final readonly class SessionMapper
      *        SessionWrapperFactory methods that vary across OpenEMR
      *        versions.
      */
-    public function __construct(private array $session)
-    {
+    public function __construct(
+        private array $session,
+        private RoleResolverInterface $roleResolver,
+    ) {
     }
 
     /**
@@ -67,18 +75,26 @@ final readonly class SessionMapper
      * ``$_SESSION``. Probe the bag first; if it's missing the auth
      * keys, fall back to the top level so the gateway works against
      * either layout.
+     *
+     * The resolver is injected for testability; production wiring at
+     * :file:`apis/routes/_rest_routes_copilot.inc.php` passes the database
+     * implementation. Defaulting here means the route doesn't have to
+     * spell out the dependency, while tests that exercise
+     * :meth:`fromGlobalSession` can pin the role they want by supplying a
+     * fake.
      */
-    public static function fromGlobalSession(): self
+    public static function fromGlobalSession(?RoleResolverInterface $roleResolver = null): self
     {
+        $resolver = $roleResolver ?? new DatabaseRoleResolver();
         /** @var mixed $bag */
         $bag = $_SESSION[self::CORE_SESSION_BAG] ?? null;
         if (is_array($bag) && array_key_exists('authUserID', $bag)) {
             /** @var array<string, mixed> $bag */
-            return new self($bag);
+            return new self($bag, $resolver);
         }
         /** @var array<string, mixed> $session */
         $session = $_SESSION ?? [];
-        return new self($session);
+        return new self($session, $resolver);
     }
 
     /**
@@ -108,12 +124,9 @@ final readonly class SessionMapper
             $scopesRaw,
         )) : [];
 
-        $roleRaw = $this->session['copilot_role'] ?? null;
-        $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'unknown';
-
         return new ClinicianIdentity(
             userId: $userId,
-            role: $role,
+            role: $this->roleResolver->resolve($userId),
             patientId: $patientId,
             scopes: $scopes,
         );
@@ -162,12 +175,9 @@ final readonly class SessionMapper
      *   it from the request body).
      * * Scopes fall back to ``$fallbackScopes`` when the session has none —
      *   this is the path the standard MVP scope set from
-     *   :class:`CopilotConfig` flows through. PR 18's role/scope plumbing
-     *   replaces both legs.
-     * * The role default is ``'physician'`` (rather than ``'unknown'``)
-     *   because the chat surface is gated behind OpenEMR's ACL; reaching
-     *   this code with an authenticated session implies a clinician role
-     *   for the MVP. Real role lookup lands with PR 18.
+     *   :class:`CopilotConfig` flows through. Per-role scope assignment in
+     *   the agent service's tool layer will replace this fallback in the
+     *   next slice.
      *
      * @param list<string> $fallbackScopes
      *
@@ -195,12 +205,9 @@ final readonly class SessionMapper
             $scopes = $fallbackScopes;
         }
 
-        $roleRaw = $this->session['copilot_role'] ?? null;
-        $role = is_string($roleRaw) && $roleRaw !== '' ? $roleRaw : 'physician';
-
         return new ClinicianIdentity(
             userId: $userId,
-            role: $role,
+            role: $this->roleResolver->resolve($userId),
             patientId: $patientId,
             scopes: $scopes,
         );

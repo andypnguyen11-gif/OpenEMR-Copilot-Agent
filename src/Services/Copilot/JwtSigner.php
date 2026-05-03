@@ -94,7 +94,7 @@ final readonly class JwtSigner
             ->issuedAt($now)
             ->expiresAt($expiresAt)
             ->withClaim('user_id', $identity->userId)
-            ->withClaim('role', $identity->role)
+            ->withClaim('role', $identity->role->value)
             ->withClaim('patient_id', $identity->patientId)
             ->withClaim('scopes', $identity->scopes)
             ->withClaim('nonce', $nonce)

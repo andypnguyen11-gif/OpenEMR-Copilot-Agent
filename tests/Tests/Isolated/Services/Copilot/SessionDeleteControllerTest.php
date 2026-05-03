@@ -28,6 +28,8 @@ use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentResponse;
 use OpenEMR\Services\Copilot\AgentServiceException;
 use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
+use OpenEMR\Services\Copilot\Auth\Role;
+use OpenEMR\Services\Copilot\Auth\RoleResolverInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\JwtSigner;
 use OpenEMR\Services\Copilot\SessionDeleteController;
@@ -70,11 +72,21 @@ final class SessionDeleteControllerTest extends TestCase
         return new SessionDeleteController(
             $this->agent,
             $signer,
-            new SessionMapper($session),
+            new SessionMapper($session, self::physicianResolver()),
             $accessChecker ?? self::allowAllAccessChecker(),
             new CopilotConfig($globals),
             new NullLogger(),
         );
+    }
+
+    private static function physicianResolver(): RoleResolverInterface
+    {
+        return new class implements RoleResolverInterface {
+            public function resolve(string $userId): Role
+            {
+                return Role::PHYSICIAN;
+            }
+        };
     }
 
     private static function allowAllAccessChecker(): PatientAccessCheckerInterface

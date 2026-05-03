@@ -32,6 +32,7 @@ use Lcobucci\JWT\Signer\Hmac\Sha256;
 use Lcobucci\JWT\Signer\Key\InMemory;
 use Lcobucci\JWT\Validation\Constraint\SignedWith;
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
+use OpenEMR\Services\Copilot\Auth\Role;
 use OpenEMR\Services\Copilot\JwtSigner;
 use PHPUnit\Framework\TestCase;
 
@@ -43,7 +44,7 @@ final class JwtSignerTest extends TestCase
     {
         return new ClinicianIdentity(
             userId: 'user-42',
-            role: 'physician',
+            role: Role::PHYSICIAN,
             patientId: 'patient-7',
             scopes: ['patient/Patient.read', 'patient/Condition.read'],
         );

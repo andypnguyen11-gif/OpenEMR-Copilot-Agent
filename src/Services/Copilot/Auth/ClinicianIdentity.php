@@ -27,7 +27,7 @@ final readonly class ClinicianIdentity
      */
     public function __construct(
         public string $userId,
-        public string $role,
+        public Role $role,
         public string $patientId,
         public array $scopes,
     ) {
