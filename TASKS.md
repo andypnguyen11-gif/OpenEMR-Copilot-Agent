@@ -1604,8 +1604,18 @@ permissions** (USERS §1.4).
 - [ ] Resident role: every action audit-logged (success-side audit landed alongside
   this PR — see PR 19 note below; resident-tagged SUCCESS row asserted in
   `test_role_enforcement.py::test_resident_success_writes_one_row_with_resident_role_tag`)
-- [ ] Supervisor role: read endpoint for supervised resident's audit log entries (the supervisor
-  audit-trail viewer UI is **out of scope per PRD §11** — endpoint only, no viewer)
+- [x] Supervisor role: read endpoint for supervised resident's audit log entries (the supervisor
+  audit-trail viewer UI is **out of scope per PRD §11** — endpoint only, no viewer). Shipped as
+  `GET /api/agent/supervisor/audit/{resident_user_id}` with two gates: `role == SUPERVISOR` and
+  `resident_user_id ∈ claims.supervises`. Both denials surface as 403 with the same generic
+  body so a non-supervisor cannot probe-and-classify resident user IDs by comparing responses.
+  Patient identifiers in the response are the existing HMAC-SHA256 hashes from `audit_log` —
+  raw IDs never enter the table (PR 2 contract), so the supervisor view inherits that
+  property without an additional redaction step. **Follow-up:** PHP gateway must populate the
+  `supervises` claim from OpenEMR's existing supervisor-of relationships; until that lands,
+  the endpoint is reachable only via test-minted JWTs. Endpoint, reader, and the new claim
+  are covered by `tests/integration/test_supervisor_audit_route.py` (happy path, non-supervised
+  resident → 403, physician role → 403, empty result → 200, pagination cap, missing JWT → 401).
 - [ ] **Expand `PatientAccessCheckerInterface` to cover cross-coverage panels.** PR 17.5
   shipped the strict `patient_data.providerID = authUserID` rule as a security hotfix;
   PR 18 needs a panel-aware implementation that also allows covering attendings (per
@@ -1615,11 +1625,17 @@ permissions** (USERS §1.4).
 **NEW**
 - `src/Services/Copilot/Auth/Role.php` (enum)
 - `agent-service/src/clinical_copilot/auth/role.py` (matching enum)
+- `agent-service/src/clinical_copilot/audit/reader.py` (read companion to `AuditLogWriter`)
 - `agent-service/tests/unit/test_role_enforcement.py`
+- `agent-service/tests/integration/test_supervisor_audit_route.py`
 
 **EDIT**
 - `src/Services/Copilot/SessionMapper.php` — populate role claim
 - `src/Services/Copilot/Auth/DatabasePatientAccessChecker.php` — broaden to panel/coverage
+- `agent-service/src/clinical_copilot/auth/session.py` — `supervises` claim on `ClinicianClaims`
+- `agent-service/src/clinical_copilot/auth/jwt_verifier.py` — read `supervises` from JWT
+- `agent-service/src/clinical_copilot/app_state.py` — wire `AuditLogReader`
+- `agent-service/src/clinical_copilot/main.py` — register the supervisor audit route
 - `agent-service/src/clinical_copilot/tools/base.py` — role-aware scope checks
 
 **Acceptance:** A resident's request writes audit rows; supervisor request to read another

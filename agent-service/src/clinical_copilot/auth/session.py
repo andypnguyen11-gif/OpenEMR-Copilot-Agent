@@ -48,6 +48,13 @@ class ClinicianClaims(BaseModel):
     role: Role
     patient_id: str = Field(min_length=1)
     scopes: list[str]
+    # User IDs of residents this principal is allowed to read audit-log
+    # rows for. Populated by the PHP gateway from OpenEMR's existing
+    # supervisor-of relationships and only meaningful for SUPERVISOR
+    # callers — every other role ignores it. Defaults to ``[]`` so JWTs
+    # minted before this field shipped still verify; the supervisor
+    # endpoint enforces "non-empty + contains target" at request time.
+    supervises: list[str] = Field(default_factory=list)
     nonce: str = Field(min_length=1)
     jti: str = Field(min_length=1)
 

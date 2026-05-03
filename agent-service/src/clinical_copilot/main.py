@@ -15,16 +15,19 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException, Path, Response, status
+from fastapi import FastAPI, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field
 
 from clinical_copilot import __version__
 from clinical_copilot.app_state import AppState, build_app_state
 from clinical_copilot.audit.log import AuditLogWriteError
+from clinical_copilot.audit.reader import MAX_PAGE_SIZE as AUDIT_MAX_PAGE_SIZE
 from clinical_copilot.auth.internal_token import require_internal_token
 from clinical_copilot.auth.jwt_verifier import require_clinician_claims
+from clinical_copilot.auth.role import Role
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.discrepancy.background import BackgroundRunner
 from clinical_copilot.logging import configure_logging, get_logger
@@ -125,6 +128,38 @@ class QueryRequest(BaseModel):
         pattern=r"^[A-Za-z0-9-]+$",
     )
     lane: Lane = Field(default=Lane.SLOW)
+
+
+class SupervisorAuditEntry(BaseModel):
+    """Single audit-log row, projected for the supervisor read endpoint.
+
+    Mirrors :class:`clinical_copilot.audit.reader.AuditLogEntry` exactly
+    so the route can hand the dataclass straight into the Pydantic
+    serializer. Patient identifiers are *only* the HMAC-SHA256 hash the
+    writer stored — the table never holds raw IDs (PR 2 contract), so
+    the supervisor view inherits the same property without an
+    additional redaction layer.
+    """
+
+    ts: datetime
+    user_id: str
+    role: str
+    patient_id_hash: str
+    resource_type: str
+    action: str
+    request_id: str
+
+
+class SupervisorAuditResponse(BaseModel):
+    """Body of ``GET /api/agent/supervisor/audit/{resident_user_id}``.
+
+    Echoing ``resident_user_id`` lets the caller confirm the route
+    interpreted the path the same way they did — same defensive shape
+    other agent-side responses use (e.g. ``FlagsResponse.patient_id``).
+    """
+
+    resident_user_id: str
+    entries: list[SupervisorAuditEntry]
 
 
 @asynccontextmanager
@@ -306,6 +341,69 @@ def create_app(
                 detail="session not found",
             )
         return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get(
+        "/api/agent/supervisor/audit/{resident_user_id}",
+        tags=["agent"],
+        response_model=SupervisorAuditResponse,
+    )
+    async def supervisor_audit_route(
+        resident_user_id: str = Path(min_length=1, max_length=64),
+        limit: int = Query(default=50, ge=1, le=AUDIT_MAX_PAGE_SIZE),
+        offset: int = Query(default=0, ge=0),
+        claims: ClinicianClaims = claims_dep,
+    ) -> SupervisorAuditResponse:
+        # Two gates, one shape (403 on either failure):
+        #   1. Role must be SUPERVISOR. Physicians and residents have no
+        #      legitimate need for this endpoint — the case-study
+        #      acceptance explicitly calls out non-supervisor rejection.
+        #   2. ``resident_user_id`` must appear in ``claims.supervises``.
+        #      The supervises list comes from the gateway-signed JWT, so
+        #      the agent service never has to decide who supervises whom
+        #      — only whether the requested target is in the trusted set.
+        # Both denials use the same generic body so a non-supervisor
+        # cannot probe-and-classify which residents exist by comparing
+        # responses (would otherwise leak existence information).
+        if claims.role is not Role.SUPERVISOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="not authorized to read audit log",
+            )
+        if resident_user_id not in claims.supervises:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="not authorized to read audit log",
+            )
+        if resolved_state.audit_reader is None:
+            # No reader wired (test override that disabled the DB).
+            # Returning 503 instead of 500 signals the failure mode is
+            # configuration, not a runtime fault — production wiring
+            # always builds a reader.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="audit reader unavailable",
+            )
+
+        rows = resolved_state.audit_reader.list_for_user(
+            resident_user_id,
+            limit=limit,
+            offset=offset,
+        )
+        return SupervisorAuditResponse(
+            resident_user_id=resident_user_id,
+            entries=[
+                SupervisorAuditEntry(
+                    ts=row.ts,
+                    user_id=row.user_id,
+                    role=row.role,
+                    patient_id_hash=row.patient_id_hash,
+                    resource_type=row.resource_type,
+                    action=row.action,
+                    request_id=row.request_id,
+                )
+                for row in rows
+            ],
+        )
 
     return app
 

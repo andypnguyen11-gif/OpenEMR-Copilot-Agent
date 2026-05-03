@@ -146,6 +146,12 @@ class JwtVerifier:
 
         scopes_raw = payload["scopes"]
         scopes = list(scopes_raw) if scopes_raw is not None else []
+        # ``supervises`` is optional — JWTs minted before the supervisor
+        # audit endpoint shipped won't carry it. Default to an empty
+        # list so missing-claim and explicit-empty look identical to the
+        # downstream authorization check.
+        supervises_raw = payload.get("supervises")
+        supervises = list(supervises_raw) if supervises_raw is not None else []
         # Role.from_claim is forgiving: unrecognised strings (a future PHP
         # role case the Python side hasn't shipped yet) resolve to UNKNOWN
         # rather than raising. The tool layer denies UNKNOWN at the next
@@ -157,6 +163,7 @@ class JwtVerifier:
                 role=Role.from_claim(str(payload["role"])),
                 patient_id=str(payload["patient_id"]),
                 scopes=scopes,
+                supervises=supervises,
                 nonce=str(payload["nonce"]),
                 jti=str(payload["jti"]),
             )

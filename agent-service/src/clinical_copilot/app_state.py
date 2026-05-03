@@ -59,6 +59,7 @@ import httpx
 from anthropic import Anthropic
 
 from clinical_copilot.audit.log import AuditLogWriter
+from clinical_copilot.audit.reader import AuditLogReader
 from clinical_copilot.auth.jwt_verifier import JwtVerifier
 from clinical_copilot.auth.oauth_client import OAuthClient
 from clinical_copilot.auth.session import NonceStore
@@ -122,6 +123,7 @@ class AppState:
     orchestrator: Orchestrator
     session_store: SessionStore
     discrepancy_cache: DiscrepancyCache
+    audit_reader: AuditLogReader | None
     bridge: AsyncBridge | None
 
 
@@ -130,6 +132,7 @@ def build_app_state(
     *,
     llm: LlmGateway | None = None,
     audit: AuditLogWriter | None = None,
+    audit_reader: AuditLogReader | None = None,
     fixture_store: FixtureStore | None = None,
 ) -> AppState:
     """Wire everything from :class:`Settings`.
@@ -152,15 +155,18 @@ def build_app_state(
         replay_store=nonce_store,
     )
 
-    # The session factory feeds both the audit writer and the durable
-    # tier of :class:`DiscrepancyCache` (PR 14). Build it once if either
-    # collaborator needs it; tests overriding ``audit`` get None here
-    # and the cache falls back to in-process-only.
+    # The session factory feeds the audit writer, the supervisor-side
+    # audit reader (PR 18), and the durable tier of :class:`DiscrepancyCache`
+    # (PR 14). Build it once if any collaborator needs it; tests
+    # overriding ``audit`` typically also override ``audit_reader`` and
+    # the cache then falls back to in-process-only.
     session_factory = None
     if audit is None:
         db_engine = create_engine_from_url(settings.database_url)
         session_factory = create_session_factory(db_engine)
         audit = AuditLogWriter(session_factory=session_factory)
+    if audit_reader is None and session_factory is not None:
+        audit_reader = AuditLogReader(session_factory=session_factory)
 
     # The discrepancy engine is the same in every wiring — only the
     # chart provider differs. Build the engine once and pass it (with
@@ -277,6 +283,7 @@ def build_app_state(
         orchestrator=orchestrator,
         session_store=session_store,
         discrepancy_cache=discrepancy_cache,
+        audit_reader=audit_reader,
         bridge=bridge,
     )
 
