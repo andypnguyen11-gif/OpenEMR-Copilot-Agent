@@ -200,8 +200,9 @@
             return;
         }
 
+        const recordIndex = indexToolResults(body.tool_results);
         if (Array.isArray(body.cards) && body.cards.length > 0) {
-            wrap.appendChild(renderCards(body.cards));
+            wrap.appendChild(renderCards(body.cards, recordIndex));
         }
         if (Array.isArray(body.prose) && body.prose.length > 0) {
             wrap.appendChild(renderProse(body.prose));
@@ -217,7 +218,7 @@
         thread.scrollTop = thread.scrollHeight;
     }
 
-    function renderCards(cards) {
+    function renderCards(cards, recordIndex) {
         const list = document.createElement("div");
         list.className = "copilot-cards";
         cards.forEach(function (card) {
@@ -228,14 +229,85 @@
             title.textContent = card.title + " (" + card.kind + ")";
             item.appendChild(title);
             (card.source_ids || []).forEach(function (sid) {
-                const src = document.createElement("div");
-                src.className = "copilot-card-source";
-                src.textContent = sid;
-                item.appendChild(src);
+                item.appendChild(renderRecordRow(sid, recordIndex[sid]));
             });
             list.appendChild(item);
         });
         return list;
+    }
+
+    function indexToolResults(toolResults) {
+        const index = {};
+        if (!Array.isArray(toolResults)) {
+            return index;
+        }
+        toolResults.forEach(function (tr) {
+            (tr.records || []).forEach(function (rec) {
+                if (rec && typeof rec.source_id === "string") {
+                    index[rec.source_id] = rec;
+                }
+            });
+        });
+        return index;
+    }
+
+    function renderRecordRow(sourceId, record) {
+        const row = document.createElement("div");
+        row.className = "copilot-card-record";
+        if (!record) {
+            // Verification couldn't resolve the record — fall back to the
+            // bare source id so the card isn't silently empty.
+            row.classList.add("copilot-card-source");
+            row.textContent = sourceId;
+            return row;
+        }
+        const summary = document.createElement("span");
+        summary.className = "copilot-card-record-summary";
+        summary.textContent = summarizeRecord(record);
+        row.appendChild(summary);
+        const cite = document.createElement("span");
+        cite.className = "copilot-card-source";
+        cite.textContent = sourceId;
+        row.appendChild(cite);
+        return row;
+    }
+
+    function summarizeRecord(rec) {
+        // Per-kind formatting mirrors the Daily Brief card sections so the
+        // chat surface and the brief surface read the same. Inferred from
+        // which fields are present rather than a typed kind tag — the
+        // tool_results records don't carry one.
+        if (typeof rec.name === "string") {
+            return joinNonEmpty([rec.name, rec.dose, rec.status, rec.started_on ? "started " + rec.started_on : ""]);
+        }
+        if (typeof rec.substance === "string") {
+            return joinNonEmpty([rec.substance, rec.reaction, rec.severity]);
+        }
+        if (typeof rec.display === "string" && typeof rec.value !== "undefined") {
+            const valueWithUnit = rec.unit ? rec.value + " " + rec.unit : String(rec.value);
+            return joinNonEmpty([rec.display, valueWithUnit, rec.observed_on, rec.reference_range ? "(ref " + rec.reference_range + ")" : ""]);
+        }
+        if (typeof rec.display === "string") {
+            return joinNonEmpty([rec.display, rec.status, rec.onset_date]);
+        }
+        if (typeof rec.encounter_type === "string") {
+            return joinNonEmpty([rec.encounter_type, rec.visited_on, rec.chief_complaint]);
+        }
+        if (typeof rec.note_date === "string") {
+            return joinNonEmpty([rec.note_date, rec.author, rec.body ? truncate(rec.body, 140) : ""]);
+        }
+        if (typeof rec.rationale === "string") {
+            return joinNonEmpty([rec.rule_id, rec.category, rec.rationale]);
+        }
+        return rec.source_id || "(unrecognized record)";
+    }
+
+    function joinNonEmpty(parts) {
+        return parts.filter(function (p) { return typeof p === "string" && p !== ""; }).join(" — ");
+    }
+
+    function truncate(s, n) {
+        return s.length <= n ? s : s.slice(0, n - 1) + "…";
     }
 
     function renderProse(claims) {

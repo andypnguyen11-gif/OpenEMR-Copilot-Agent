@@ -126,6 +126,25 @@
     word-break: break-all;
 }
 
+.copilot-card-record {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.2rem 0;
+    border-top: 1px dashed #e6ecf3;
+}
+
+.copilot-card-record:first-of-type {
+    border-top: none;
+}
+
+.copilot-card-record-summary {
+    flex: 1 1 auto;
+    font-size: 0.9rem;
+    color: #222;
+}
+
 .copilot-prose {
     margin: 0.5rem 0;
     line-height: 1.5;
