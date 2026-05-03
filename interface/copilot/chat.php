@@ -111,11 +111,11 @@ if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
                  * can pick a scenario by intent.
                  */
                 $options = [
-                    '90001' => '90001 — Discrepancy MedNoteOne (med-vs-note conflict)',
-                    '90002' => '90002 — Discrepancy NarrativeAllergy (narrative-only allergy)',
-                    '90003' => '90003 — Discrepancy ResolvedActive (resolved-still-active problem)',
-                    '90004' => '90004 — Discrepancy AllergyMed (allergy-vs-med safety)',
-                    '90005' => '90005 — Discrepancy StaleLab (chronic disease, stale lab)',
+                    '90001' => '90001 — Marcus Hayes (med-vs-note conflict)',
+                    '90002' => '90002 — Sofia Chen (narrative-only allergy)',
+                    '90003' => '90003 — Robert Kim (resolved-still-active problem)',
+                    '90004' => '90004 — Maria Lopez (allergy-vs-med safety)',
+                    '90005' => '90005 — Daniel Brooks (chronic disease, stale lab)',
                 ];
                 foreach ($options as $pid => $label) :
                     // PHP coerces numeric-string array keys to int, so

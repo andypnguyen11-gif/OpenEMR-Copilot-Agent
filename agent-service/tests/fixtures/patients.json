@@ -262,7 +262,7 @@
     },
     "90001": {
       "demographics": {
-        "name": "Discrepancy MedNoteOne",
+        "name": "Marcus Hayes",
         "age": 64,
         "sex": "M"
       },
@@ -297,7 +297,7 @@
     },
     "90002": {
       "demographics": {
-        "name": "Discrepancy NarrativeAllergy",
+        "name": "Sofia Chen",
         "age": 47,
         "sex": "F"
       },
@@ -324,7 +324,7 @@
     },
     "90003": {
       "demographics": {
-        "name": "Discrepancy ResolvedActive",
+        "name": "Robert Kim",
         "age": 71,
         "sex": "M"
       },
@@ -359,7 +359,7 @@
     },
     "90004": {
       "demographics": {
-        "name": "Discrepancy AllergyMed",
+        "name": "Maria Lopez",
         "age": 55,
         "sex": "F"
       },
@@ -387,7 +387,7 @@
     },
     "90005": {
       "demographics": {
-        "name": "Discrepancy StaleLab",
+        "name": "Daniel Brooks",
         "age": 67,
         "sex": "M"
       },
