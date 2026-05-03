@@ -85,7 +85,10 @@ def test_projects_condition_to_problem_record(
     assert record.display == "Type 2 diabetes mellitus"
     assert record.onset_date == "2019-04-12"
     assert record.status == "active"
-    assert audit.events == []
+    # ARCHITECTURE §8.3: every PHI access produces a row.
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
+    assert audit.events[0].resource_type == "get_problems"
 
 
 def test_falls_back_to_onset_period_start_when_datetime_missing(
@@ -149,7 +152,11 @@ def test_empty_bundle_returns_empty_records(
     result = tool.execute(claims=claims_for(), patient_id=PATIENT_ID, request_id="req-5")
 
     assert result.records == []
-    assert audit.events == []
+    # An empty result is still a PHI access — the FHIR call resolved
+    # without an authorization fault, the chart simply had no matching
+    # rows. ARCHITECTURE §8.3 logs the access regardless of payload.
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
 
 
 @pytest.mark.parametrize("status_code", [401, 403])

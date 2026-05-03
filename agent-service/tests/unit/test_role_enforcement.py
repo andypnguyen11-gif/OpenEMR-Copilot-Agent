@@ -28,7 +28,7 @@ from typing import ClassVar
 
 import pytest
 
-from clinical_copilot.audit.log import AuditLogWriter, hash_patient_id
+from clinical_copilot.audit.log import AuditLogWriteError, AuditLogWriter, hash_patient_id
 from clinical_copilot.audit.models import AuditEvent
 from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
@@ -148,7 +148,12 @@ def test_default_allowed_roles_admits_each_clinical_role(role: Role) -> None:
     )
 
     assert result.tool_name == "stub_happy"
-    assert audit.events == []
+    # Success-path audit row — the same write path PR 18's "every action
+    # logged" rule depends on. Role tag round-trips so the supervisor's
+    # downstream review can filter by clinician role.
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
+    assert audit.events[0].role == role.value
 
 
 def test_unknown_role_denies_with_audit_row_and_no_run() -> None:
@@ -212,7 +217,9 @@ def test_role_in_custom_allowed_set_admits() -> None:
     )
 
     assert result.tool_name == "supervisor_only"
-    assert audit.events == []
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
+    assert audit.events[0].role == "supervisor"
 
 
 def test_role_check_runs_before_run_method() -> None:
@@ -243,3 +250,64 @@ def test_role_check_runs_before_run_method() -> None:
 
     assert len(audit.events) == 1
     assert audit.events[0].action == "UNAUTHORIZED"
+
+
+def test_resident_success_writes_one_row_with_resident_role_tag() -> None:
+    # PRD §6 / ARCHITECTURE §8.3: a resident's every action is logged
+    # for supervisor review. The base class writes a SUCCESS row after
+    # ``_run`` returns; the role tag on that row is what lets a
+    # downstream supervisor query filter to a specific resident's
+    # activity. Pinning the row's shape here makes a regression that
+    # drops or mis-tags the success-side write fail loudly rather than
+    # silently weakening the audit trail.
+    audit = _RecordingAuditWriter()
+    tool = _StubHappyTool(audit=audit, audit_salt=AUDIT_SALT)
+
+    result = tool.execute(
+        claims=_claims(Role.RESIDENT),
+        patient_id="101",
+        request_id="req-resident-success",
+    )
+
+    assert result.tool_name == "stub_happy"
+    assert len(audit.events) == 1
+    event = audit.events[0]
+    assert event.action == "SUCCESS"
+    assert event.role == "resident"
+    assert event.user_id == "dr-patel"
+    assert event.resource_type == "stub_happy"
+    assert event.request_id == "req-resident-success"
+    assert event.patient_id_hash == hash_patient_id("101", salt=AUDIT_SALT)
+
+
+def test_success_audit_write_failure_blocks_tool_result() -> None:
+    # ARCHITECTURE §7 (line 521 / §8.3): audit-log integrity outranks
+    # availability. If the success-path audit write raises, the tool
+    # result must NOT escape — the request fails closed instead of
+    # leaking PHI un-logged. The orchestrator translates the resulting
+    # AuditLogWriteError into a 5xx; that translation is exercised
+    # elsewhere, so this test pins the propagation contract at the
+    # tool boundary.
+    class _ExplodingAuditWriter(AuditLogWriter):
+        def __init__(self) -> None:
+            self.events: list[AuditEvent] = []
+
+        def write(self, event: AuditEvent) -> None:
+            self.events.append(event)
+            raise AuditLogWriteError("simulated audit DB outage")
+
+    audit = _ExplodingAuditWriter()
+    tool = _StubHappyTool(audit=audit, audit_salt=AUDIT_SALT)
+
+    with pytest.raises(AuditLogWriteError):
+        tool.execute(
+            claims=_claims(Role.RESIDENT),
+            patient_id="101",
+            request_id="req-fail-closed",
+        )
+
+    # The writer recorded the attempted SUCCESS event before raising —
+    # confirms the failure happened on the success-path write, not on a
+    # mis-routed UNAUTHORIZED branch.
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"

@@ -1601,7 +1601,9 @@ permissions** (USERS §1.4).
 - [ ] Session lifecycle: created on panel open / Daily Brief query, ended on panel close,
   patient switch, idle timeout (15 min), explicit logout (ARCHITECTURE §4.4)
 - [ ] Idle timer in UI + server-side enforcement
-- [ ] Resident role: every action audit-logged (already true; assert via test)
+- [ ] Resident role: every action audit-logged (success-side audit landed alongside
+  this PR — see PR 19 note below; resident-tagged SUCCESS row asserted in
+  `test_role_enforcement.py::test_resident_success_writes_one_row_with_resident_role_tag`)
 - [ ] Supervisor role: read endpoint for supervised resident's audit log entries (the supervisor
   audit-trail viewer UI is **out of scope per PRD §11** — endpoint only, no viewer)
 - [ ] **Expand `PatientAccessCheckerInterface` to cover cross-coverage panels.** PR 17.5
@@ -1631,12 +1633,21 @@ patient's assigned `providerID` is the primary attending.
 
 Every PHI access writes an audit row (ARCHITECTURE §8.3). Mandatory for `UNAUTHORIZED`.
 
-- [ ] Tool base writes audit row on every fetch (success and denial)
-- [ ] Audit row content per ARCHITECTURE §8.3 (timestamp, user_id, role, patient_id_hash,
-  resource_type, action, request_id)
+- [x] Tool base writes audit row on every fetch (success and denial) — landed
+  alongside the PR 18 role work because the resident-assertion test was
+  meaningless without a SUCCESS row to count. `Tool.execute` now writes
+  `action="SUCCESS"` after `_run` returns normally; non-RBAC `_run`
+  exceptions still propagate without a row (faults are not PHI accesses).
+- [x] Audit row content per ARCHITECTURE §8.3 (timestamp, user_id, role, patient_id_hash,
+  resource_type, action, request_id) — covered by the existing `AuditEvent` shape
+  used for both SUCCESS and UNAUTHORIZED branches.
 - [ ] **Fail-closed** behavior verified: DB unreachable → request fails (PR 2 already enforces;
-  this PR exercises it through the tool path)
-- [ ] Test: PHI fetch with audit-DB down → 5xx, no PHI returned
+  this PR exercises it through the tool path) — partial coverage in
+  `test_role_enforcement.py::test_success_audit_write_failure_blocks_tool_result`
+  (proves the tool boundary propagates `AuditLogWriteError`); the orchestrator
+  → 5xx translation through the live `/api/agent/query` route still pending.
+- [ ] Test: PHI fetch with audit-DB down → 5xx, no PHI returned (the integration test
+  end-to-end through the route, with a real failing sessionmaker)
 
 **EDIT**
 - `agent-service/src/clinical_copilot/tools/base.py`

@@ -175,7 +175,12 @@ def test_query_happy_path_returns_verified_response(audit: _RecordingAudit) -> N
     assert body["abstention"] is None
     assert body["prose"][0]["source_id"] == "Condition/p101-cond-1"
     assert body["tool_results"][0]["tool_name"] == "get_problems"
-    assert audit.events == []
+    # ARCHITECTURE §8.3: the successful tool fetch on this turn writes
+    # one SUCCESS row. The orchestrator runs at most one tool call per
+    # turn in this fixture, so one row total.
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
+    assert audit.events[0].resource_type == "get_problems"
 
 
 def test_query_unauthorized_writes_audit_and_returns_abstention(

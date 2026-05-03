@@ -1,4 +1,4 @@
-"""Tool ABC + RBAC enforcement + UNAUTHORIZED audit hook.
+"""Tool ABC + RBAC enforcement + audit hook.
 
 Every PHI fetch routes through :meth:`Tool.execute`. The base class enforces
 three layers of authorization, all *before* ``_run`` is invoked:
@@ -25,10 +25,21 @@ A fourth layer kicks in *after* the fetch attempt:
    when the layers disagree (ARCHITECTURE §4).
 
 All four denial branches produce identical audit and exception surfaces so
-the orchestrator's abstention layer has one shape to handle. The audit
-write is fail-closed via :class:`AuditLogWriter`: a write error surfaces as
-:class:`AuditLogWriteError` and the request returns 5xx — never
-UNAUTHORIZED without a logged row.
+the orchestrator's abstention layer has one shape to handle.
+
+When ``_run`` returns normally, the base writes a ``SUCCESS`` audit row
+*before* handing the records back to the caller. ARCHITECTURE §7 (line
+521 / §8.3) treats audit-log integrity as higher priority than
+availability: every PHI access must produce a row, and a write failure
+fails the request rather than leaking the data un-logged. Non-RBAC
+exceptions raised by ``_run`` (parse errors, transport faults) propagate
+untouched and do *not* write a SUCCESS row — those are faults, not
+PHI accesses. The audit table thus holds exactly one row per resolved
+access: SUCCESS or UNAUTHORIZED, never both, never none.
+
+The audit write is fail-closed via :class:`AuditLogWriter`: a write error
+surfaces as :class:`AuditLogWriteError` and the request returns 5xx —
+never SUCCESS or UNAUTHORIZED without a logged row.
 
 ARCHITECTURE §4 puts the JWT-side checks on the *tool side* of the trust
 boundary so neither the model nor the gateway can leak chart data by
@@ -148,6 +159,18 @@ class Tool(ABC):
                 self.name,
                 requested_patient_id=patient_id,
             ) from exc
+        # Success-path audit. Fail-closed: an AuditLogWriteError here
+        # propagates and the caller sees no records — ARCHITECTURE §7
+        # (line 521) prefers audit integrity over availability. Other
+        # _run exceptions already escaped above; they are not PHI
+        # accesses and intentionally do not produce a SUCCESS row.
+        self._audit.write(
+            self._success_event(
+                claims=claims,
+                patient_id=patient_id,
+                request_id=request_id,
+            )
+        )
         return ToolResult(
             tool_name=self.name,
             patient_id=patient_id,
@@ -219,6 +242,35 @@ class Tool(ABC):
         patient_id: str,
         request_id: str,
     ) -> AuditEvent:
+        return self._audit_event(
+            claims=claims,
+            patient_id=patient_id,
+            request_id=request_id,
+            action="UNAUTHORIZED",
+        )
+
+    def _success_event(
+        self,
+        *,
+        claims: ClinicianClaims,
+        patient_id: str,
+        request_id: str,
+    ) -> AuditEvent:
+        return self._audit_event(
+            claims=claims,
+            patient_id=patient_id,
+            request_id=request_id,
+            action="SUCCESS",
+        )
+
+    def _audit_event(
+        self,
+        *,
+        claims: ClinicianClaims,
+        patient_id: str,
+        request_id: str,
+        action: str,
+    ) -> AuditEvent:
         return AuditEvent(
             user_id=claims.user_id,
             # AuditEvent stores the wire format (string), not the enum —
@@ -227,6 +279,6 @@ class Tool(ABC):
             role=claims.role.value,
             patient_id_hash=hash_patient_id(patient_id, salt=self._audit_salt),
             resource_type=self.name,
-            action="UNAUTHORIZED",
+            action=action,
             request_id=request_id,
         )

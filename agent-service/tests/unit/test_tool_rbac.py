@@ -192,8 +192,9 @@ def test_missing_required_scope_denies_even_when_patient_matches() -> None:
 
 def test_happy_path_unaffected_by_fhir_denial_try_except() -> None:
     """A tool whose ``_run`` returns records normally must still produce
-    a clean ToolResult and write nothing to the audit log — confirms the
-    new try/except didn't accidentally swallow a non-denial path.
+    a clean ToolResult — confirms the FHIR-denial try/except didn't
+    accidentally swallow a non-denial path. A SUCCESS audit row is
+    expected (ARCHITECTURE §8.3: every PHI access is logged).
     """
 
     audit = _RecordingAuditWriter()
@@ -206,13 +207,17 @@ def test_happy_path_unaffected_by_fhir_denial_try_except() -> None:
     assert result.patient_id == "101"
     assert len(result.records) == 1
     assert result.records[0].source_id == "Condition/101-stub-1"
-    assert audit.events == []
+    assert len(audit.events) == 1
+    assert audit.events[0].action == "SUCCESS"
 
 
 def test_unrelated_run_exceptions_are_not_translated_to_unauthorized() -> None:
     """``_run`` raising a generic exception must propagate untouched —
-    the new try/except is FhirAuthorizationDeniedError-only, not a
-    catch-all that would mask real bugs as UNAUTHORIZED.
+    the FHIR-denial try/except is FhirAuthorizationDeniedError-only,
+    not a catch-all that would mask real bugs as UNAUTHORIZED. A non-
+    RBAC exception is also NOT a PHI access, so no SUCCESS row is
+    written either: the audit table holds rows for resolved accesses,
+    not for faulted ones.
     """
 
     class _StubBoomTool(Tool):
@@ -231,5 +236,5 @@ def test_unrelated_run_exceptions_are_not_translated_to_unauthorized() -> None:
     with pytest.raises(RuntimeError, match="upstream parse error"):
         tool.execute(claims=claims, patient_id="101", request_id="req-boom")
 
-    # No audit row — this isn't a denial, it's a fault.
+    # No audit row — this isn't a denial OR a successful access.
     assert audit.events == []

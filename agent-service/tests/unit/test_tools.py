@@ -128,7 +128,17 @@ def test_tool_happy_path_returns_records_with_source_id(
     # join in the verification middleware depends on this invariant.
     assert all(record.source_id for record in result.records)
     assert any(record.source_id == expected_source_id for record in result.records)
-    assert audit.events == []
+    # ARCHITECTURE §8.3: every PHI access produces exactly one audit
+    # row. Happy path → one SUCCESS row tagged with the tool name and
+    # the requested patient (hashed against AUDIT_SALT).
+    assert len(audit.events) == 1
+    event = audit.events[0]
+    assert event.action == "SUCCESS"
+    assert event.resource_type == tool_name
+    assert event.user_id == "dr-patel"
+    assert event.role == "physician"
+    assert event.request_id == "req-happy"
+    assert event.patient_id_hash == hash_patient_id("101", salt=AUDIT_SALT)
 
 
 @pytest.mark.parametrize(("tool_cls", "tool_name", "_expected"), _TOOL_SPECS)
