@@ -22,6 +22,21 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load ``agent-service/.env`` once at import time so a developer who
+# launches uvicorn directly (IDE runner, ``uvicorn ... --reload`` from a
+# fresh shell) gets the same env the documented ``set -a; source .env``
+# flow produces. ``override=False`` keeps real process env (Railway,
+# Docker ``environment:``, CI) authoritative — a stray ``.env`` cannot
+# stomp a platform-injected secret. Path is anchored on this file rather
+# than ``cwd`` so the loader doesn't depend on where the process was
+# started from. Missing file is a no-op (``load_dotenv`` returns False),
+# which is exactly what we want in containers that ship no ``.env``.
+_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_ENV_PATH, override=False)
 
 
 class ConfigError(RuntimeError):
