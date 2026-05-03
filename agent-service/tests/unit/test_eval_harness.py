@@ -51,7 +51,7 @@ def _case(category: str, expect: Expectation) -> EvalCase:
     )
 
 
-def test_load_cases_finds_all_six_categories() -> None:
+def test_load_cases_finds_all_committed_categories() -> None:
     """All committed case files load against a stub snapshot.
 
     Stub the snapshot rather than reading the gitignored
@@ -59,7 +59,8 @@ def test_load_cases_finds_all_six_categories() -> None:
     bucket sizes are sized to cover the highest index any committed
     case references — bumping the bucket index in a case file requires
     bumping these counts in lockstep, which is the right kind of forced
-    coupling.
+    coupling. The category set is pinned for the same reason: adding a
+    new top-level suite is a reviewable schema change, not an accident.
     """
 
     stub_uuids: dict[str, list[dict[str, Any]]] = {
@@ -77,6 +78,7 @@ def test_load_cases_finds_all_six_categories() -> None:
         "conflicting",
         "fabrication",
         "rbac_bypass",
+        "stale",
     }
 
 

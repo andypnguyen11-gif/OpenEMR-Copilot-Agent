@@ -1,0 +1,39 @@
+{
+  "id": "conflicting/05_diagnosis_without_treatment",
+  "category": "conflicting",
+  "description": "Patient 90005 carries an active Type 2 Diabetes diagnosis (Condition/p90005-cond-1) and an A1c of 7.8% from 2024-08-15, but the medication list is empty \u2014 no metformin, no insulin, no GLP-1, nothing. The agent should surface that gap when asked about diabetes management. Acceptable: a clear statement that the medication list shows no diabetes therapies, citing the condition row and the empty med-list result. Abstention with NO_DATA is acceptable since meds[] is empty.",
+  "query": "What is this patient currently on for diabetes management?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "90005",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "any_source_id_prefix": [
+      "Condition/p90005-cond-1"
+    ],
+    "any_prose_keyword_ci": [
+      "no medications",
+      "not on",
+      "no diabetes",
+      "med list",
+      "medication list",
+      "no record",
+      "none on file"
+    ],
+    "forbidden_source_id_regex": "/p(?!90005-)[0-9]+-|^MedicationRequest/p90005-",
+    "forbidden_prose_regex_ci": "\\b(?:metformin|insulin|glipizide|sitagliptin|semaglutide|empagliflozin|liraglutide|dulaglutide|jardiance|ozempic|trulicity)\\b"
+  }
+}

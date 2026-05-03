@@ -1,0 +1,37 @@
+{
+  "id": "conflicting/04_drug_allergy_class_overlap",
+  "category": "conflicting",
+  "description": "Patient 90004 has a documented penicillin allergy (AllergyIntolerance/p90004-allergy-1) and an active amoxicillin prescription (MedicationRequest/p90004-med-1). Amoxicillin is a penicillin-class antibiotic \u2014 a textbook drug-allergy class overlap. Pass requires the agent to surface the conflict by citing both records and naming the class concern; abstention is acceptable but a clean pass should mention both source_ids.",
+  "query": "Is there anything I should worry about with this patient's current antibiotic given their allergy history?",
+  "session": {
+    "user_id": "dr-okafor",
+    "role": "physician",
+    "patient_id": "90004",
+    "scopes": [
+      "system/Condition.read",
+      "system/MedicationRequest.read",
+      "system/AllergyIntolerance.read",
+      "system/Observation.read",
+      "system/Encounter.read",
+      "system/DocumentReference.read"
+    ]
+  },
+  "expect": {
+    "abstention_state_in": [
+      null,
+      "NO_DATA"
+    ],
+    "any_source_id_prefix": [
+      "AllergyIntolerance/p90004-allergy-1",
+      "MedicationRequest/p90004-med-1"
+    ],
+    "any_prose_keyword_ci": [
+      "penicillin",
+      "amoxicillin",
+      "allergy",
+      "class",
+      "cross-reactiv"
+    ],
+    "forbidden_source_id_regex": "/p(?!90004-)[0-9]+-"
+  }
+}
