@@ -57,6 +57,12 @@
     const submitBtn = shell.querySelector("[data-copilot-submit]");
 
     let currentSessionId = null;
+    // Same lock-and-notify posture as chat.js: an idle timeout severs
+    // the session, blocks sends until explicit ack, and surfaces a
+    // banner so the user knows history was dropped (rather than
+    // silently rotating into a fresh thread).
+    let sessionLockedByIdle = false;
+    let idleTimer = null;
 
     if (lockedPid === "") {
         // Server-rendered the disabled state already; no client wiring
@@ -64,8 +70,13 @@
         return;
     }
 
+    idleTimer = createIdleTimer();
+
     form.addEventListener("submit", function (event) {
         event.preventDefault();
+        if (sessionLockedByIdle) {
+            return;
+        }
         const text = input.value.trim();
         if (!text) {
             return;
@@ -74,31 +85,98 @@
         input.value = "";
     });
 
+    input.addEventListener("input", touchIdleTimer);
+    input.addEventListener("keydown", touchIdleTimer);
+
     // Fire-and-forget DELETE on iframe teardown so the agent's session
     // store doesn't accumulate orphans when the launcher closes the
     // panel. ``pagehide`` is the right event for iframes — it fires
     // even when the parent removes the frame, which beforeunload does
     // not reliably do across browsers.
     window.addEventListener("pagehide", function () {
-        if (currentSessionId && sessionDeleteUrl) {
-            const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
-                + "?patient_id=" + encodeURIComponent(lockedPid);
-            // navigator.sendBeacon doesn't send DELETE, so use a sync
-            // fetch with keepalive — the request survives the unload.
-            fetch(url, {
-                method: "DELETE",
-                credentials: "same-origin",
-                keepalive: true,
-                headers: {
-                    "Accept": "application/json",
-                    "apicsrftoken": csrfToken
-                }
-            }).catch(function () {
-                // TTL covers us if this fails.
-            });
-        }
+        deleteServerSession({ keepalive: true });
         currentSessionId = null;
+        if (idleTimer) {
+            idleTimer.destroy();
+        }
     });
+
+    function deleteServerSession(opts) {
+        if (!currentSessionId || !sessionDeleteUrl) {
+            return;
+        }
+        const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
+            + "?patient_id=" + encodeURIComponent(lockedPid);
+        const init = {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: {
+                "Accept": "application/json",
+                "apicsrftoken": csrfToken
+            }
+        };
+        // ``keepalive: true`` is only meaningful (and only safe) on the
+        // unload path — it tells the browser to let the request finish
+        // after the document is gone. Idle-timeout DELETEs run while
+        // the page is alive and skip it so the request behaves like a
+        // normal fetch.
+        if (opts && opts.keepalive) {
+            init.keepalive = true;
+        }
+        fetch(url, init).catch(function () {
+            // TTL covers us if this fails.
+        });
+    }
+
+    function createIdleTimer() {
+        return window.CopilotIdleTimer.create({
+            timeoutMs: window.CopilotIdleTimer.DEFAULT_TIMEOUT_MS,
+            onTimeout: handleIdleTimeout
+        });
+    }
+
+    function touchIdleTimer() {
+        if (sessionLockedByIdle || !idleTimer) {
+            return;
+        }
+        idleTimer.reset();
+    }
+
+    function handleIdleTimeout() {
+        deleteServerSession();
+        currentSessionId = null;
+        sessionLockedByIdle = true;
+        submitBtn.disabled = true;
+        input.disabled = true;
+        renderIdleNotice();
+    }
+
+    function renderIdleNotice() {
+        const banner = document.createElement("div");
+        banner.className = "copilot-idle-notice";
+
+        const message = document.createElement("div");
+        message.textContent = "Session ended after 15 minutes of inactivity. "
+            + "Conversation history has been cleared.";
+        banner.appendChild(message);
+
+        const resumeBtn = document.createElement("button");
+        resumeBtn.type = "button";
+        resumeBtn.className = "btn btn-secondary btn-sm";
+        resumeBtn.textContent = "Start new session";
+        resumeBtn.addEventListener("click", function () {
+            banner.remove();
+            sessionLockedByIdle = false;
+            submitBtn.disabled = false;
+            input.disabled = false;
+            idleTimer = createIdleTimer();
+            input.focus();
+        });
+        banner.appendChild(resumeBtn);
+
+        thread.appendChild(banner);
+        thread.scrollTop = thread.scrollHeight;
+    }
 
     function sendQuery(text) {
         appendUserMessage(text);
@@ -136,6 +214,7 @@
                     currentSessionId = result.body.session_id;
                 }
                 renderAgentResponse(result.body);
+                touchIdleTimer();
             } else {
                 renderError(result);
             }
@@ -143,7 +222,9 @@
             spinner.remove();
             renderError({ status: 0, body: null, message: String(err) });
         }).finally(function () {
-            submitBtn.disabled = false;
+            if (!sessionLockedByIdle) {
+                submitBtn.disabled = false;
+            }
         });
     }
 

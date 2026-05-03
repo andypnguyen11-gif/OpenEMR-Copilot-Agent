@@ -56,6 +56,12 @@
 
     let lastPatientId = patientSelect.value;
     let currentSessionId = null;
+    // Block sends between an idle timeout and the user's explicit ack.
+    // Without the latch, a keystroke racing the timeout banner could
+    // POST a stale session_id over the wire — the server would mint a
+    // fresh one and the user would get a confusingly-empty thread back.
+    let sessionLockedByIdle = false;
+    let idleTimer = createIdleTimer();
 
     patientSelect.addEventListener("change", function () {
         if (patientSelect.value !== lastPatientId) {
@@ -75,6 +81,12 @@
 
     form.addEventListener("submit", function (event) {
         event.preventDefault();
+        if (sessionLockedByIdle) {
+            // The ack-banner click rebuilds the timer + clears the lock;
+            // until then submits are dead. The submit button is also
+            // disabled visually, but a user could still trigger via Enter.
+            return;
+        }
         const text = input.value.trim();
         if (!text) {
             return;
@@ -83,31 +95,103 @@
         input.value = "";
     });
 
+    // Typing-as-activity: reset the idle timer on every keystroke and
+    // every input change (covers paste, IME, autofill). Keeps the timer
+    // in sync with what the user is actually doing inside the chat,
+    // independent of ambient mouse motion in the surrounding chart UI.
+    input.addEventListener("input", touchIdleTimer);
+    input.addEventListener("keydown", touchIdleTimer);
+
     function clearThread(patientIdForDelete) {
-        // Server-side state cleanup. Fire-and-forget: failure to reach
-        // the gateway here is non-fatal — the agent's TTL eviction
-        // bounds orphaned sessions, and the next request from this
-        // tab will mint a fresh session_id anyway because we drop
-        // currentSessionId below.
-        if (currentSessionId && sessionDeleteUrl && patientIdForDelete) {
-            const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
-                + "?patient_id=" + encodeURIComponent(patientIdForDelete);
-            fetch(url, {
-                method: "DELETE",
-                credentials: "same-origin",
-                headers: {
-                    "Accept": "application/json",
-                    "apicsrftoken": csrfToken
-                }
-            }).catch(function () {
-                // Intentional swallow — TTL covers us.
-            });
-        }
+        deleteServerSession(patientIdForDelete);
         currentSessionId = null;
 
         thread.innerHTML = '<div class="copilot-empty">' +
             'Pick a patient and ask a question.' +
             '</div>';
+    }
+
+    function deleteServerSession(patientIdForDelete) {
+        // Server-side state cleanup. Fire-and-forget: failure to reach
+        // the gateway here is non-fatal — the agent's TTL eviction
+        // bounds orphaned sessions, and the next request from this
+        // tab will mint a fresh session_id anyway because the caller
+        // drops currentSessionId.
+        if (!currentSessionId || !sessionDeleteUrl || !patientIdForDelete) {
+            return;
+        }
+        const url = sessionDeleteUrl + "/" + encodeURIComponent(currentSessionId)
+            + "?patient_id=" + encodeURIComponent(patientIdForDelete);
+        fetch(url, {
+            method: "DELETE",
+            credentials: "same-origin",
+            headers: {
+                "Accept": "application/json",
+                "apicsrftoken": csrfToken
+            }
+        }).catch(function () {
+            // Intentional swallow — TTL covers us.
+        });
+    }
+
+    function createIdleTimer() {
+        return window.CopilotIdleTimer.create({
+            timeoutMs: window.CopilotIdleTimer.DEFAULT_TIMEOUT_MS,
+            onTimeout: handleIdleTimeout
+        });
+    }
+
+    function touchIdleTimer() {
+        // Activity post-timeout never re-arms the same timer instance;
+        // the new-session ack rebuilds it. Calling reset() here while
+        // locked is harmless (the helper no-ops after fire), but skip
+        // the call to keep intent obvious in the trace.
+        if (sessionLockedByIdle) {
+            return;
+        }
+        idleTimer.reset();
+    }
+
+    function handleIdleTimeout() {
+        // Sever the agent-side session immediately so a stolen tab
+        // can't continue under the prior context. The DELETE binds to
+        // the patient the session belongs to, not whatever's currently
+        // selected (a switch would have already reset the timer).
+        deleteServerSession(lastPatientId);
+        currentSessionId = null;
+        sessionLockedByIdle = true;
+        submitBtn.disabled = true;
+        input.disabled = true;
+        renderIdleNotice();
+    }
+
+    function renderIdleNotice() {
+        const banner = document.createElement("div");
+        banner.className = "copilot-idle-notice";
+
+        const message = document.createElement("div");
+        message.textContent = "Session ended after 15 minutes of inactivity. "
+            + "Conversation history has been cleared.";
+        banner.appendChild(message);
+
+        const resumeBtn = document.createElement("button");
+        resumeBtn.type = "button";
+        resumeBtn.className = "btn btn-secondary btn-sm";
+        resumeBtn.textContent = "Start new session";
+        resumeBtn.addEventListener("click", function () {
+            banner.remove();
+            sessionLockedByIdle = false;
+            submitBtn.disabled = false;
+            input.disabled = false;
+            // Build a fresh timer instance — the prior one latched
+            // ``fired`` at timeout and will not re-arm.
+            idleTimer = createIdleTimer();
+            input.focus();
+        });
+        banner.appendChild(resumeBtn);
+
+        thread.appendChild(banner);
+        thread.scrollTop = thread.scrollHeight;
     }
 
     function sendQuery(text) {
@@ -146,6 +230,11 @@
                     currentSessionId = result.body.session_id;
                 }
                 renderAgentResponse(result.body);
+                // A successful round-trip is the strongest "user is
+                // engaged" signal we have. Reset here so the timer
+                // captures send-without-typing patterns (e.g. clicking
+                // a follow-up suggestion in a future iteration).
+                touchIdleTimer();
             } else {
                 renderError(result);
             }
@@ -153,7 +242,11 @@
             spinner.remove();
             renderError({ status: 0, body: null, message: String(err) });
         }).finally(function () {
-            submitBtn.disabled = false;
+            // Don't undo the idle lock if the timeout fired mid-flight —
+            // the user has already been told the session is gone.
+            if (!sessionLockedByIdle) {
+                submitBtn.disabled = false;
+            }
         });
     }
 

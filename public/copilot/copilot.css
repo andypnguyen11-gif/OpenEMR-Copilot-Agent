@@ -230,6 +230,23 @@
     margin: 0.5rem 0;
 }
 
+/* Idle-timeout notice — surfaced by chat.js / side_panel.js when the
+ * 15-min idle window elapses. Lock-and-notify rather than silent rotate
+ * (ARCHITECTURE §4.4); the "Start new session" button rebuilds the
+ * timer and re-enables the input. */
+.copilot-idle-notice {
+    background: #fff8e1;
+    border: 1px solid #f0c674;
+    color: #5a4500;
+    padding: 0.6rem 0.8rem;
+    border-radius: 4px;
+    margin: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
 /* Daily Brief (PR 16b) ------------------------------------------------------
  *
  * Distinct ``.copilot-brief-*`` namespace from the chat-side ``.copilot-card``

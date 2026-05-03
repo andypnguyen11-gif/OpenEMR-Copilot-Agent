@@ -168,6 +168,7 @@ if ($pid !== '') {
             csrfToken: <?php echo json_encode($apiCsrfToken); ?>
         };
     </script>
+    <script src="<?php echo attr($webroot); ?>/public/copilot/idle_timer.js"></script>
     <script src="<?php echo attr($webroot); ?>/public/copilot/side_panel.js"></script>
 </body>
 </html>

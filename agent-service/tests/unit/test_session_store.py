@@ -18,6 +18,7 @@ import pytest
 from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.orchestrator.sessions import (
+    DEFAULT_TTL_SECONDS,
     SessionState,
     SessionStore,
     generate_session_id,
@@ -56,6 +57,15 @@ def clock() -> _FakeClock:
 @pytest.fixture
 def store(clock: _FakeClock) -> Iterator[SessionStore]:
     yield SessionStore(ttl_seconds=1800, clock=clock)
+
+
+def test_default_ttl_is_fifteen_minutes() -> None:
+    # ARCHITECTURE §4.4 pins the idle window at 15 minutes; the UI's
+    # idle timer matches this value. A silent regression to a longer
+    # window would weaken the audit posture without any visible signal,
+    # so the constant gets a hard pin rather than relying on the spec
+    # doc to stay in sync.
+    assert DEFAULT_TTL_SECONDS == 15 * 60
 
 
 def test_get_or_create_with_none_session_id_mints_fresh_id(

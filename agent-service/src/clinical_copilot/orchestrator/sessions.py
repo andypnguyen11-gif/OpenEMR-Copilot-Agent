@@ -45,7 +45,12 @@ if TYPE_CHECKING:
     from clinical_copilot.auth.session import ClinicianClaims
     from clinical_copilot.tools.records import ToolResult
 
-DEFAULT_TTL_SECONDS = 30 * 60
+# 15 minutes per ARCHITECTURE §4.4. The UI's idle timer matches; both
+# numbers must move together — a server window that's tighter than the
+# UI's would silently drop history mid-conversation, while a looser one
+# would let a "session ended" banner mislead the user about what's
+# actually retained.
+DEFAULT_TTL_SECONDS = 15 * 60
 
 SessionKey = tuple[str, str, str]
 
