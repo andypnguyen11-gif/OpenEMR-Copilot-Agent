@@ -38,4 +38,6 @@ agent.db
 *.pem
 *public-jwk.json
 *oauth-registration.json
+oauth-registration-*.json
 seeded-patient-ids.json
+eval-patient-ids.json

@@ -1811,13 +1811,31 @@ Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §
 
 > **Data prereq**: this milestone needs **bulk synthetic patients in deployed
 > OpenEMR** (10+ per category for statistical coverage; the named-fixture
-> mirror seeded by `scripts/seed_fixture_patients.py` only covers the
-> 5 M5 patients). Use [Synthea](https://github.com/synthetichealth/synthea)
-> to generate patients and POST their FHIR Bundles via the write-scoped
-> OAuth client. Do this *before* writing eval cases — the cases assert
-> against patient ids that have to exist. Synthea import is non-trivial
-> (transaction Bundle support is partial in OpenEMR; references need
-> rewriting); budget ~3-4 hours including debugging the write surface.
+> mirror seeded by `scripts/seed_fixture_patients.py` only covers the 5 M5
+> patients). Use OpenEMR's built-in devtools command, which generates patients
+> via Synthea and imports them through the CCDA service — sidestepping the
+> Patient-only FHIR write surface (lines 627-636 above) entirely:
+>
+> ```sh
+> docker compose exec openemr /root/devtools import-random-patients 50
+> ```
+>
+> Hand-rolling a Synthea→FHIR pipeline is **not** the path; OpenEMR's
+> `ccdaservice/` is what consumes Synthea output natively. Budget ~10 min
+> runtime + ~30 min for the post-import id-snapshot script (below).
+>
+> **Caveats to handle up front so eval cases don't go flaky:**
+>
+> - **Patient ids are random.** Eval JSON cases must not hardcode pids;
+>   instead, after import, run a small script that queries OpenEMR for ids
+>   matching simple heuristics (has meds, no problems, has allergies, etc.)
+>   and writes them to a gitignored snapshot file the harness reads at
+>   startup. Re-seeding requires re-running the snapshot.
+> - **FHIR-vs-SQL read-path drift.** The agent reads FHIR; CCDA imports land
+>   in OpenEMR's SQL tables. Most resources surface through FHIR cleanly, but
+>   if a tool returns empty for an imported patient the cause is environmental
+>   (FHIR projection gap), not the agent. Note in the eval-case description
+>   when this happens — it's legitimate "missing data" coverage.
 
 - [ ] `harness.py` — loads cases, runs agent, checks expected vs observed
 - [ ] `runner.py` — CLI: `python -m clinical_copilot.eval --suite happy_path`
@@ -1825,8 +1843,11 @@ Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §
 - [ ] Missing-data suite (5–10 cases)
 - [ ] Ambiguous-query suite (5–10 cases)
 - [ ] Result rows persisted to `eval_runs` table (PR 2)
-- [ ] **Synthea bulk-load** of ~50 patients into deployed OpenEMR before
-  authoring eval cases (see prereq note above)
+- [ ] **Bulk patient load** (~50) into deployed OpenEMR via
+  `devtools import-random-patients`, before authoring eval cases
+- [ ] **Post-import id snapshot** — script queries OpenEMR for pids matching
+  heuristic buckets (has-meds, no-problems, has-allergies, …) and writes a
+  gitignored `eval-patient-ids.json` the harness loads at startup
 
 **NEW**
 - `agent-service/tests/eval/harness.py`
@@ -1834,6 +1855,9 @@ Custom Python harness, JSON test cases, runs from CLI (PRD §8 / ARCHITECTURE §
 - `agent-service/tests/eval/cases/happy_path/*.json`
 - `agent-service/tests/eval/cases/missing_data/*.json`
 - `agent-service/tests/eval/cases/ambiguous/*.json`
+- `agent-service/scripts/snapshot_eval_patients.py` — post-import id picker
+  (queries FHIR for patients matching heuristic buckets; writes
+  `eval-patient-ids.json`, gitignored)
 
 **Acceptance:** `eval --suite happy_path` runs end-to-end, writes results to Postgres, prints
 pass/fail summary.
@@ -2018,6 +2042,27 @@ Side-finding worth flagging separately: in-Docker `composer phpstan` exits 9 wit
 stdout/stderr when the cache is corrupt (no error message at all), which is why the original
 diagnosis pointed at the baseline. Host phpstan in the same state prints the real errors
 and exits 1. Worth keeping in mind whenever Docker phpstan is silent.
+
+---
+
+### `seed_fixture_patients.py` non-Patient FHIR POSTs are broken — never exercised end-to-end
+
+The script POSTs all six resource builders (Condition, MedicationRequest, AllergyIntolerance,
+Observation, Encounter, DocumentReference) to `${FHIR_BASE_URL}/{resourceType}`, but OpenEMR's
+FHIR write surface only handles `POST /fhir/Patient` (plus Organization and Practitioner) —
+`POST /fhir/Condition` and the rest 404. This was already documented at lines 627-636 above
+as a TODO for whoever picks up bulk-load; the script was apparently never run end-to-end since
+M2/M3 ran the demo against the fixture-driven tool layer (no live OpenEMR fetches), so the
+404s were never hit.
+
+**Resolution:** PR 22 bypasses the script entirely by using
+`devtools import-random-patients` (Synthea → CCDA → OpenEMR), so the FHIR write surface is
+never hit for non-Patient resources. The script remains usable for its narrow original purpose
+(re-seeding the 5 named-fixture patients with deterministic shapes the M5 eval cases assert
+against) **only if** future work fixes the non-Patient POST loop to use OpenEMR's Standard
+REST API (`POST /api/patient/:puuid/medical_problem`, `/allergy`, `/medication`, `/encounter`,
+`/document`) with OpenEMR-internal field shapes. Until then, treat the script as
+"Patient-resource only" and don't trust its dependent-resource output.
 
 ---
 
