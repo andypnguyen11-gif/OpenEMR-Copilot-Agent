@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from clinical_copilot.audit.log import AuditLogWriteError
 from clinical_copilot.logging import get_logger
 from clinical_copilot.observability import traceable_orchestrator_run
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
@@ -394,6 +395,17 @@ class Orchestrator:
                     state=AbstentionState.UNAUTHORIZED,
                     reason=f"unauthorized access denied at tool {exc.tool_name!r}",
                 )
+            except AuditLogWriteError:
+                # Audit-log integrity outranks availability (ARCHITECTURE
+                # §7 / §8.3). A write failure means the trail can't be
+                # persisted for this access — propagating instead of
+                # collapsing into TOOL_FAILURE is what lets main.py
+                # translate to a 500 with no chart content rendered.
+                # Falling through to the broad ``except Exception`` below
+                # would silently downgrade the failure to an abstention
+                # with a 200 response, which is the exact bug PR 19's
+                # fail-closed contract guards against.
+                raise
             except ToolError as exc:
                 return [], Abstention(
                     state=AbstentionState.TOOL_FAILURE,

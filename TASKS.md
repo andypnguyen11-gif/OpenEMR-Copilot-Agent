@@ -1641,16 +1641,25 @@ Every PHI access writes an audit row (ARCHITECTURE §8.3). Mandatory for `UNAUTH
 - [x] Audit row content per ARCHITECTURE §8.3 (timestamp, user_id, role, patient_id_hash,
   resource_type, action, request_id) — covered by the existing `AuditEvent` shape
   used for both SUCCESS and UNAUTHORIZED branches.
-- [ ] **Fail-closed** behavior verified: DB unreachable → request fails (PR 2 already enforces;
-  this PR exercises it through the tool path) — partial coverage in
-  `test_role_enforcement.py::test_success_audit_write_failure_blocks_tool_result`
-  (proves the tool boundary propagates `AuditLogWriteError`); the orchestrator
-  → 5xx translation through the live `/api/agent/query` route still pending.
-- [ ] Test: PHI fetch with audit-DB down → 5xx, no PHI returned (the integration test
-  end-to-end through the route, with a real failing sessionmaker)
+- [x] **Fail-closed** behavior verified: DB unreachable → request fails (PR 2 already enforces;
+  this PR exercises it through the tool path). Tool-boundary coverage in
+  `test_role_enforcement.py::test_success_audit_write_failure_blocks_tool_result`;
+  the orchestrator → 5xx translation through the live `/api/agent/query` route is
+  pinned by `tests/integration/test_audit_failclosed_path.py` (real `AuditLogWriter`
+  with a sessionmaker that raises `OperationalError` on commit). Wiring fix shipped
+  alongside: `Orchestrator._dispatch_tools` previously caught the resulting
+  `AuditLogWriteError` in its broad `except Exception` and downgraded the failure to
+  a `TOOL_FAILURE` abstention with a 200 response — now re-raised explicitly so
+  `main.py`'s 500 handler runs.
+- [x] Test: PHI fetch with audit-DB down → 5xx, no PHI returned — the integration test
+  asserts `500 + {"detail": "audit log unavailable"}` and scans the body for any
+  patient-101 chart fragment (`Maria Lopez`, `Type 2 diabetes mellitus`, `Metformin`,
+  `Condition/p101-cond-1`, etc.) to prove no tool result rendered before the abort.
 
 **EDIT**
 - `agent-service/src/clinical_copilot/tools/base.py`
+- `agent-service/src/clinical_copilot/orchestrator/agent.py` — explicit `AuditLogWriteError`
+  re-raise in `_dispatch_tools` so the route's fail-closed handler is reachable
 - `agent-service/tests/integration/test_audit_failclosed_path.py`
 
 **Acceptance:** Every demo-data tool call produces exactly one audit row; killing audit DB
