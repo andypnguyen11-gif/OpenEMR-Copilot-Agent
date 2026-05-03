@@ -44,6 +44,8 @@ declare(strict_types=1);
 namespace OpenEMR\Services\Copilot;
 
 use InvalidArgumentException;
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
 use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use Psr\Log\LoggerInterface;
@@ -109,7 +111,34 @@ final readonly class QueryController
             );
         }
 
-        $token = $this->signer->sign($identity, $this->sessionMapper->generateNonce());
+        // Translate the dropdown's legacy ``pid`` into the patient's FHIR
+        // ``uuid`` before minting the JWT. OpenEMR's R4 endpoints reject
+        // any ``patient`` argument that isn't a UUID (``Patient/90001`` →
+        // 400 "UUID columns must be a valid UUID string"; ``MedicationRequest
+        // ?patient=90001`` → 200 with an empty bundle, no warning), so the
+        // agent's tool layer would silently see no records for every fixture
+        // patient if we kept the pid as the ``patient_id`` claim. Looking up
+        // the uuid here, after :meth:`PatientAccessCheckerInterface::canAccess`
+        // has already authorised the pid, keeps the gate on the legacy id and
+        // hands the agent a value the FHIR server will resolve.
+        $patientUuid = self::resolvePatientUuid($identity->patientId);
+        if ($patientUuid === null) {
+            $this->logger->warning('Co-Pilot query rejected: patient uuid lookup empty', [
+                'user_id' => $identity->userId,
+            ]);
+            return new JsonResponse(
+                ['error' => 'patient_access_denied'],
+                Response::HTTP_FORBIDDEN,
+            );
+        }
+        $fhirIdentity = new ClinicianIdentity(
+            userId: $identity->userId,
+            role: $identity->role,
+            patientId: $patientUuid,
+            scopes: $identity->scopes,
+        );
+
+        $token = $this->signer->sign($fhirIdentity, $this->sessionMapper->generateNonce());
 
         $payload = ['query' => $body->query];
         if ($body->sessionId !== null) {
@@ -136,6 +165,41 @@ final readonly class QueryController
         }
 
         return new JsonResponse($response->body, $response->statusCode);
+    }
+
+    /**
+     * Convert a legacy ``patient_data.pid`` into the patient's FHIR uuid.
+     *
+     * The FHIR layer (``FhirPatientService``, ``PrescriptionService``, ...)
+     * keys exclusively off ``patient_data.uuid``; passing the pid as the
+     * ``patient`` search parameter or the ``Patient/{id}`` path component
+     * silently produces empty bundles or 400s. The legacy access check
+     * one frame above this call still uses the pid; once that gate has
+     * passed, the controller swaps in the uuid for the JWT claim so the
+     * agent can address the patient through the FHIR R4 surface.
+     *
+     * Returns ``null`` when the pid does not resolve to a uuid — either
+     * the patient was deleted between the access check and this lookup,
+     * or the row pre-dates OpenEMR's UUID rollout. The caller surfaces
+     * this as a generic ``patient_access_denied`` 403 rather than a 500;
+     * the access check has already run, so the only way to land here is
+     * a transient race or a data-shape gap, neither of which the
+     * clinician can act on.
+     */
+    private static function resolvePatientUuid(string $pid): ?string
+    {
+        if ($pid === '' || !ctype_digit($pid)) {
+            return null;
+        }
+        $row = QueryUtils::fetchSingleValue(
+            'SELECT BIN_TO_UUID(uuid, 1) AS uuid FROM patient_data WHERE pid = ? LIMIT 1',
+            'uuid',
+            [$pid],
+        );
+        if (!is_string($row) || $row === '') {
+            return null;
+        }
+        return $row;
     }
 
     /**
