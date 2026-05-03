@@ -150,6 +150,24 @@ repos:
     files: ^(tests/Tests/Fixtures/discrepancy-scenarios\.php|sql/example_discrepancy_data\.sql|bin/generate-discrepancy-sql\.php)$
     pass_filenames: false
 
+  # Pre-push gate for the Python sidecar (PR 24). Runs the unit + integration
+  # subset only — full eval suite stays a manual `make eval` step before
+  # `make deploy` because it costs LLM tokens and needs AGENT_BASE_URL to
+  # be reachable. Integration tests are skipped by default; the pre-push
+  # hook just exercises the unit subset unless OPENEMR_INTEGRATION=1 is
+  # exported in the developer's shell.
+  #
+  # Install with:  prek install --hook-type pre-push
+  # Skip ad-hoc:   PREK_SKIP=agent-service-pytest git push
+  - id: agent-service-pytest
+    name: agent-service pytest (pre-push subset)
+    entry: bash -c 'cd agent-service && uv run pytest -q'
+    language: system
+    files: ^agent-service/
+    pass_filenames: false
+    stages:
+    - pre-push
+
   - id: conventional-commits
     name: Conventional Commits
     entry: bash -c 'composer conventional-commits:check -- "$(<"$1")"' --

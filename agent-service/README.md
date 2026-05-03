@@ -70,10 +70,73 @@ OPENEMR_INTEGRATION=1 OAUTH_CLIENT_ID=... \
   uv run pytest tests/integration
 ```
 
-Later PRs add:
+## Deploy gate (PR 24)
 
-- `make eval` — full eval suite, must pass before deploy (PR 24)
-- `make deploy` — refuses `railway up` unless eval is green (PR 24)
+Deploy is intentionally manual — there is no CI/CD that calls `railway up`
+on its own. The `make` targets enforce a two-step gate before the deploy
+command runs:
+
+```bash
+make eval     # check (lint + type + pytest) + eval suite against AGENT_BASE_URL
+make deploy   # refuses railway up unless `make eval` exits zero
+```
+
+`make eval` runs in this order:
+
+1. `make check` — ruff, mypy, and the offline pytest suite (unit +
+   integration-when-enabled). A regression here fails fast without
+   spending tokens driving the LLM through the eval cases.
+2. `python -m tests.eval.runner` — POSTs every case under
+   `tests/eval/cases/` to `$AGENT_BASE_URL/api/agent/query` with a
+   freshly minted JWT, runs the per-case assertions, and prints a
+   per-category breakdown.
+
+The runner exits non-zero — and Make then refuses `make deploy` — if
+*either* of these gates fails:
+
+- **RBAC gate (hard, non-overridable):** every case in the
+  `rbac_bypass` category must pass. PRD §13: zero tolerance.
+- **Overall pass-rate gate:** overall pass rate must be at least
+  `--min-pass-rate` (default 0.9; configurable via the flag or the
+  `EVAL_MIN_PASS_RATE` env var). Below that, the suite is too unreliable
+  to ship even if RBAC happens to be clean.
+
+Each run writes one row per case to the `eval_runs` table when
+`DATABASE_URL` is set (PR 22 persistence), so trend lines across runs
+are queryable from the agent-db. The console summary prints the
+`run_id` so a specific run can be looked up after the fact.
+
+### Pre-push hook (fast subset)
+
+The repo-root `.pre-commit-config.yaml` registers an `agent-service-pytest`
+hook at the `pre-push` stage that runs the unit + integration subset (no
+LLM, no AGENT_BASE_URL). Enable it once per clone:
+
+```bash
+prek install --hook-type pre-push
+```
+
+A push that touches `agent-service/**` then has to pass pytest before it
+leaves your machine. The full `make eval` is too slow for every push and
+costs tokens, so it stays manual at the `make deploy` boundary.
+
+### Sample green run
+
+```text
+$ make eval
+...
+Eval results: 33 passed, 1 failed (34 total)
+  pass rate: 97.1% (threshold 90%)
+    ambiguous: 1/1
+    conflicting: 3/3
+    fabrication: 9/10
+    happy_path: 9/9
+    missing_data: 1/1
+    rbac_bypass: 10/10
+    stale: 5/5
+RBAC gate:    10/10 passed — PASS
+Overall gate: 97.1% ≥ 90% — PASS
+```
 
 ## Discrepancy cache
 
@@ -92,10 +155,18 @@ affected pid to drop both tiers atomically.
 
 ## Manual deploy
 
+The supported deploy flow runs through the gate documented in
+[Deploy gate](#deploy-gate-pr-24):
+
 ```bash
-make check
-railway up --service agent-service
+make eval     # gate: check + eval suite (RBAC=100%, overall ≥90%)
+make deploy   # = railway up --service agent-service, gated on `make eval`
 ```
+
+`make deploy` invokes `railway up --service $(RAILWAY_SERVICE)` only
+when `make eval` exits zero — the gate is enforced by Make's prerequisite
+mechanism, not by a wrapper script, so there is nothing to bypass short
+of editing the Makefile.
 
 Production env vars are configured via the Railway dashboard, not via
 checked-in config.

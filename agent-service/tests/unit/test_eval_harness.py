@@ -250,41 +250,107 @@ def test_evaluate_forbidden_prose_regex_ci() -> None:
     assert any("forbidden pattern" in f.reason for f in failures)
 
 
+def _outcome(category: str, *, passed: bool, reason: str = "fail") -> CaseOutcome:
+    """Build a synthetic outcome for the given category.
+
+    Helper for the summarize() tests below — keeps each test scoped to
+    just the category mix and pass/fail booleans, with the case-id and
+    failure shape filled in consistently.
+    """
+
+    failures: tuple[CaseFailure, ...] = () if passed else (CaseFailure(reason=reason),)
+    return CaseOutcome(
+        case=_case(category, Expectation(abstention_state_in=[None])),
+        failures=failures,
+        raw_response={},
+    )
+
+
 def test_summarize_rbac_failure_blocks_build() -> None:
-    rbac_case = _case("rbac_bypass", Expectation(abstention_state_in=[None]))
-    happy_case = _case("happy_path", Expectation(abstention_state_in=[None]))
+    """An RBAC failure trips the gate even when overall pass rate would
+    otherwise meet the threshold. PRD §13: RBAC is non-overridable."""
+
     outcomes = [
-        CaseOutcome(
-            case=rbac_case,
-            failures=(CaseFailure(reason="leaked p999"),),
-            raw_response={},
-        ),
-        CaseOutcome(case=happy_case, failures=(), raw_response={}),
+        _outcome("rbac_bypass", passed=False, reason="leaked p999"),
+        *[_outcome("happy_path", passed=True) for _ in range(9)],
     ]
-    summary, rbac_passed = summarize(outcomes)
-    assert rbac_passed is False
-    assert "RBAC gate: 0/1 passed — FAIL" in summary
+    summary, gate_passed = summarize(outcomes, min_pass_rate=0.9)
+    assert gate_passed is False
+    assert "0/1 passed — FAIL" in summary
     assert "RBAC failures (blocking):" in summary
 
 
-def test_summarize_soft_failure_does_not_block() -> None:
-    """An ambiguous-category failure is reported but doesn't gate the
-    build — the runner exits zero so long as the RBAC suite is clean."""
+def test_summarize_soft_failure_below_threshold_blocks() -> None:
+    """A non-RBAC failure that drops overall pass rate below the
+    threshold blocks deploy too — the overall gate is independent of
+    the RBAC gate."""
 
-    rbac_case = _case("rbac_bypass", Expectation(abstention_state_in=[None]))
-    ambiguous_case = _case("ambiguous", Expectation(abstention_state_in=[None]))
     outcomes = [
-        CaseOutcome(case=rbac_case, failures=(), raw_response={}),
-        CaseOutcome(
-            case=ambiguous_case,
-            failures=(CaseFailure(reason="bad state"),),
-            raw_response={},
-        ),
+        _outcome("rbac_bypass", passed=True),
+        _outcome("ambiguous", passed=False, reason="bad state"),
     ]
-    summary, rbac_passed = summarize(outcomes)
-    assert rbac_passed is True
-    assert "Soft failures (non-blocking):" in summary
-    assert "RBAC gate: 1/1 passed — PASS" in summary
+    summary, gate_passed = summarize(outcomes, min_pass_rate=0.9)
+    assert gate_passed is False
+    assert "Overall gate: 50.0% ≥ 90% — FAIL" in summary
+    assert "Soft failures (non-RBAC):" in summary
+
+
+def test_summarize_soft_failure_above_threshold_passes() -> None:
+    """An isolated soft failure inside a large-enough suite is
+    reported but still passes the gate — same intent as before, but
+    now expressed against the explicit threshold."""
+
+    outcomes = [
+        _outcome("rbac_bypass", passed=True),
+        _outcome("ambiguous", passed=False, reason="bad state"),
+        *[_outcome("happy_path", passed=True) for _ in range(18)],
+    ]
+    summary, gate_passed = summarize(outcomes, min_pass_rate=0.9)
+    assert gate_passed is True
+    assert "Soft failures (non-RBAC):" in summary
+    assert "1/1 passed — PASS" in summary  # rbac
+    assert "95.0% ≥ 90% — PASS" in summary
+
+
+def test_summarize_threshold_default_is_90_percent() -> None:
+    """The default threshold matches the documented PR 24 contract.
+    Pinned here so a refactor that drops the default doesn't silently
+    weaken the gate."""
+
+    # 9 of 10 = 90.0% — exactly at the boundary; must pass.
+    outcomes = [
+        _outcome("rbac_bypass", passed=True),
+        *[_outcome("happy_path", passed=True) for _ in range(8)],
+        _outcome("happy_path", passed=False),
+    ]
+    _, gate_passed = summarize(outcomes)
+    assert gate_passed is True
+
+    # 8 of 10 = 80.0% — below default threshold; must fail.
+    outcomes = [
+        _outcome("rbac_bypass", passed=True),
+        *[_outcome("happy_path", passed=True) for _ in range(7)],
+        *[_outcome("happy_path", passed=False) for _ in range(2)],
+    ]
+    _, gate_passed = summarize(outcomes)
+    assert gate_passed is False
+
+
+def test_summarize_per_category_breakdown_in_output() -> None:
+    """Each category's pass/total appears in the summary so a grader
+    reading the gate output can spot which suite is wobbling without
+    re-running with verbose flags."""
+
+    outcomes = [
+        _outcome("rbac_bypass", passed=True),
+        _outcome("happy_path", passed=True),
+        _outcome("happy_path", passed=False),
+        _outcome("conflicting", passed=True),
+    ]
+    summary, _ = summarize(outcomes, min_pass_rate=0.5)
+    assert "rbac_bypass: 1/1" in summary
+    assert "happy_path: 1/2" in summary
+    assert "conflicting: 1/1" in summary
 
 
 def test_load_rejects_unknown_field() -> None:

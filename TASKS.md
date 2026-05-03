@@ -2044,14 +2044,21 @@ Wire the eval suite into a local pre-merge gate so changes can't be deployed unt
 passes. Deploy is manual via `railway up`; CI/CD is intentionally not used (see file-tree
 note above), so the gate runs on the developer's machine before merging to main.
 
-- [ ] `make eval` target runs unit + integration + eval suites in order
-- [ ] `make deploy` target requires `make eval` to pass; refuses to call `railway up` otherwise
-- [ ] Gate fails if overall <90% or any RBAC case fails
-- [ ] Eval results written to `eval_runs` table (PR 2) for trend tracking across runs
-- [ ] Pre-commit hook (or pre-push) runs the unit + integration subset; full eval is a
-  pre-deploy step (too slow for every commit)
-- [ ] `agent-service/README.md` documents the deploy workflow:
-  `make eval && make deploy` (or `railway up --service agent-service`)
+- [x] `make eval` target runs unit + integration + eval suites in order — `eval: check`
+  prerequisite chains lint + type + pytest before the runner.
+- [x] `make deploy` target requires `make eval` to pass; refuses to call `railway up` otherwise
+  — Make's prerequisite mechanism is the gate (no wrapper script to bypass).
+- [x] Gate fails if overall <90% or any RBAC case fails — `summarize()` returns
+  `gate_passed = rbac_passed AND overall_passed`; `--min-pass-rate` (env: `EVAL_MIN_PASS_RATE`)
+  defaults to 0.9.
+- [x] Eval results written to `eval_runs` table (PR 2) for trend tracking across runs —
+  shipped earlier in 00c5965f9.
+- [x] Pre-commit hook (or pre-push) runs the unit + integration subset; full eval is a
+  pre-deploy step — `agent-service-pytest` hook in `.pre-commit-config.yaml` at the
+  `pre-push` stage, scoped to `^agent-service/` paths.
+- [x] `agent-service/README.md` documents the deploy workflow:
+  `make eval && make deploy` (or `railway up --service agent-service`) — new "Deploy gate
+  (PR 24)" section + updated "Manual deploy" section.
 
 **NEW**
 - `agent-service/Makefile` — targets: `check`, `eval`, `deploy`
