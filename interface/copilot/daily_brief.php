@@ -52,6 +52,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
@@ -96,19 +97,30 @@ if (is_string($candidate)) {
 // through redesign of the daily-brief layout, not just a number tweak.
 $panelSize = 7;
 $panelRows = QueryUtils::fetchRecords(
-    'SELECT pid, fname, lname, DOB, sex FROM patient_data '
+    'SELECT pid, fname, lname, DOB, sex, uuid FROM patient_data '
     . 'WHERE providerID = ? AND providerID != 0 '
     . 'ORDER BY pid '
     . 'LIMIT ' . $panelSize,
     [$authUserId],
 );
-/** @var list<string> $panelIds */
-$panelIds = [];
+// The discrepancy engine reads through FHIR (search by patient uuid),
+// so the warm/readFlags fan-out has to send uuids — bare pids return
+// empty bundles silently. Build a parallel pid → uuid lookup here so
+// the inner card loop can map by either side without a re-query.
+/** @var list<string> $panelUuids */
+$panelUuids = [];
+/** @var array<string, string> $uuidByPid */
+$uuidByPid = [];
 foreach ($panelRows as $row) {
     $pid = $row['pid'] ?? null;
-    if (is_string($pid) || is_int($pid)) {
-        $panelIds[] = (string) $pid;
+    $rawUuid = $row['uuid'] ?? null;
+    if ((!is_string($pid) && !is_int($pid)) || !is_string($rawUuid) || $rawUuid === '') {
+        continue;
     }
+    $uuid = UuidRegistry::uuidToString($rawUuid);
+    $pidStr = (string) $pid;
+    $panelUuids[] = $uuid;
+    $uuidByPid[$pidStr] = $uuid;
 }
 
 // Dispatcher wiring: identical shape to the route closures in
@@ -136,7 +148,7 @@ $dispatcher = new InvalidationDispatcher($agentClient, $config, $dailyLogger);
 // the time readFlags hits the same in-process cache the entries are
 // either materialized or the BackgroundRunner is mid-compute on the
 // same key. A miss here just adds the chart load to readFlags' time.
-$dispatcher->warmPanel($panelIds);
+$dispatcher->warmPanel($panelUuids);
 
 /** @var list<array{
  *     patient: array<string, mixed>,
@@ -183,7 +195,7 @@ foreach ($panelRows as $patient) {
         [$pid],
     );
 
-    $flags = $dispatcher->readFlags($pid);
+    $flags = $dispatcher->readFlags($uuidByPid[$pid] ?? '');
 
     $age = null;
     $dobValue = $patient['DOB'] ?? null;
