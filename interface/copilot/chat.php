@@ -59,7 +59,10 @@ if (is_string($topLevelKey) && $topLevelKey !== '') {
 $apiCsrfToken = $privateKey !== ''
     ? substr(hash_hmac('sha256', 'api', $privateKey), 0, 40)
     : '';
-$webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
+// Plain get() + cast: the older OEGlobalsBag on the openemr/openemr base
+// image we layer on for prod doesn't ship the typed getString() accessor.
+$webrootRaw = OEGlobalsBag::getInstance()->get('webroot', '');
+$webroot = is_string($webrootRaw) ? $webrootRaw : '';
 
 // Probe both session layouts to find the logged-in clinician. Same
 // pattern daily_brief.php uses; chat.php previously trusted the gateway

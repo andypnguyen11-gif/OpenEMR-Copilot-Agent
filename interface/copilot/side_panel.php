@@ -59,7 +59,10 @@ if (is_string($topLevelKey) && $topLevelKey !== '') {
 $apiCsrfToken = $privateKey !== ''
     ? substr(hash_hmac('sha256', 'api', $privateKey), 0, 40)
     : '';
-$webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
+// Plain get() + cast: the older OEGlobalsBag on the openemr/openemr base
+// image we layer on for prod doesn't ship the typed getString() accessor.
+$webrootRaw = OEGlobalsBag::getInstance()->get('webroot', '');
+$webroot = is_string($webrootRaw) ? $webrootRaw : '';
 
 // Pid comes from the launcher's iframe URL. Accept any numeric pid;
 // authorization is enforced one query down via the providerID gate
@@ -76,7 +79,21 @@ if (is_string($pidParam) && ctype_digit($pidParam)) {
 
 $patientLabel = '';
 if ($pid !== '') {
-    $authUserIdRaw = SessionWrapperFactory::getInstance()->getActiveSession()->get('authUserID', null);
+    // Reflection-based read: the wrapper API differs between the
+    // openemr/openemr base image we layer on for prod (->getWrapper())
+    // and the upstream master we develop against (->getActiveSession()).
+    $factory = SessionWrapperFactory::getInstance();
+    $factoryRef = new \ReflectionClass($factory);
+    $accessor = $factoryRef->hasMethod('getWrapper')
+        ? 'getWrapper'
+        : ($factoryRef->hasMethod('getActiveSession') ? 'getActiveSession' : null);
+    $authUserIdRaw = null;
+    if ($accessor !== null) {
+        $session = $factoryRef->getMethod($accessor)->invoke($factory);
+        if (is_object($session) && method_exists($session, 'get')) {
+            $authUserIdRaw = (new \ReflectionMethod($session, 'get'))->invoke($session, 'authUserID', null);
+        }
+    }
     $authUserId = is_int($authUserIdRaw) ? (string) $authUserIdRaw
         : (is_string($authUserIdRaw) ? $authUserIdRaw : '');
     if ($authUserId !== '' && ctype_digit($authUserId)) {

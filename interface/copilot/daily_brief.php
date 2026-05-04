@@ -71,7 +71,10 @@ if (!AclMain::aclCheckCore('patients', 'demo')) {
 }
 
 $globals = OEGlobalsBag::getInstance();
-$webroot = $globals->getString('webroot', '');
+// Plain get() + cast: the older OEGlobalsBag on the openemr/openemr base
+// image we layer on for prod doesn't ship the typed getString() accessor.
+$webrootRaw = $globals->get('webroot', '');
+$webroot = is_string($webrootRaw) ? $webrootRaw : '';
 
 // Probe both session layouts — newer OpenEMR namespaces clinician
 // data under the core AttributeBag (key ``"OpenEMR"``); older base
