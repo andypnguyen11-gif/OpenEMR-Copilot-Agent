@@ -406,7 +406,9 @@
     function describeAbstention(abstention) {
         switch (abstention.state) {
             case "NO_DATA":
-                return "The chart does not contain the data needed to answer this question.";
+                return abstention.reason
+                    ? "The agent could not answer this question. " + abstention.reason
+                    : "The chart does not contain the data needed to answer this question.";
             case "VERIFICATION_FAILED":
                 return "The agent's response failed verification — at least one cited source could not be confirmed against the chart. " + (abstention.reason || "");
             case "TOOL_FAILURE":

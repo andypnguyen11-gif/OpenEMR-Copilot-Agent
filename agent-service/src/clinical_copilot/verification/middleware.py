@@ -61,6 +61,25 @@ class VerificationMiddleware:
         tool_results: list[ToolResult],
         lane: Lane = Lane.SLOW,
     ) -> AgentResponse:
+        # The slow-lane prompt instructs the model to emit empty
+        # ``cards`` + empty ``prose`` for the "I cannot answer this"
+        # cases (cross-patient query, refusal, no relevant data) and
+        # promises the orchestrator will surface those as a NO_DATA
+        # abstention. Without this branch, the same shape passes through
+        # the verifier as a "successful" empty response and the chat UI
+        # renders "(agent returned no claims and no abstention)" — the
+        # exact silent-void symptom users mistake for a hung request.
+        if not draft.cards and not draft.prose:
+            return AgentResponse(
+                cards=[],
+                prose=[],
+                tool_results=tool_results,
+                abstention=Abstention(
+                    state=AbstentionState.NO_DATA,
+                    reason="agent returned no cards and no prose — try rephrasing the question",
+                ),
+            )
+
         unresolved = find_unresolved_citations(
             claims=draft.prose,
             cards=draft.cards,

@@ -343,7 +343,7 @@ def test_bare_fenced_json_without_language_tag_parses(
     verifier: VerificationMiddleware,
     sessions: SessionStore,
 ) -> None:
-    raw_json = '{"cards":[],"prose":[]}'
+    raw_json = '{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'
     fenced = f"```\n{raw_json}\n```"
     gateway = _ScriptedGateway([_final_text_turn(fenced)])
     orch = Orchestrator(
@@ -356,7 +356,7 @@ def test_bare_fenced_json_without_language_tag_parses(
     response = orch.run(query="anything", claims=claims, request_id="r-fence-bare")
 
     assert response.abstention is None
-    assert response.cards == []
+    assert len(response.cards) == 1
     assert response.prose == []
 
 
@@ -471,7 +471,7 @@ def test_multi_turn_continues_session(
             _final_text_turn(_final_text_problems_card()),
             # Turn 2: model goes straight to a final answer (no tool call)
             # — we just need to inspect the messages it received.
-            _final_text_turn('{"cards":[],"prose":[]}'),
+            _final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'),
         ]
     )
     orch = Orchestrator(
@@ -519,9 +519,9 @@ def test_schema_retry_traffic_does_not_persist_into_session_history(
         [
             # Turn 1: invalid JSON → retry → valid.
             _final_text_turn(bad_json),
-            _final_text_turn('{"cards":[],"prose":[]}'),
+            _final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'),
             # Turn 2: another final-text turn so we can inspect messages.
-            _final_text_turn('{"cards":[],"prose":[]}'),
+            _final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'),
         ]
     )
     orch = Orchestrator(
@@ -568,8 +568,8 @@ def test_cross_principal_session_id_replay_returns_empty_history(
 
     gateway = _ScriptedGateway(
         [
-            _final_text_turn('{"cards":[],"prose":[]}'),  # turn 1, dr-patel
-            _final_text_turn('{"cards":[],"prose":[]}'),  # turn 2, dr-evil replaying sid
+            _final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'),  # turn 1, dr-patel
+            _final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}'),  # turn 2, dr-evil replaying sid
         ]
     )
     orch = Orchestrator(
@@ -642,7 +642,7 @@ def test_session_lock_dropped_on_uncaught_exception(
     # If the lock leaked, this call would block forever. The fixture
     # SessionStore has no test timeout, so we use a recovery gateway
     # that succeeds — if we can complete the run, the lock dropped.
-    recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[],"prose":[]}')])
+    recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}')])
     orch_recover = Orchestrator(
         lanes=_slow_only(recovery_gateway),
         registry=registry,
@@ -796,7 +796,7 @@ def test_llm_gateway_error_does_not_persist_into_session_history(
 
     # Now a recovery turn with the same session_id should see an empty
     # history — the failed turn left no residue.
-    recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[],"prose":[]}')])
+    recovery_gateway = _ScriptedGateway([_final_text_turn('{"cards":[{"title":"_","kind":"problems","source_ids":[]}],"prose":[]}')])
     orch_recover = Orchestrator(
         lanes=_slow_only(recovery_gateway),
         registry=registry,

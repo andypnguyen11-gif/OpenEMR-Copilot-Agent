@@ -57,6 +57,27 @@ def _lab_result() -> ToolResult:
     )
 
 
+def test_empty_draft_yields_no_data_abstention() -> None:
+    # The slow-lane prompt instructs the model to respond with empty
+    # cards + empty prose for the "I cannot answer" cases (cross-patient
+    # query, refusal, no relevant data) and promises the orchestrator
+    # will surface a NO_DATA abstention. Without this, the chat UI
+    # renders "(agent returned no claims and no abstention)" and users
+    # mistake it for a hung request.
+    middleware = VerificationMiddleware()
+    draft = ModelDraft(cards=[], prose=[])
+
+    response = middleware.verify(draft=draft, tool_results=[_problem_result()])
+
+    assert response.abstention is not None
+    assert response.abstention.state is AbstentionState.NO_DATA
+    assert "rephrasing" in response.abstention.reason
+    assert response.cards == []
+    assert response.prose == []
+    # Tool results pass through so the metrics writer still sees them.
+    assert len(response.tool_results) == 1
+
+
 def test_partial_field_assertion_rejected_at_schema() -> None:
     """source_field without expected_value (or vice versa) is a verification
     bypass: ``field_check.py`` short-circuits when either is None, so a
