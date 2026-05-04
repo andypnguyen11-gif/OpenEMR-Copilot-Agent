@@ -59,6 +59,7 @@ import httpx
 from anthropic import Anthropic
 
 from clinical_copilot.audit.log import AuditLogWriter
+from clinical_copilot.config import ConfigError
 from clinical_copilot.audit.reader import AuditLogReader
 from clinical_copilot.auth.jwt_verifier import JwtVerifier
 from clinical_copilot.auth.oauth_client import OAuthClient
@@ -179,6 +180,10 @@ def build_app_state(
 
     bridge: AsyncBridge | None
     if fixture_store is not None:
+        # Test path only — unit/integration suites pass a hand-built
+        # ``FixtureStore`` so they never depend on a running OpenEMR.
+        # Production and ``uv run uvicorn`` both leave this argument
+        # ``None`` and fall through to the FHIR branch.
         bridge = None
         chart_provider = FixtureChartProvider(fixture_store)
         discrepancy_cache = DiscrepancyCache(
@@ -192,27 +197,20 @@ def build_app_state(
             audit_salt=settings.audit_salt,
             cache=discrepancy_cache,
         )
-    elif not settings.oauth_client_id:
-        # Dev / test fallback. ``Settings`` lets ``oauth_client_id`` be
-        # empty in non-prod envs (see :func:`config._load`); without
-        # OAuth creds the FHIR stack can't talk to OpenEMR, so default
-        # to the fixture store. Production fails fast at config load
-        # via ``_require``, so this branch never fires there.
-        bridge = None
-        store = FixtureStore.from_file()
-        chart_provider = FixtureChartProvider(store)
-        discrepancy_cache = DiscrepancyCache(
-            chart_provider=chart_provider,
-            engine=engine,
-            session_factory=session_factory,
-        )
-        registry = ToolRegistry.from_fixture(
-            store=store,
-            audit=audit,
-            audit_salt=settings.audit_salt,
-            cache=discrepancy_cache,
-        )
     else:
+        # FHIR is the one product data path. Dev needs OAuth creds in
+        # ``agent-service/.env`` against the local OpenEMR API client
+        # (see scripts/copilot/assign_patients_to_clinicians.php for the
+        # parallel patient-side wiring); without them the OAuth handshake
+        # fails fast at the first tool call instead of silently swapping
+        # in the M5 fixture data the seed script used to ship.
+        if not settings.oauth_client_id:
+            raise ConfigError(
+                "OAUTH_CLIENT_ID is required to bring up agent-service. "
+                "Set it in agent-service/.env (and OAUTH_PRIVATE_KEY_PEM, "
+                "OAUTH_KEY_ID, OAUTH_TOKEN_URL, FHIR_BASE_URL) — see the "
+                "Co-Pilot setup notes for the local OAuth client.",
+            )
         bridge = AsyncBridge()
         # Build the AsyncClient (and the OAuth + FHIR clients that own
         # references to it) inside the bridge loop. ``httpx.AsyncClient``
