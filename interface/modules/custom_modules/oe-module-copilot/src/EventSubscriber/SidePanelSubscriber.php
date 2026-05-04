@@ -91,18 +91,14 @@ class SidePanelSubscriber implements EventSubscriberInterface
         };
         $this->accessCheck = $accessCheck ?? (static fn(): bool => \OpenEMR\Common\Acl\AclMain::aclCheckCore('patients', 'demo'));
         $this->pidResolver = $pidResolver ?? static function (): ?string {
-            // SessionWrapperFactory raises \RuntimeException when no
-            // active session has been bootstrapped — the only realistic
-            // failure on a non-chart page that happens to dispatch a
-            // RenderEvent. Narrowing the catch keeps real Errors
-            // (autoloader misalignment, etc.) propagating to the global
-            // handler per the openemr.forbiddenCatchType rule.
-            try {
-                $session = \OpenEMR\Common\Session\SessionWrapperFactory::getInstance()->getActiveSession();
-            } catch (\RuntimeException) {
+            // Read $_SESSION directly: SessionWrapperFactory::getActiveSession()
+            // is a recent addition and is missing on the openemr/openemr base
+            // image we layer on for prod. session_status() === PHP_SESSION_ACTIVE
+            // is the cross-version "is a session bootstrapped" check.
+            if (session_status() !== PHP_SESSION_ACTIVE) {
                 return null;
             }
-            $raw = $session->get('pid', null);
+            $raw = $_SESSION['pid'] ?? null;
             if (is_int($raw) && $raw > 0) {
                 return (string) $raw;
             }

@@ -38,9 +38,13 @@ final readonly class Bootstrap
 
     public function subscribeToEvents(): void
     {
+        // Plain get() + cast: the older OEGlobalsBag on the openemr/openemr
+        // base image we layer on for prod doesn't ship the typed getString()
+        // accessor, so calling it fatals every chart-page request.
+        $webroot = OEGlobalsBag::getInstance()->get('webroot', '');
         $this->eventDispatcher->addSubscriber(
             new SidePanelSubscriber(
-                webroot: OEGlobalsBag::getInstance()->getString('webroot', ''),
+                webroot: is_string($webroot) ? $webroot : '',
             ),
         );
     }
