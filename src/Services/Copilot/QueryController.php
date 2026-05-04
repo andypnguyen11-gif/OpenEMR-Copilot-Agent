@@ -45,6 +45,7 @@ namespace OpenEMR\Services\Copilot;
 
 use InvalidArgumentException;
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Services\Copilot\Auth\ClinicianIdentity;
 use OpenEMR\Services\Copilot\Auth\PatientAccessCheckerInterface;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
@@ -191,21 +192,22 @@ final readonly class QueryController
         if ($pid === '' || !ctype_digit($pid)) {
             return null;
         }
-        // ``BIN_TO_UUID(uuid)`` (no swap-flag) — OpenEMR stores patient_data
-        // uuids in canonical byte order, so the default formatter returns
-        // the value the FHIR endpoints index on. Passing ``, 1`` here would
-        // re-swap the halves and produce a uuid the server doesn't resolve
-        // (caught on prod 2026-05-03 when MedicationRequest?patient=
-        // <swapped-uuid> returned an empty bundle).
-        $row = QueryUtils::fetchSingleValue(
-            'SELECT BIN_TO_UUID(uuid) AS uuid FROM patient_data WHERE pid = ? LIMIT 1',
+        // Fetch the raw binary uuid and format it in PHP via
+        // :class:`UuidRegistry`. ``BIN_TO_UUID()`` is MySQL 8+ only — the
+        // local development image runs MariaDB 11, which doesn't ship that
+        // function and would 500 every Co-Pilot query (caught locally
+        // 2026-05-03). OpenEMR stores ``patient_data.uuid`` in canonical
+        // byte order, so :func:`Ramsey\Uuid\Uuid::fromBytes` produces the
+        // exact string the FHIR endpoints index on with no swap needed.
+        $bytes = QueryUtils::fetchSingleValue(
+            'SELECT uuid FROM patient_data WHERE pid = ? LIMIT 1',
             'uuid',
             [$pid],
         );
-        if (!is_string($row) || $row === '') {
+        if (!is_string($bytes) || $bytes === '') {
             return null;
         }
-        return $row;
+        return UuidRegistry::uuidToString($bytes);
     }
 
     /**
