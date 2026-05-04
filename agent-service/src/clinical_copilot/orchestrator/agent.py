@@ -65,6 +65,7 @@ from clinical_copilot.observability import (
     build_outcome,
     traceable_orchestrator_run,
 )
+from clinical_copilot.orchestrator.cross_patient_guard import cross_patient_check
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import LlmGatewayError, LlmTurn
 from clinical_copilot.orchestrator.schemas import AgentResponse, ModelDraft
@@ -186,6 +187,7 @@ class Orchestrator:
         request_id: str,
         session_id: str | None = None,
         lane: Lane = Lane.SLOW,
+        bound_patient_name: str | None = None,
     ) -> AgentResponse:
         try:
             config = self._lanes[lane]
@@ -205,6 +207,7 @@ class Orchestrator:
                 prior_state=prior_state,
                 config=config,
                 lane=lane,
+                bound_patient_name=bound_patient_name,
             )
             # Outcome row is fail-open inside :class:`MetricsService`.
             # Recording before the session update means an error in the
@@ -248,6 +251,7 @@ class Orchestrator:
         prior_state: SessionState,
         config: LaneConfig,
         lane: Lane,
+        bound_patient_name: str | None,
     ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult], int]:
         """Run one user turn against the LLM tool-use loop.
 
@@ -267,17 +271,50 @@ class Orchestrator:
         short-circuit didn't produce a SUCCESS row to compare against.
         """
 
+        # Deterministic cross-patient guard. Both lane prompts tell the
+        # model to refuse cross-patient asks, but the model occasionally
+        # answers about the bound patient anyway and labels the response
+        # as if it answered the question. Catch the obvious syntactic
+        # cases (``patient X``, ``X's <noun>``) before the LLM loop runs
+        # so the user gets a clear "this session is bound to Y" message
+        # rather than the wrong patient's data dressed up as the right
+        # answer. Skipped when ``bound_patient_name`` is missing — the
+        # resolver is best-effort, and dropping the guard is safer than
+        # firing on every query when the comparator is unknown.
+        guard_reason = cross_patient_check(query, bound_patient_name)
+        if guard_reason is not None:
+            response = AgentResponse(
+                cards=[],
+                prose=[],
+                tool_results=list(prior_state.tool_results),
+                abstention=Abstention(
+                    state=AbstentionState.NO_DATA,
+                    reason=guard_reason,
+                ),
+            )
+            return (
+                response,
+                list(prior_state.messages),
+                list(prior_state.tool_results),
+                0,
+            )
+
         # The static system prompt declares "the session is bound to one
         # patient_id" but doesn't carry the value. Append a per-request
         # session block so the model knows which patient to scope tool
         # calls to. The tool layer still enforces this at call time —
-        # this just stops the model from asking the user.
+        # this just stops the model from asking the user. The bound
+        # patient name (when resolvable) goes here too so the model can
+        # match the user's free-text references against the actual chart
+        # holder — the prompt's rule-#4 refusal needs that comparator.
         runtime_system = (
             config.system_prompt
             + "\n\n## Session\n"
             + f"- patient_id: {claims.patient_id}\n"
             + f"- clinician role: {claims.role}\n"
         )
+        if bound_patient_name:
+            runtime_system += f"- patient name: {bound_patient_name}\n"
 
         # Bind the registry to the JWT-verified patient for the lifetime
         # of this request. Every tool dispatch from here on flows through

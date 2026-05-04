@@ -229,6 +229,10 @@ def create_app(
         claims: ClinicianClaims = claims_dep,
     ) -> AgentResponse:
         request_id = uuid.uuid4().hex
+        # Best-effort name lookup for the orchestrator's cross-patient
+        # guard + the runtime system block. Resolver is fail-soft —
+        # ``None`` here means "no comparator", and the guard is skipped.
+        bound_patient_name = resolved_state.patient_name_resolver(claims.patient_id)
         try:
             return resolved_state.orchestrator.run(
                 query=body.query,
@@ -236,6 +240,7 @@ def create_app(
                 request_id=request_id,
                 session_id=body.session_id,
                 lane=body.lane,
+                bound_patient_name=bound_patient_name,
             )
         except UnknownLaneError as exc:
             # Pydantic constrained ``lane`` to the Lane enum already, so

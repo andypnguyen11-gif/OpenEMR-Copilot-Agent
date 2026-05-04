@@ -51,7 +51,8 @@ guarantees a warmed entry is visible to the next chat-side
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -127,6 +128,13 @@ class AppState:
     metrics_service: MetricsService
     audit_reader: AuditLogReader | None
     bridge: AsyncBridge | None
+    # Best-effort sync lookup of the bound patient's display name.
+    # ``None`` is a valid return — the orchestrator's cross-patient
+    # guard treats a missing name as "no comparator available" and
+    # skips the check rather than over-firing. Default is a no-op so
+    # tests that build :class:`AppState` directly don't have to wire
+    # the resolver.
+    patient_name_resolver: Callable[[str], str | None] = field(default=lambda _pid: None)
 
 
 def build_app_state(
@@ -179,6 +187,7 @@ def build_app_state(
     engine = DiscrepancyEngine.from_yaml(DEFAULT_PACK_PATHS, DEFAULT_REGISTRY)
 
     bridge: AsyncBridge | None
+    patient_name_resolver: Callable[[str], str | None]
     if fixture_store is not None:
         # Test path only — unit/integration suites pass a hand-built
         # ``FixtureStore`` so they never depend on a running OpenEMR.
@@ -197,6 +206,11 @@ def build_app_state(
             audit_salt=settings.audit_salt,
             cache=discrepancy_cache,
         )
+        # The fixture store doesn't carry display names per-patient and
+        # the test suites don't depend on the cross-patient guard. Drop
+        # back to the no-op so the orchestrator's guard becomes a passive
+        # check (the prompt-side rule still applies).
+        patient_name_resolver = lambda _pid: None  # noqa: E731 — intentional inline no-op
     else:
         # FHIR is the one product data path. Dev needs OAuth creds in
         # ``agent-service/.env`` against the local OpenEMR API client
@@ -231,6 +245,10 @@ def build_app_state(
             audit=audit,
             audit_salt=settings.audit_salt,
             cache=discrepancy_cache,
+        )
+        patient_name_resolver = _build_fhir_patient_name_resolver(
+            fhir=fhir_client,
+            bridge=bridge,
         )
 
     verifier_mw = VerificationMiddleware()
@@ -294,6 +312,7 @@ def build_app_state(
         metrics_service=metrics_service,
         audit_reader=audit_reader,
         bridge=bridge,
+        patient_name_resolver=patient_name_resolver,
     )
 
 
@@ -325,3 +344,50 @@ async def _build_fhir_stack(settings: Settings) -> FhirClient:
         oauth=oauth,
         http_client=http,
     )
+
+
+def _build_fhir_patient_name_resolver(
+    *,
+    fhir: FhirClient,
+    bridge: AsyncBridge,
+) -> Callable[[str], str | None]:
+    """Build a sync resolver that runs FHIR ``GET /Patient/{id}`` over the bridge.
+
+    The orchestrator's cross-patient guard expects a sync callable so it
+    can compare the bound patient's name against the user's query before
+    the LLM loop. ``FhirClient.get_patient`` is async (it shares the
+    bridge's loop with every other tool call), so wrap it in a
+    bridge-pumped lookup. The resolver is fail-soft: any exception
+    (network, FHIR 5xx, parse error, missing name fields) returns
+    ``None``, which the guard treats as "no comparator available" and
+    skips the deterministic check rather than firing on every query.
+
+    Each call is one HTTP round-trip. Caching is intentionally absent
+    today — the bound patient changes between requests, the LRU would
+    have to key on patient_id, and the chart-load round-trip already
+    dominates the latency. Add an LRU here if profiling shows the
+    Patient lookup is meaningful overhead.
+    """
+
+    def resolver(patient_id: str) -> str | None:
+        if not patient_id:
+            return None
+        try:
+            patient = bridge.run(fhir.get_patient(patient_id))
+        except Exception:  # noqa: BLE001 — fail-soft by design
+            return None
+        if not patient.name:
+            return None
+        primary = patient.name[0]
+        # Prefer ``given[0] family`` so the comparator matches the
+        # informal way clinicians refer to patients in a chat box
+        # ("Maria Lopez", "Marcus Hayes"). Fall back to ``text`` when
+        # the name parts are missing.
+        given = primary.given[0] if primary.given else ""
+        family = primary.family or ""
+        formatted = f"{given} {family}".strip()
+        if formatted:
+            return formatted
+        return primary.text or None
+
+    return resolver
