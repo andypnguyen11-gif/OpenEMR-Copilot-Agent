@@ -22,7 +22,6 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\Copilot;
 
 use OpenEMR\Core\ModulesClassLoader;
-use OpenEMR\Core\OEGlobalsBag;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 // $classLoader and $eventDispatcher are injected into this file's scope
@@ -38,5 +37,8 @@ $classLoader->registerNamespaceIfNotExists(
     __DIR__ . DIRECTORY_SEPARATOR . 'src',
 );
 
-$bootstrap = new Bootstrap($eventDispatcher, OEGlobalsBag::getInstance()->getKernel());
+// Kernel arg omitted: Bootstrap unsets it anyway, and OEGlobalsBag::getKernel()
+// is not present on the stock openemr/openemr base image we layer on for
+// prod — calling it there fatals every request that includes globals.php.
+$bootstrap = new Bootstrap($eventDispatcher);
 $bootstrap->subscribeToEvents();
