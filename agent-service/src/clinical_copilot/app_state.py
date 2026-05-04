@@ -309,7 +309,12 @@ async def _build_fhir_stack(settings: Settings) -> FhirClient:
     process and tears down with the daemon thread.
     """
 
-    http = httpx.AsyncClient(timeout=_HTTP_TIMEOUT)
+    # Local OpenEMR ships a self-signed cert on https://localhost:9300.
+    # Production uses a real certificate, so cert verification stays on
+    # everywhere except dev/test where the only available transport is
+    # the self-signed loopback.
+    verify_tls = settings.env not in {"development", "test"}
+    http = httpx.AsyncClient(timeout=_HTTP_TIMEOUT, verify=verify_tls)
     oauth = OAuthClient(
         token_url=settings.oauth_token_url,
         client_id=settings.oauth_client_id,
