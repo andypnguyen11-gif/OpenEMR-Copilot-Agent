@@ -91,14 +91,35 @@ class SidePanelSubscriber implements EventSubscriberInterface
         };
         $this->accessCheck = $accessCheck ?? (static fn(): bool => \OpenEMR\Common\Acl\AclMain::aclCheckCore('patients', 'demo'));
         $this->pidResolver = $pidResolver ?? static function (): ?string {
-            // Read pid from OEGlobalsBag, not $_SESSION. OpenEMR boots the
-            // session in read_and_close mode: globals.php writes pid via
-            // SessionUtil and immediately calls session_write_close(), so
-            // $_SESSION['pid'] is null by the time the demographics-tab
-            // RenderEvent fires. globals.php mirrors the active pid into
-            // OEGlobalsBag (which on prod falls through to $GLOBALS['pid'])
-            // for exactly this kind of mid-request consumer.
-            $raw = \OpenEMR\Core\OEGlobalsBag::getInstance()->get('pid');
+            // Read pid from the session wrapper, mirroring what globals.php
+            // itself does (line ~796 of interface/globals.php). Earlier
+            // attempts at $_SESSION['pid'] / OEGlobalsBag::get('pid') failed
+            // on prod because:
+            //   * OpenEMR boots in read_and_close session mode, so
+            //     $_SESSION['pid'] is null by the time RenderEvent fires.
+            //   * globals.php seeds OEGlobalsBag with pid=0 BEFORE
+            //     demographics.php processes ?set_pid=, and setpid() only
+            //     updates $GLOBALS['pid'] / the session wrapper — not the
+            //     bag's internal store — so the bag returns the stale 0.
+            //
+            // We dispatch to the session wrapper through reflection because
+            // the API signature differs between the openemr/openemr base
+            // image we layer on for prod (->getWrapper()) and the upstream
+            // master we develop against (->getActiveSession()). Calling
+            // either statically would fatal on the other side.
+            $factory = \OpenEMR\Common\Session\SessionWrapperFactory::getInstance();
+            $ref = new \ReflectionClass($factory);
+            $method = $ref->hasMethod('getWrapper')
+                ? 'getWrapper'
+                : ($ref->hasMethod('getActiveSession') ? 'getActiveSession' : null);
+            if ($method === null) {
+                return null;
+            }
+            $wrapper = $ref->getMethod($method)->invoke($factory);
+            if (!is_object($wrapper) || !method_exists($wrapper, 'get')) {
+                return null;
+            }
+            $raw = (new \ReflectionMethod($wrapper, 'get'))->invoke($wrapper, 'pid', null);
             if (is_int($raw) && $raw > 0) {
                 return (string) $raw;
             }
