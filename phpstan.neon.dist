@@ -29,6 +29,7 @@ parameters:
   - library
   - oauth2
   - portal
+  - scripts
   - setup.php
   - sites
   - sphere
