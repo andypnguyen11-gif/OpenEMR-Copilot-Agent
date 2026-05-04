@@ -91,14 +91,14 @@ class SidePanelSubscriber implements EventSubscriberInterface
         };
         $this->accessCheck = $accessCheck ?? (static fn(): bool => \OpenEMR\Common\Acl\AclMain::aclCheckCore('patients', 'demo'));
         $this->pidResolver = $pidResolver ?? static function (): ?string {
-            // Read $_SESSION directly: SessionWrapperFactory::getActiveSession()
-            // is a recent addition and is missing on the openemr/openemr base
-            // image we layer on for prod. session_status() === PHP_SESSION_ACTIVE
-            // is the cross-version "is a session bootstrapped" check.
-            if (session_status() !== PHP_SESSION_ACTIVE) {
-                return null;
-            }
-            $raw = $_SESSION['pid'] ?? null;
+            // Read pid from OEGlobalsBag, not $_SESSION. OpenEMR boots the
+            // session in read_and_close mode: globals.php writes pid via
+            // SessionUtil and immediately calls session_write_close(), so
+            // $_SESSION['pid'] is null by the time the demographics-tab
+            // RenderEvent fires. globals.php mirrors the active pid into
+            // OEGlobalsBag (which on prod falls through to $GLOBALS['pid'])
+            // for exactly this kind of mid-request consumer.
+            $raw = \OpenEMR\Core\OEGlobalsBag::getInstance()->get('pid');
             if (is_int($raw) && $raw > 0) {
                 return (string) $raw;
             }
