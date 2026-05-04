@@ -11,6 +11,7 @@
 #   * /interface/copilot/                                (new — chat / daily brief / side panel)
 #   * /public/copilot/                                  (new — JS/CSS)
 #   * /interface/main/tabs/menu/menus/standard.json     (modified — top-nav entry)
+#   * /interface/modules/custom_modules/oe-module-copilot/ (new — side-panel launcher subscriber)
 #   * /scripts/copilot/                                  (new — CLI backfill / seeder utilities)
 #
 # None of these paths are touched by the installer or by openemr.sh's
@@ -50,6 +51,8 @@ COPY --chown=apache:apache public/copilot/ \
      ${OPENEMR_ROOT}/public/copilot/
 COPY --chown=apache:apache interface/main/tabs/menu/menus/standard.json \
      ${OPENEMR_ROOT}/interface/main/tabs/menu/menus/standard.json
+COPY --chown=apache:apache interface/modules/custom_modules/oe-module-copilot/ \
+     ${OPENEMR_ROOT}/interface/modules/custom_modules/oe-module-copilot/
 COPY --chown=apache:apache scripts/copilot/ \
      ${OPENEMR_ROOT}/scripts/copilot/
 
