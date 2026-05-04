@@ -30,9 +30,10 @@
  * a new layer no other copilot file uses. Inline PHP rendering keeps
  * the module consistent and avoids a partial Smarty wiring.
  *
- * Today's panel is hard-pinned to the seeded discrepancy fixtures
- * (90001-90005). The MVP demo doesn't ship an appointments-driven
- * panel; PR 18's role/panel work is where that lives.
+ * Today's panel is the first ``$panelSize`` patients assigned to the
+ * logged-in clinician — same provider-scoping the PR-17.5 access gate
+ * enforces, lifted into the listing query. Backfilled by
+ * ``scripts/copilot/assign_patients_to_clinicians.php``.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -71,12 +72,6 @@ if (!AclMain::aclCheckCore('patients', 'demo')) {
 $globals = OEGlobalsBag::getInstance();
 $webroot = $globals->getString('webroot', '');
 
-// Today's panel is the seeded discrepancy fixtures. The PR 17.5 gate
-// already restricts patient_data reads to providerID=$authUserID, so
-// asking for ids the current clinician doesn't own returns null rows
-// and those patients silently drop out of the panel — never 403, never
-// leaked existence. Demo-friendly and safe.
-$panelIds = ['90001', '90002', '90003', '90004', '90005'];
 // Probe both session layouts — newer OpenEMR namespaces clinician
 // data under the core AttributeBag (key ``"OpenEMR"``); older base
 // images write straight to the top of ``$_SESSION``. Same pattern
@@ -91,6 +86,29 @@ if (is_string($candidate)) {
     $authUserId = $candidate;
 } elseif (is_int($candidate)) {
     $authUserId = (string) $candidate;
+}
+
+// Today's panel is the clinician's own assigned patients. The same
+// providerID gate the PR-17.5 access checker enforces is lifted into
+// the listing query so the page silently drops patients the clinician
+// does not own (no UI notice that they exist). ``LIMIT $panelSize``
+// keeps the warm/read fan-out bounded; bumping requires a thought-
+// through redesign of the daily-brief layout, not just a number tweak.
+$panelSize = 7;
+$panelRows = QueryUtils::fetchRecords(
+    'SELECT pid, fname, lname, DOB, sex FROM patient_data '
+    . 'WHERE providerID = ? AND providerID != 0 '
+    . 'ORDER BY pid '
+    . 'LIMIT ' . $panelSize,
+    [$authUserId],
+);
+/** @var list<string> $panelIds */
+$panelIds = [];
+foreach ($panelRows as $row) {
+    $pid = $row['pid'] ?? null;
+    if (is_string($pid) || is_int($pid)) {
+        $panelIds[] = (string) $pid;
+    }
 }
 
 // Dispatcher wiring: identical shape to the route closures in
@@ -130,19 +148,12 @@ $dispatcher->warmPanel($panelIds);
  *     flags: list<Flag>,
  * }> $cards */
 $cards = [];
-foreach ($panelIds as $pid) {
-    $patient = QueryUtils::querySingleRow(
-        'SELECT pid, fname, lname, DOB, sex FROM patient_data '
-        . 'WHERE pid = ? AND providerID = ? AND providerID != 0 LIMIT 1',
-        [$pid, $authUserId],
-    );
-    if (!is_array($patient)) {
-        // Either the patient doesn't exist or the current user isn't
-        // the assigned provider. Same deny-shape as PR 17.5 — the
-        // patient drops out of the rendered panel entirely, no UI
-        // notice that they exist.
+foreach ($panelRows as $patient) {
+    $pidValue = $patient['pid'] ?? null;
+    if (!is_string($pidValue) && !is_int($pidValue)) {
         continue;
     }
+    $pid = (string) $pidValue;
 
     $problems = QueryUtils::fetchRecords(
         "SELECT title, diagnosis, begdate FROM lists "

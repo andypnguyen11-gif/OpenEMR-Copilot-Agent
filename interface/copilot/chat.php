@@ -3,7 +3,8 @@
 /**
  * Clinical Co-Pilot — chat surface (M3 MVP).
  *
- * Single-page chat interface with a fixture-patient picker. The page is the
+ * Single-page chat interface. The patient picker is the clinician's own
+ * assigned panel (same source the daily brief uses). The page is the
  * UI shell; the actual query flows from the JS to the gateway at
  * ``POST /apis/default/api/agent/query``, which mints an HS256 JWT and
  * forwards to the agent service.
@@ -24,6 +25,7 @@ declare(strict_types=1);
 
 require_once(__DIR__ . "/../globals.php");
 
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 
@@ -59,19 +61,56 @@ $apiCsrfToken = $privateKey !== ''
     : '';
 $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
 
+// Probe both session layouts to find the logged-in clinician. Same
+// pattern daily_brief.php uses; chat.php previously trusted the gateway
+// to handle scoping, but the dropdown also needs the user id to populate
+// only assigned patients.
+$authUserId = '';
+$bag = $_SESSION['OpenEMR'] ?? null;
+$candidate = is_array($bag) && isset($bag['authUserID']) ? $bag['authUserID'] : $_SESSION['authUserID'] ?? null;
+if (is_string($candidate)) {
+    $authUserId = $candidate;
+} elseif (is_int($candidate)) {
+    $authUserId = (string) $candidate;
+}
+
+// Patient picker is the clinician's own assigned panel — same providerID
+// gate the PR-17.5 access checker enforces, lifted into the listing
+// query. Same source the daily-brief panel uses; backfilled by
+// scripts/copilot/assign_patients_to_clinicians.php.
+$panelSize = 7;
+$panelRows = QueryUtils::fetchRecords(
+    'SELECT pid, fname, lname FROM patient_data '
+    . 'WHERE providerID = ? AND providerID != 0 '
+    . 'ORDER BY pid '
+    . 'LIMIT ' . $panelSize,
+    [$authUserId],
+);
+/** @var array<string, string> $options */
+$options = [];
+foreach ($panelRows as $row) {
+    $pidValue = $row['pid'] ?? null;
+    if (!is_string($pidValue) && !is_int($pidValue)) {
+        continue;
+    }
+    $pid = (string) $pidValue;
+    $fname = is_string($row['fname'] ?? null) ? $row['fname'] : '';
+    $lname = is_string($row['lname'] ?? null) ? $row['lname'] : '';
+    $options[$pid] = trim("$pid — $fname $lname");
+}
+
 // Optional deep-link from Daily Brief: ``?pid=NNNNN`` pre-selects the
-// patient in the dropdown. Whitelisted against the demo panel so a
-// crafted URL can't push a non-fixture patient_id into the chat —
-// the gateway's PR 17.5 access checker would block it anyway, but
-// reflecting an arbitrary id back into the option list would still
-// show "PID NNNNN" in the rendered dropdown.
-$demoPanel = ['90001', '90002', '90003', '90004', '90005'];
+// patient in the dropdown. Whitelisted against the panel so a crafted
+// URL can't push an unassigned patient_id into the chat — the
+// gateway's PR-17.5 access checker would block the chat call anyway,
+// but reflecting an arbitrary id back into the dropdown would still
+// show "PID NNNNN" to the clinician.
 $preselectedPid = '';
 // filter_input rather than $_GET — the openemr.forbiddenRequestGlobals
 // PHPStan rule blocks $_SUPERGLOBAL access in src/, and we follow the
 // same convention in interface/* for consistency.
 $pidParam = filter_input(INPUT_GET, 'pid');
-if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
+if (is_string($pidParam) && array_key_exists($pidParam, $options)) {
     $preselectedPid = $pidParam;
 }
 
@@ -94,32 +133,20 @@ if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
                 <?php echo xlt('Patient'); ?>
             </label>
             <select id="copilot-patient" data-copilot-patient>
-                <?php
-                /**
-                 * Patient dropdown — anchored on the seeded discrepancy
-                 * fixtures (PR 13a) so chat and Daily Brief share one
-                 * panel. Pids match
-                 * ``tests/Tests/Fixtures/discrepancy-scenarios.php``;
-                 * descriptions name the conflict shape so demo viewers
-                 * can pick a scenario by intent.
-                 */
-                $options = [
-                    '90001' => '90001 — Marcus Hayes (med-vs-note conflict)',
-                    '90002' => '90002 — Sofia Chen (narrative-only allergy)',
-                    '90003' => '90003 — Robert Kim (resolved-still-active problem)',
-                    '90004' => '90004 — Maria Lopez (allergy-vs-med safety)',
-                    '90005' => '90005 — Daniel Brooks (chronic disease, stale lab)',
-                ];
-                foreach ($options as $pid => $label) :
-                    // PHP coerces numeric-string array keys to int, so
-                    // ``$pid`` is int here even though the source array
-                    // looks string-keyed. Re-stringify so the equality
-                    // and the ``attr`` cast both stay in the string lane.
-                    $pidStr = (string) $pid;
-                    $selected = ($pidStr === $preselectedPid) ? ' selected' : '';
-                    ?>
-                    <option value="<?php echo attr($pidStr); ?>"<?php echo $selected; ?>><?php echo text($label); ?></option>
-                <?php endforeach; ?>
+                <?php if ($options === []) : ?>
+                    <option value=""><?php echo xlt('No patients assigned to you yet'); ?></option>
+                <?php else : ?>
+                    <?php foreach ($options as $pid => $label) :
+                        // PHP coerces numeric-string array keys to int, so
+                        // ``$pid`` is int here even though the source array
+                        // looks string-keyed. Re-stringify so the equality
+                        // and the ``attr`` cast both stay in the string lane.
+                        $pidStr = (string) $pid;
+                        $selected = ($pidStr === $preselectedPid) ? ' selected' : '';
+                        ?>
+                        <option value="<?php echo attr($pidStr); ?>"<?php echo $selected; ?>><?php echo text($label); ?></option>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </select>
             <button type="button" class="btn btn-secondary btn-sm" data-copilot-reset>
                 <?php echo xlt('Clear chat'); ?>

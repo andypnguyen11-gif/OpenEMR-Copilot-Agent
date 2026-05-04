@@ -61,24 +61,19 @@ $apiCsrfToken = $privateKey !== ''
     : '';
 $webroot = OEGlobalsBag::getInstance()->getString('webroot', '');
 
-// Pid comes from the launcher's iframe URL. Whitelist against the demo
-// fixture panel — the gateway's PR 17.5 access checker would reject a
-// non-fixture patient anyway, but reflecting an arbitrary id back into
-// the rendered shell would still show a misleading "Patient NNNNN"
-// label until the first send fails.
-$demoPanel = ['90001', '90002', '90003', '90004', '90005'];
+// Pid comes from the launcher's iframe URL. Accept any numeric pid;
+// authorization is enforced one query down via the providerID gate
+// (PR 17.5). If the lookup fails — pid missing, not numeric, or the
+// patient is not assigned to this clinician — ``$patientLabel`` stays
+// empty and the rendered shell drops into the "not assigned" branch
+// instead of exposing a chat affordance for a patient the gateway
+// would 403 anyway.
 $pid = '';
 $pidParam = filter_input(INPUT_GET, 'pid');
-if (is_string($pidParam) && in_array($pidParam, $demoPanel, true)) {
+if (is_string($pidParam) && ctype_digit($pidParam)) {
     $pid = $pidParam;
 }
 
-// Resolve the patient's name once at render time so the iframe header
-// reads the way a clinician expects (the chart's own header above the
-// iframe shows the same name). Constrained to the assigned-provider
-// rule that PR 17.5 enforces gateway-side, so a clinician who isn't
-// the assigned provider gets the panel-but-no-name shape rather than
-// a friendly name they can't actually query against.
 $patientLabel = '';
 if ($pid !== '') {
     $authUserIdRaw = SessionWrapperFactory::getInstance()->getActiveSession()->get('authUserID', null);
@@ -97,6 +92,7 @@ if ($pid !== '') {
         }
     }
 }
+$panelEnabled = $patientLabel !== '';
 
 ?>
 <!DOCTYPE html>
@@ -111,24 +107,19 @@ if ($pid !== '') {
         class="copilot-shell copilot-shell-side"
         data-copilot-shell
         data-copilot-side
-        data-copilot-pid="<?php echo attr($pid); ?>"
+        data-copilot-pid="<?php echo attr($panelEnabled ? $pid : ''); ?>"
         data-copilot-lane="fast"
     >
         <header class="copilot-header">
             <h1><?php echo xlt('Co-Pilot'); ?></h1>
-            <?php if ($pid === '') : ?>
+            <?php if (!$panelEnabled) : ?>
                 <p class="copilot-disclaimer">
-                    <?php echo xlt('This patient is not in the demo panel. Switch to a seeded patient (90001-90005) to use the Co-Pilot side panel.'); ?>
+                    <?php echo xlt('This patient is not assigned to you. Open a patient from your daily-brief panel to use the Co-Pilot side panel.'); ?>
                 </p>
             <?php else : ?>
                 <p class="copilot-subtitle">
-                    <?php if ($patientLabel !== '') : ?>
-                        <strong><?php echo text($patientLabel); ?></strong>
-                        <code class="copilot-side-panel-pid"><?php echo text($pid); ?></code>
-                    <?php else : ?>
-                        <?php echo xlt('Patient'); ?>
-                        <code><?php echo text($pid); ?></code>
-                    <?php endif; ?>
+                    <strong><?php echo text($patientLabel); ?></strong>
+                    <code class="copilot-side-panel-pid"><?php echo text($pid); ?></code>
                     &middot;
                     <?php echo xlt('fast lane'); ?>
                 </p>
@@ -146,8 +137,8 @@ if ($pid !== '') {
             </div>
         </section>
 
-        <?php $disabledAttr = $pid === '' ? ' disabled' : ''; ?>
-        <?php $formAriaAttr = $pid === '' ? ' aria-disabled="true"' : ''; ?>
+        <?php $disabledAttr = $panelEnabled ? '' : ' disabled'; ?>
+        <?php $formAriaAttr = $panelEnabled ? '' : ' aria-disabled="true"'; ?>
         <form class="copilot-form" data-copilot-form<?php echo $formAriaAttr; ?>>
             <textarea
                 data-copilot-input
