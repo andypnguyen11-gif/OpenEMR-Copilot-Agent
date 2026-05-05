@@ -23,37 +23,16 @@ tripped on first.
 
 from __future__ import annotations
 
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict
 
+from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
-class AbstentionState(StrEnum):
-    """Why the agent stopped short of a confident answer.
-
-    String-backed because the value is serialized to the wire (response
-    body) and into LangSmith trace metadata. Adding a new state is a
-    backwards-compatible change; renaming an existing one is not — the
-    UI's per-state copy table is keyed on these strings.
-    """
-
-    NO_DATA = "NO_DATA"
-    """The chart legitimately doesn't contain what the user asked for."""
-
-    VERIFICATION_FAILED = "VERIFICATION_FAILED"
-    """The model produced a draft, but at least one cited claim either
-    points at a source the agent never fetched or contradicts the field
-    value of a source the agent did fetch."""
-
-    TOOL_FAILURE = "TOOL_FAILURE"
-    """A tool the orchestrator needed to call raised a non-authorization
-    error (timeout, FHIR 5xx, schema-mismatch). Distinct from NO_DATA so
-    the UI can offer a retry action."""
-
-    UNAUTHORIZED = "UNAUTHORIZED"
-    """The session is not authorized to access the requested resource —
-    raised when a tool's RBAC check fires (audit row already written by
-    the tool layer per ARCHITECTURE §3 table)."""
+# Week 1 callers import this name and only ever produce one of the four
+# original members (NO_DATA, VERIFICATION_FAILED, TOOL_FAILURE,
+# UNAUTHORIZED). Week 2 widens the underlying enum with three extraction
+# reasons in `schemas/abstain.py`; the alias keeps every existing import
+# site compiling without churn.
+AbstentionState = RuntimeAbstainReason
 
 
 class Abstention(BaseModel):

@@ -23,6 +23,10 @@ agent.db
 *.sqlite3
 *.log
 
+# Week 2 demo runtime artifacts (regenerated from committed sources/fixtures)
+data/corpus/
+data/extracted/
+
 # IDE
 .idea/
 .vscode/
