@@ -277,3 +277,66 @@ def test_flags_route_reads_from_same_cache_as_warm() -> None:
     flags_via_cache = [flag.model_dump(mode="json") for flag in cache.get_flags("103")]
 
     assert flags_via_route == flags_via_cache
+
+
+# ---------------------------------------------------------------------------
+# Ingest route — auth guardrails
+# ---------------------------------------------------------------------------
+
+
+def _ingest_form() -> dict[str, str]:
+    """Common form fields used by the ingest tests below."""
+    return {
+        "document_id": "test-doc-001",
+        "document_type": "lab_pdf",
+        "uploader_user_id": "1",
+    }
+
+
+def test_ingest_route_rejects_missing_internal_token() -> None:
+    # Service-to-service route; absence of X-Internal-Token must 401
+    # before any multipart parsing or extractor wiring runs. The PHP
+    # gateway is the only legitimate caller.
+    client, _ = _client_and_state()
+
+    response = client.post(
+        "/api/agent/internal/ingest",
+        data=_ingest_form(),
+        files={"file": ("doc.pdf", b"%PDF-1.4\nstub\n", "application/pdf")},
+    )
+
+    assert response.status_code == 401
+
+
+def test_ingest_route_rejects_user_bearer_jwt_in_authorization_header() -> None:
+    # A user-facing JWT in Authorization: Bearer must NOT satisfy the
+    # internal-token gate. Same confused-deputy guardrail asserted
+    # for the warm/invalidate/flags routes above.
+    client, _ = _client_and_state()
+
+    response = client.post(
+        "/api/agent/internal/ingest",
+        headers={"Authorization": f"Bearer {INTERNAL_TOKEN}"},
+        data=_ingest_form(),
+        files={"file": ("doc.pdf", b"%PDF-1.4\nstub\n", "application/pdf")},
+    )
+
+    assert response.status_code == 401
+
+
+def test_ingest_route_rejects_empty_upload() -> None:
+    # Empty body is a 400 — distinct from 422 (schema-validation
+    # failure) so the PHP gateway can decide whether to retry.
+    client, _ = _client_and_state()
+
+    response = client.post(
+        "/api/agent/internal/ingest",
+        headers={INTERNAL_TOKEN_HEADER: INTERNAL_TOKEN},
+        data=_ingest_form(),
+        files={"file": ("doc.pdf", b"", "application/pdf")},
+    )
+
+    assert response.status_code in (400, 503)
+    # 400 when llm_api_key is set (route reached the empty-body check);
+    # 503 when llm_api_key is empty (route short-circuits earlier).
+    # Both are correct, depending on test settings.

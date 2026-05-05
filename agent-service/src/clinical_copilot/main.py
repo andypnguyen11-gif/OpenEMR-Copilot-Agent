@@ -18,7 +18,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, HTTPException, Path, Query, Response, status
+import tempfile
+import time
+from pathlib import Path as PathlibPath
+from typing import Annotated, Any, Literal
+
+from anthropic import Anthropic
+from fastapi import FastAPI, File, Form, HTTPException, Path, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from clinical_copilot import __version__
@@ -30,11 +36,19 @@ from clinical_copilot.auth.jwt_verifier import require_clinician_claims
 from clinical_copilot.auth.role import Role
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.discrepancy.background import BackgroundRunner
+from clinical_copilot.documents import store as facts_store
+from clinical_copilot.documents.extractor import (
+    DocumentType,
+    ExtractorError,
+    extract as run_extraction,
+)
+from clinical_copilot.documents.schemas.citation import ExtractedField
 from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.schemas import AgentResponse
+from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 from clinical_copilot.tools.records import FlagRecord
 
 if TYPE_CHECKING:
@@ -161,6 +175,38 @@ class SupervisorAuditResponse(BaseModel):
 
     resident_user_id: str
     entries: list[SupervisorAuditEntry]
+
+
+class AbstainSummary(BaseModel):
+    """Per-document abstain counts surfaced on the ingest response.
+
+    The full per-field breakdown lives in ``facts``; this is the
+    quick at-a-glance view the PHP review page uses to show "N fields
+    flagged for review" without walking the whole structure.
+    """
+
+    low_confidence_field_count: int
+    no_data_field_count: int
+    citation_invalid_field_count: int
+    out_of_schema_field_count: int
+
+
+class IngestResponse(BaseModel):
+    """Body returned by ``POST /api/agent/internal/ingest``.
+
+    ``facts`` is the full ``LabPdfFacts`` or ``IntakeFormFacts`` JSON
+    so the PHP review page renders without a second round-trip.
+    ``facts_url`` is the addressable read-back path for callers that
+    want to re-fetch the same record (e.g. a page reload mid-review).
+    """
+
+    document_id: str
+    document_type: str
+    patient_id: int | None
+    facts_url: str
+    facts: dict[str, Any]
+    extraction_ms: int
+    abstain_summary: AbstainSummary
 
 
 @asynccontextmanager
@@ -433,7 +479,152 @@ def create_app(
             ],
         )
 
+    # Anthropic client for the multimodal extractor. Built once per
+    # app, closure-captured by the route below so each ingest request
+    # reuses the SDK's connection pool. Settings already validated.
+    anthropic_client = (
+        Anthropic(api_key=resolved_settings.llm_api_key)
+        if resolved_settings.llm_api_key
+        else None
+    )
+
+    @app.post(
+        "/api/agent/internal/ingest",
+        tags=["internal"],
+        response_model=IngestResponse,
+    )
+    async def ingest_route(
+        document_id: Annotated[str, Form(min_length=1, max_length=128)],
+        document_type: Annotated[Literal["lab_pdf", "intake_form"], Form()],
+        uploader_user_id: Annotated[int, Form()],
+        file: Annotated[UploadFile, File()],
+        patient_id: Annotated[int | None, Form()] = None,
+        _: None = internal_dep,
+    ) -> IngestResponse:
+        # Service-to-service ingest. Internal-token gates this route;
+        # JWT-only callers fall through to the gate's 401. The PHP side
+        # uploads the document blob as multipart so we never have to
+        # reconcile an HMAC signing scheme between two languages.
+        if anthropic_client is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="LLM not configured",
+            )
+
+        suffix = PathlibPath(file.filename or "upload.pdf").suffix.lower() or ".pdf"
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="empty upload",
+            )
+
+        # Persist a temp file for the extractor's render path. Cleaned
+        # up on the finally so a long-running process doesn't accumulate
+        # unbounded scratch state under TMPDIR.
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = PathlibPath(tmp.name)
+
+        start = time.perf_counter()
+        try:
+            try:
+                result = run_extraction(
+                    client=anthropic_client,
+                    model=resolved_settings.model_slow,
+                    document_id=document_id,
+                    document_type=document_type,
+                    pdf_path=tmp_path,
+                )
+            except ExtractorError as exc:
+                # Schema-validation or VLM-call failures are 422 — caller
+                # can surface the problem to the user without retry.
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"extraction failed: {exc}",
+                ) from exc
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+        # Persist via the existing JSON-on-disk store (same shape the
+        # demo CLI writes). The PHP review page reads through the
+        # ``GET /api/agent/internal/extracted/{id}`` route below.
+        facts_store.write(result.facts)
+
+        return IngestResponse(
+            document_id=document_id,
+            document_type=document_type,
+            patient_id=patient_id,
+            facts_url=f"/api/agent/internal/extracted/{document_id}",
+            facts=result.facts.model_dump(mode="json"),
+            extraction_ms=elapsed_ms,
+            abstain_summary=_compute_abstain_summary(result.facts.model_dump(mode="json")),
+        )
+
+    @app.get(
+        "/api/agent/internal/extracted/{document_id}",
+        tags=["internal"],
+    )
+    async def extracted_read_route(
+        document_id: str = Path(min_length=1, max_length=128),
+        _: None = internal_dep,
+    ) -> dict[str, Any]:
+        # Read-back of a previously ingested document's facts. Used by
+        # the PHP review page when the page reloads mid-review (e.g. a
+        # nav-away-and-back) to avoid re-extracting. Unknown document
+        # ids return 404 — distinct from the warm/invalidate routes
+        # because here the client wants a specific record, not a
+        # fire-and-forget side effect on shared cache state.
+        facts = facts_store.read(document_id)
+        if facts is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="document not found",
+            )
+        return facts.model_dump(mode="json")
+
     return app
+
+
+def _compute_abstain_summary(facts: dict[str, Any]) -> AbstainSummary:
+    """Walk a ``*Facts`` JSON dump and count per-reason abstain field markers.
+
+    The schema invariant from ``ExtractedField`` is that an abstaining
+    field carries an ``abstain_reason`` string. We walk the dict tree
+    once and tally each occurrence; this surfaces the per-document
+    review cost (how many fields the reviewer must inspect) at a glance.
+    """
+
+    counts: dict[str, int] = {
+        RuntimeAbstainReason.LOW_CONFIDENCE.value: 0,
+        RuntimeAbstainReason.NO_DATA.value: 0,
+        RuntimeAbstainReason.CITATION_INVALID.value: 0,
+        RuntimeAbstainReason.OUT_OF_SCHEMA.value: 0,
+    }
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            reason = node.get("abstain_reason")
+            if isinstance(reason, str) and reason in counts:
+                counts[reason] += 1
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(facts)
+    return AbstainSummary(
+        low_confidence_field_count=counts[RuntimeAbstainReason.LOW_CONFIDENCE.value],
+        no_data_field_count=counts[RuntimeAbstainReason.NO_DATA.value],
+        citation_invalid_field_count=counts[RuntimeAbstainReason.CITATION_INVALID.value],
+        out_of_schema_field_count=counts[RuntimeAbstainReason.OUT_OF_SCHEMA.value],
+    )
 
 
 app = create_app()
