@@ -39,13 +39,20 @@ else
     echo "[init-sites-volume] $SITES_DIR/default/sqlconf.php exists; skipping restore"
 fi
 
-# Match the bundled image's CMD: ./openemr.sh from WORKDIR
-# /var/www/localhost/htdocs/openemr (verified against openemr-devops
-# docker/openemr/8.1.1/Dockerfile lines 233 and 331). openemr.sh's own
-# shebang is `#!/usr/bin/env bash`, which somehow resolves at runtime
-# inside the original CMD path (Docker may set up a richer PATH there).
-# By the time openemr.sh runs, we have already done the volume-restore
-# work that needed to happen first, so the bash-vs-sh asymmetry doesn't
-# matter to us.
-cd /var/www/localhost/htdocs/openemr
+# Match the bundled image's CMD: ``./openemr.sh`` from the image's
+# WORKDIR. The ``:latest`` (Alpine-based, openemr-devops 8.1.1) image
+# uses WORKDIR ``/var/www/localhost/htdocs/openemr`` and ships the
+# script alongside the app source. The ``:flex`` image moved the
+# entrypoint up one level: WORKDIR is ``/var/www/localhost/htdocs``
+# and ``openemr.sh`` lives there, with the app under ``openemr/``.
+# Pick whichever location the running base image actually has rather
+# than hard-coding one — keeps this wrapper compatible with both tags.
+if [ -x /var/www/localhost/htdocs/openemr.sh ]; then
+    cd /var/www/localhost/htdocs
+elif [ -x /var/www/localhost/htdocs/openemr/openemr.sh ]; then
+    cd /var/www/localhost/htdocs/openemr
+else
+    echo "[init-sites-volume] cannot find openemr.sh in either expected location" >&2
+    exit 1
+fi
 exec ./openemr.sh
