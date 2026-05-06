@@ -97,7 +97,7 @@ _SYSTEM_FAST_PATH = _PROMPTS_DIR / "system_fast.md"
 # registry's full set (passed as ``tool_names=None``). The set is
 # ``frozenset`` so :class:`LaneConfig` can stay frozen-dataclass.
 _FAST_LANE_TOOLS: frozenset[str] = frozenset(
-    {"get_flags", "get_problems", "get_meds", "get_visits"}
+    {"get_flags", "get_problems", "get_meds", "get_visits", "get_labs"}
 )
 
 # Bound on the shared httpx.AsyncClient. PR 25 owns the request-level

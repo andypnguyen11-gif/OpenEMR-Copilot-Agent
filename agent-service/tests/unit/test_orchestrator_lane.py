@@ -40,7 +40,7 @@ from clinical_copilot.tools.registry import ToolRegistry
 from clinical_copilot.verification.abstention import AbstentionState
 from clinical_copilot.verification.middleware import VerificationMiddleware
 
-_FAST_LANE_TOOLS = frozenset({"get_flags", "get_problems", "get_meds", "get_visits"})
+_FAST_LANE_TOOLS = frozenset({"get_flags", "get_problems", "get_meds", "get_visits", "get_labs"})
 
 
 class _RecordingAudit(AuditLogWriter):
@@ -269,8 +269,8 @@ def test_fast_lane_refuses_out_of_subset_tool_call(
 
     fast_gateway = _ScriptedGateway(
         [
-            # ``get_labs`` is registered but not in the fast subset.
-            _tool_use_turn(ToolUse(id="tu-1", name="get_labs", input={"patient_id": "101"})),
+            # ``get_allergies`` is registered but not in the fast subset.
+            _tool_use_turn(ToolUse(id="tu-1", name="get_allergies", input={"patient_id": "101"})),
         ]
     )
     slow_gateway = _ScriptedGateway([])
@@ -283,7 +283,7 @@ def test_fast_lane_refuses_out_of_subset_tool_call(
     )
 
     response = orch.run(
-        query="any abnormal labs?",
+        query="any allergies?",
         claims=claims,
         request_id="r-fast-out-of-subset",
         lane=Lane.FAST,

@@ -61,7 +61,7 @@ LATENCY_BUDGET_SECONDS = 5.0
 WARMUP_TURNS = 1
 MEASURED_TURNS = 5
 
-FAST_LANE_TOOLS = frozenset({"get_flags", "get_problems", "get_meds", "get_visits"})
+FAST_LANE_TOOLS = frozenset({"get_flags", "get_problems", "get_meds", "get_visits", "get_labs"})
 
 
 class _NullAudit(AuditLogWriter):
