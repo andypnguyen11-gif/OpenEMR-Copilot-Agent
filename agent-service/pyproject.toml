@@ -28,6 +28,7 @@ dependencies = [
     "structlog>=25.5.0",
     "uvicorn>=0.46.0",
     "pypdfium2>=4.30",
+    "pillow>=11.0",
 ]
 
 [build-system]
