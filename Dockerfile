@@ -47,6 +47,8 @@ COPY --chown=apache:apache apis/routes/_rest_routes_standard.inc.php \
      ${OPENEMR_ROOT}/apis/routes/_rest_routes_standard.inc.php
 COPY --chown=apache:apache interface/copilot/ \
      ${OPENEMR_ROOT}/interface/copilot/
+COPY --chown=apache:apache interface/patient_file/summary/labdata_fragment.php \
+     ${OPENEMR_ROOT}/interface/patient_file/summary/labdata_fragment.php
 COPY --chown=apache:apache public/copilot/ \
      ${OPENEMR_ROOT}/public/copilot/
 COPY --chown=apache:apache interface/main/tabs/menu/menus/standard.json \
