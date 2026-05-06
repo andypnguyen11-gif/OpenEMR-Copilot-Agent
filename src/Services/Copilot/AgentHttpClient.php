@@ -21,6 +21,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Services\Copilot;
 
+use GuzzleHttp\Psr7\MultipartStream;
 use GuzzleHttp\Psr7\Utils;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use Psr\Http\Client\ClientExceptionInterface;
@@ -240,6 +241,91 @@ readonly class AgentHttpClient
         $request = $this->requestFactory->createRequest('GET', $url)
             ->withHeader('Accept', 'application/json')
             ->withHeader('X-Internal-Token', $internalToken);
+
+        try {
+            $response = $this->httpClient->sendRequest($request);
+        } catch (ClientExceptionInterface $e) {
+            throw new AgentServiceException('agent service transport failure', 0, $e);
+        }
+
+        $rawBody = (string) $response->getBody();
+        $decoded = [];
+        if ($rawBody !== '') {
+            try {
+                $decoded = json_decode($rawBody, true, flags: JSON_THROW_ON_ERROR);
+            } catch (Throwable $e) {
+                throw new AgentServiceException('agent service returned invalid JSON', 0, $e);
+            }
+            if (!is_array($decoded)) {
+                throw new AgentServiceException('agent service returned non-object JSON');
+            }
+        }
+
+        /** @var array<string, mixed> $decoded */
+        return new AgentResponse($response->getStatusCode(), $decoded);
+    }
+
+    /**
+     * POST a multipart upload to ``$path`` on the agent service with an
+     * ``X-Internal-Token`` header (PR W2-02 ingest route).
+     *
+     * The multimodal extractor takes binary document inputs (PDFs, PNGs);
+     * shipping them as JSON+base64 inflates the request by ~33% and bloats
+     * request logs. ``multipart/form-data`` is the native shape the agent
+     * service consumes via FastAPI ``UploadFile``.
+     *
+     * Each entry in ``$fields`` becomes a string form field. ``$file`` is
+     * the actual document bytes — passed as a triple ``[contents, filename,
+     * contentType]`` so the agent side gets a usable filename hint for
+     * extension dispatch (PDF vs. PNG).
+     *
+     * Same JSON-decoding and transport-error translation as
+     * :meth:`postInternal`. Non-2xx HTTP statuses are returned in the
+     * :class:`AgentResponse` rather than thrown — the caller decides how
+     * to surface a 4xx (e.g. 422 means the VLM extracted nothing usable;
+     * the upload page can show a retry button).
+     *
+     * @param array<string, string>           $fields  Form fields.
+     * @param array{0: string, 1: string, 2: string} $file Tuple of
+     *                                         [bytes, filename, mimeType].
+     *
+     * @throws AgentServiceException When the transport fails or the body
+     *                               is not decodable JSON.
+     */
+    public function postMultipartInternal(
+        string $path,
+        array $fields,
+        array $file,
+        string $internalToken,
+    ): AgentResponse {
+        if (!str_starts_with($path, '/')) {
+            throw new AgentServiceException('agent path must start with /');
+        }
+        if ($internalToken === '') {
+            throw new AgentServiceException('agent postMultipartInternal called without an internal token');
+        }
+
+        [$fileContents, $fileName, $fileContentType] = $file;
+
+        $parts = [];
+        foreach ($fields as $name => $value) {
+            $parts[] = ['name' => $name, 'contents' => $value];
+        }
+        $parts[] = [
+            'name' => 'file',
+            'contents' => $fileContents,
+            'filename' => $fileName,
+            'headers' => ['Content-Type' => $fileContentType],
+        ];
+
+        $multipart = new MultipartStream($parts);
+
+        $url = $this->config->getAgentBaseUrl() . $path;
+        $request = $this->requestFactory->createRequest('POST', $url)
+            ->withHeader('Accept', 'application/json')
+            ->withHeader('Content-Type', 'multipart/form-data; boundary=' . $multipart->getBoundary())
+            ->withHeader('X-Internal-Token', $internalToken)
+            ->withBody($multipart);
 
         try {
             $response = $this->httpClient->sendRequest($request);
