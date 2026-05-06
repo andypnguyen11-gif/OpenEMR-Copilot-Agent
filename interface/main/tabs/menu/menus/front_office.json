@@ -72,7 +72,7 @@
         ],
         "global_req_strict": [
           "!disable_rcb"
-	      ]
+        ]
       },
       {
         "label": "Address Book",
@@ -117,6 +117,19 @@
           "addonly"
         ],
         "global_req": "full_new_patient_form"
+      },
+      {
+        "label": "Add Patient (with AI)",
+        "icon": "fa-magic",
+        "menu_id": "newai",
+        "target": "pat",
+        "url": "/interface/copilot/new_patient_with_ai.php",
+        "children": [],
+        "requirement": 0,
+        "acl_req": [
+          "admin",
+          "super"
+        ]
       },
       {
         "label": "Report Generator",

@@ -140,6 +140,16 @@ $panelEnabled = $patientLabel !== '';
                     &middot;
                     <?php echo xlt('fast lane'); ?>
                 </p>
+                <p class="copilot-quick-actions" style="margin-top:0.4rem;">
+                    <a
+                        href="<?php echo attr($webroot); ?>/interface/copilot/upload_lab.php?pid=<?php echo attr($pid); ?>"
+                        target="_blank"
+                        rel="noopener"
+                        class="btn btn-sm btn-outline-primary"
+                    >
+                        <?php echo xlt('Upload lab document'); ?>
+                    </a>
+                </p>
             <?php endif; ?>
         </header>
 
