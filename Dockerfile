@@ -60,13 +60,14 @@ COPY --chown=apache:apache scripts/copilot/ \
 
 # Refresh the Composer classmap so PSR-4 picks up the new
 # OpenEMR\Services\Copilot\* classes even if the base image was built
-# with --classmap-authoritative. Best-effort: skipped if composer was
-# stripped from the production image (PSR-4 fallback usually still
-# works without it).
-RUN if command -v composer >/dev/null 2>&1; then \
+# with --classmap-authoritative. Best-effort: skipped if composer or
+# composer.json is missing from the image (the :flex base ships
+# vendor/autoload.php without composer.json, in which case the PSR-4
+# prefix already routes new classes via filesystem lookup).
+RUN if command -v composer >/dev/null 2>&1 && [ -f "${OPENEMR_ROOT}/composer.json" ]; then \
         cd ${OPENEMR_ROOT} && composer dump-autoload --no-dev -o; \
     else \
-        echo "composer not present in image; relying on PSR-4 fallback"; \
+        echo "composer or composer.json not present in image; relying on PSR-4 fallback"; \
     fi
 # --- end overlay ----------------------------------------------------------
 
