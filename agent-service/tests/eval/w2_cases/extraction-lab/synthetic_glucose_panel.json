@@ -1,0 +1,19 @@
+{
+  "case_id": "extraction-lab/synthetic_glucose_panel",
+  "bucket": "extraction-lab",
+  "document_path": "../../fixtures/lab_pdf/glucose_panel.pdf",
+  "document_type": "lab_pdf",
+  "description": "Synthetic basic metabolic panel \u2014 deterministic fixture; regression baseline.",
+  "expectations": {
+    "observation_count_min": 6,
+    "field_equals": {
+      "observations[0].display.value": "Glucose",
+      "observations[0].value.value": 142.0,
+      "observations[0].flag.value": "H",
+      "observations[1].display.value": "Sodium",
+      "observations[1].value.value": 139.0,
+      "observations[2].display.value": "Potassium",
+      "observations[5].display.value": "Creatinine"
+    }
+  }
+}

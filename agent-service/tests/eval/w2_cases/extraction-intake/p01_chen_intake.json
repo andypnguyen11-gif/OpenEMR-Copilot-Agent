@@ -1,0 +1,28 @@
+{
+  "case_id": "extraction-intake/p01_chen_intake",
+  "bucket": "extraction-intake",
+  "document_path": "../../../../example-documents/intake-forms/p01-chen-intake-typed.pdf",
+  "document_type": "intake_form",
+  "description": "Chen 3-page intake \u2014 full demographics + 4 meds + 3 allergies (incl. ambiguous shellfish) + 3 problems with ICD-10/SNOMED + family history + former smoker with 12 pack-years.",
+  "expectations": {
+    "field_equals": {
+      "legal_first_name.value": "Margaret",
+      "legal_last_name.value": "Chen",
+      "date_of_birth.value": "1967-08-14",
+      "sex_assigned_at_birth.value": "Female",
+      "tobacco_status.value": "former",
+      "tobacco_pack_years.value": 12.0,
+      "pain_scale.value": 2
+    },
+    "field_present": [
+      "chief_complaint.value",
+      "medical_record_number.value"
+    ],
+    "list_min": {
+      "current_medications": 4,
+      "reported_allergies": 3,
+      "active_problems": 3,
+      "family_history": 3
+    }
+  }
+}

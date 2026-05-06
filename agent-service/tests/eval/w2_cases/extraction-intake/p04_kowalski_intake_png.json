@@ -1,0 +1,19 @@
+{
+  "case_id": "extraction-intake/p04_kowalski_intake_png",
+  "bucket": "extraction-intake",
+  "document_path": "../../../../example-documents/intake-forms/p04-kowalski-intake.png",
+  "document_type": "intake_form",
+  "description": "Kowalski intake \u2014 PNG scan, slightly rotated. Tests robustness to scan artifacts.",
+  "expectations": {
+    "field_present": [
+      "chief_complaint.value"
+    ],
+    "field_equals": {
+      "tobacco_status.value": "never"
+    },
+    "list_min": {
+      "current_medications": 2,
+      "reported_allergies": 1
+    }
+  }
+}

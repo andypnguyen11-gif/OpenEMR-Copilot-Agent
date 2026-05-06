@@ -1,0 +1,18 @@
+{
+  "case_id": "extraction-lab/p03_reyes_hba1c_png",
+  "bucket": "extraction-lab",
+  "document_path": "../../../../example-documents/lab-results/p03-reyes-hba1c.png",
+  "document_type": "lab_pdf",
+  "description": "Reyes HbA1c \u2014 PNG scan path. Tests image-input handling.",
+  "expectations": {
+    "observation_count_min": 2,
+    "field_equals": {
+      "observations[0].display.value": "Hemoglobin A1c",
+      "observations[0].value.value": 8.2,
+      "observations[0].unit.value": "%",
+      "observations[0].flag.value": "H",
+      "observations[1].display.value": "Fasting Glucose",
+      "observations[1].value.value": 152.0
+    }
+  }
+}

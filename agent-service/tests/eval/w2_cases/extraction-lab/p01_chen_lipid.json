@@ -1,0 +1,22 @@
+{
+  "case_id": "extraction-lab/p01_chen_lipid",
+  "bucket": "extraction-lab",
+  "document_path": "../../../../example-documents/lab-results/p01-chen-lipid-panel.pdf",
+  "document_type": "lab_pdf",
+  "description": "Chen lipid panel \u2014 5 lipid observations + Non-HDL, multiple high flags.",
+  "expectations": {
+    "observation_count_min": 5,
+    "field_equals": {
+      "observations[0].display.value": "Cholesterol, Total",
+      "observations[0].value.value": 232.0,
+      "observations[0].unit.value": "mg/dL",
+      "observations[0].flag.value": "H",
+      "observations[1].display.value": "HDL Cholesterol",
+      "observations[1].value.value": 48.0,
+      "observations[1].flag.value": "L",
+      "observations[2].value.value": 158.0,
+      "observations[3].display.value": "Triglycerides",
+      "observations[3].value.value": 178.0
+    }
+  }
+}

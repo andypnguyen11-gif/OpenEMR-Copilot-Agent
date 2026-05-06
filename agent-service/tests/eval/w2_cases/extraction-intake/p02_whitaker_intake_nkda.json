@@ -1,0 +1,22 @@
+{
+  "case_id": "extraction-intake/p02_whitaker_intake_nkda",
+  "bucket": "extraction-intake",
+  "document_path": "../../../../example-documents/intake-forms/p02-whitaker-intake.pdf",
+  "document_type": "intake_form",
+  "description": "Whitaker intake \u2014 NKDA negation must surface as a single allergy entry, not an empty list. Tests negation-handling rule from extractor prompt.",
+  "expectations": {
+    "field_equals": {
+      "legal_first_name.value": "James",
+      "legal_last_name.value": "Whitaker",
+      "date_of_birth.value": "1958-11-03",
+      "sex_assigned_at_birth.value": "Male",
+      "reported_allergies[0].substance.value": "NKDA"
+    },
+    "list_min": {
+      "current_medications": 3,
+      "reported_allergies": 1,
+      "active_problems": 3,
+      "family_history": 1
+    }
+  }
+}

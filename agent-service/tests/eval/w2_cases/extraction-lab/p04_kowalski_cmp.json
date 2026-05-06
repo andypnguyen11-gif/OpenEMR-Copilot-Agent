@@ -1,0 +1,22 @@
+{
+  "case_id": "extraction-lab/p04_kowalski_cmp",
+  "bucket": "extraction-lab",
+  "document_path": "../../../../example-documents/lab-results/p04-kowalski-cmp.pdf",
+  "document_type": "lab_pdf",
+  "description": "Kowalski CMP \u2014 15-row panel including HTML-entity glitch (CO&sub2; in source).",
+  "expectations": {
+    "observation_count_min": 14,
+    "field_equals": {
+      "observations[0].display.value": "Glucose",
+      "observations[0].value.value": 108.0,
+      "observations[0].flag.value": "H",
+      "observations[1].display.value": "BUN",
+      "observations[2].display.value": "Creatinine",
+      "observations[2].value.value": 1.4,
+      "observations[2].flag.value": "H",
+      "observations[5].display.value": "Potassium",
+      "observations[5].value.value": 3.3,
+      "observations[5].flag.value": "L"
+    }
+  }
+}

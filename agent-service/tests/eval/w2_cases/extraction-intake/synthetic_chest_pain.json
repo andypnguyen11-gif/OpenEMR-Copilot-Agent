@@ -1,0 +1,19 @@
+{
+  "case_id": "extraction-intake/synthetic_chest_pain",
+  "bucket": "extraction-intake",
+  "document_path": "../../fixtures/intake_form/intake_chest_pain.pdf",
+  "document_type": "intake_form",
+  "description": "Synthetic chest-pain intake \u2014 deterministic fixture; regression baseline. Pain=6, family hx of cardiac disease.",
+  "expectations": {
+    "field_present": [
+      "chief_complaint.value"
+    ],
+    "field_equals": {
+      "pain_scale.value": 6
+    },
+    "list_min": {
+      "current_medications": 2,
+      "reported_allergies": 1
+    }
+  }
+}

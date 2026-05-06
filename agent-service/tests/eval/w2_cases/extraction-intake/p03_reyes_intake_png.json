@@ -1,0 +1,17 @@
+{
+  "case_id": "extraction-intake/p03_reyes_intake_png",
+  "bucket": "extraction-intake",
+  "document_path": "../../../../example-documents/intake-forms/p03-reyes-intake.png",
+  "document_type": "intake_form",
+  "description": "Reyes intake \u2014 PNG scan path with mixed handwritten/typed fields. Tests image-input + lower-quality OCR conditions.",
+  "expectations": {
+    "field_present": [
+      "chief_complaint.value"
+    ],
+    "list_min": {
+      "current_medications": 2,
+      "reported_allergies": 1,
+      "active_problems": 1
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "case_id": "extraction-lab/p02_whitaker_cbc",
+  "bucket": "extraction-lab",
+  "document_path": "../../../../example-documents/lab-results/p02-whitaker-cbc.pdf",
+  "document_type": "lab_pdf",
+  "description": "Whitaker CBC \u2014 7 hematology observations including 3 low flags.",
+  "expectations": {
+    "observation_count_min": 7,
+    "field_equals": {
+      "observations[0].display.value": "WBC",
+      "observations[0].value.value": 5.4,
+      "observations[1].display.value": "RBC",
+      "observations[1].value.value": 3.78,
+      "observations[1].flag.value": "L",
+      "observations[2].display.value": "Hemoglobin",
+      "observations[2].value.value": 11.1,
+      "observations[2].flag.value": "L",
+      "observations[3].display.value": "Hematocrit",
+      "observations[3].flag.value": "L"
+    }
+  }
+}
