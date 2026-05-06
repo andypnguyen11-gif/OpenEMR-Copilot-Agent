@@ -6,10 +6,7 @@
  *
  * Creates a fresh OpenEMR patient row from the clinician-confirmed
  * intake review and seeds the lists table with active problems,
- * medications, and allergies in one transaction. Mirrors the canonical
- * ``interface/new/new_patient_save.php`` patient-allocation pattern
- * (table-lock → MAX(pid)+1 → unlock → newPatientData) so the AI path
- * never diverges from the stock-form path on the demographics write.
+ * medications, and allergies in one transaction.
  *
  * Family-history write-back is documented in the plan as cuttable for
  * tonight; the family-history rows submitted from the review form are
@@ -27,10 +24,13 @@ declare(strict_types=1);
 
 require_once(__DIR__ . "/../globals.php");
 
+use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Database\SqlQueryException;
 use OpenEMR\Common\Session\SessionWrapperFactory;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\OEGlobalsBag;
 
 $globalsBag = OEGlobalsBag::getInstance();
@@ -91,74 +91,49 @@ if ($fname === '' || $lname === '' || $dob === '' || $sex === '') {
     exit('first name, last name, date of birth, and sex are required');
 }
 
-// Allocate a new pid using the same table-lock pattern as
-// interface/new/new_patient_save.php so we don't race against a
-// concurrent stock-form patient creation.
-QueryUtils::sqlStatementThrowException('LOCK TABLES patient_data READ');
-$row = QueryUtils::querySingleRow('SELECT MAX(pid)+1 AS pid FROM patient_data');
-QueryUtils::sqlStatementThrowException('UNLOCK TABLES');
-$pidRaw = (is_array($row) ? ($row['pid'] ?? null) : null);
-$newpid = is_int($pidRaw) ? $pidRaw : (is_numeric($pidRaw) ? (int) $pidRaw : 0);
+// We INSERT directly rather than calling library/patient.inc.php's
+// newPatientData(): for a fresh pid it queries the (not-yet-existing)
+// row for fitness/referral_source, gets null back, and tries to write
+// fitness = NULL — which trips STRICT_TRANS_TABLES (fitness is NOT NULL
+// in schema). Inserting only the columns we actually populate lets
+// MySQL fill the rest with their schema defaults.
+
+$session = SessionWrapperFactory::getInstance()->getActiveSession();
+$authUserIdRaw = $session->get('authUserID');
+$authUserId = is_int($authUserIdRaw)
+    ? $authUserIdRaw
+    : (is_numeric($authUserIdRaw) ? (int) $authUserIdRaw : 0);
+
+$nowDateTime = date('Y-m-d H:i:s');
+$nowDate = date('Y-m-d');
+
+$pidRow = QueryUtils::querySingleRow('SELECT MAX(pid) + 1 AS pid FROM patient_data');
+$pidVal = is_array($pidRow) ? ($pidRow['pid'] ?? null) : null;
+$newpid = is_int($pidVal) ? $pidVal : (is_numeric($pidVal) ? (int) $pidVal : 1);
 if ($newpid <= 0) {
     $newpid = 1;
 }
 
-setpid($newpid);
-
-$pubpid = $externalMrn !== '' ? $externalMrn : (string) $newpid;
-$registeredOn = date('Y-m-d');
+$pubpidValue = $externalMrn !== '' ? $externalMrn : (string) $newpid;
+$patientUuid = (new UuidRegistry(['table_name' => 'patient_data']))->createUuid();
 
 QueryUtils::sqlStatementThrowException('START TRANSACTION');
 try {
-    newPatientData(
-        '',                  // db_id
-        '',                  // title
-        $fname,
-        $lname,
-        '',                  // mname
-        $sex,
-        $dob,
-        '',                  // street
-        '',                  // postal_code
-        '',                  // city
-        '',                  // state
-        '',                  // country_code
-        '',                  // ss
-        '',                  // occupation
-        $phone,              // phone_home
-        '',                  // phone_biz
-        '',                  // phone_contact
-        '',                  // status
-        '',                  // contact_relationship
-        '',                  // referrer
-        '',                  // referrerID
-        $email,
-        '',                  // language
-        '',                  // ethnoracial
-        '',                  // interpreter
-        '',                  // migrantseasonal
-        '',                  // family_size
-        '',                  // monthly_income
-        '',                  // homeless
-        '',                  // financial_review
-        $pubpid,
-        (string) $newpid,
-        '',                  // providerID
-        '',                  // genericname1
-        '',                  // genericval1
-        '',                  // genericname2
-        '',                  // genericval2
-        '',                  // billing_note
-        '',                  // phone_cell
-        '',                  // hipaa_mail
-        '',                  // hipaa_voice
-        0,                   // squad
-        0,                   // pharmacy_id
-        '',                  // drivers_license
-        '',                  // hipaa_notice
-        '',                  // hipaa_message
-        $registeredOn,
+    QueryUtils::sqlInsert(
+        <<<'SQL'
+        INSERT INTO patient_data SET
+            pid = ?, uuid = ?, fname = ?, lname = ?, sex = ?, DOB = ?,
+            phone_home = ?, email = ?, pubpid = ?,
+            regdate = ?, date = ?, created_by = ?, updated_by = ?
+        SQL,
+        [
+            $newpid, $patientUuid, $fname, $lname, $sex, $dob,
+            $phone, $email, $pubpidValue,
+            $nowDate, $nowDateTime, $authUserId, $authUserId,
+        ],
     );
+
+    setpid($newpid);
 
     // OpenEMR expects a stub employer_data + history_data row to exist
     // for every patient — the stock new-patient flow does the same thing
@@ -288,17 +263,6 @@ try {
         );
     }
 
-    // Chief complaint is captured for the encounter — for tonight we
-    // append it to the patient's history_data.usertext1 since creating
-    // an encounter is a separate sub-flow. The clinician can convert
-    // it into an actual encounter from the chart.
-    if ($chiefComplaint !== '') {
-        QueryUtils::sqlStatementThrowException(
-            'UPDATE history_data SET usertext1 = ? WHERE pid = ? ORDER BY id DESC LIMIT 1',
-            ['CHIEF COMPLAINT (Co-Pilot intake): ' . $chiefComplaint, $newpid],
-        );
-    }
-
     // Link the source intake document back to the new patient pid.
     if ($documentId !== '' && str_starts_with($documentId, 'openemr:doc:')) {
         $docNumeric = (int) substr($documentId, strlen('openemr:doc:'));
@@ -314,6 +278,26 @@ try {
 } catch (\Throwable $exc) {
     QueryUtils::sqlStatementThrowException('ROLLBACK');
     throw $exc;
+}
+
+// Chief complaint is captured for the encounter, not the patient
+// record — the stock new-patient flow has the clinician add it on the
+// first encounter form. We stash it best-effort in
+// history_data.additional_history so it isn't lost between intake
+// upload and the first encounter; failure here must not undo a
+// successfully created patient, so it lives outside the transaction.
+if ($chiefComplaint !== '') {
+    try {
+        QueryUtils::sqlStatementThrowException(
+            'UPDATE history_data SET additional_history = ? WHERE pid = ? ORDER BY id DESC LIMIT 1',
+            ['CHIEF COMPLAINT (Co-Pilot intake): ' . $chiefComplaint, $newpid],
+        );
+    } catch (SqlQueryException $exc) {
+        ServiceContainer::getLogger()->warning(
+            'Co-Pilot intake: chief-complaint stash failed',
+            ['pid' => $newpid, 'exception' => $exc],
+        );
+    }
 }
 
 $webrootRaw = $globalsBag->get('webroot', '');
