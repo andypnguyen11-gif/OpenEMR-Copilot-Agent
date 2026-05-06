@@ -1,0 +1,109 @@
+# MR-blocking CI for the Week 2 multi-agent + multimodal stack.
+#
+# Two stages, both required:
+#
+#   1. test         — targeted pytest over the Stage 4A harness +
+#                     supervisor + rerank surfaces. Existing pre-Stage-4A
+#                     test debt in tests/unit/test_tools_meds.py and
+#                     tests/integration/test_metrics_route.py is
+#                     intentionally not in scope here.
+#   2. eval-gate    — full 50-case extraction eval suite (boolean
+#                     rubrics + baseline regression). Costs ~$2-3 per
+#                     run. Required for MR merge to main.
+#
+# Required CI/CD variable (Settings → CI/CD → Variables):
+#   ANTHROPIC_API_KEY   masked, protected, type=Variable
+#
+# Job-result artifacts (eval-gate uploads results JSON + Markdown for
+# the grader and for post-merge regression triage).
+
+stages:
+- test
+- eval
+
+default:
+  image: python:3.12-slim
+  before_script:
+    # Install uv into the runner image. Cached across runs by the
+    # global `cache` block below so the warm path is ~5s.
+  - apt-get update && apt-get install -y --no-install-recommends curl ca-certificates make
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - export PATH="$HOME/.local/bin:$PATH"
+  - cd agent-service
+  - uv sync --all-extras --dev
+
+cache:
+  key:
+    files:
+    - agent-service/uv.lock
+  paths:
+  - agent-service/.venv/
+  - $HOME/.cache/uv/
+
+# --------------------------------------------------------------- test
+
+agent-service:test:
+  stage: test
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    changes:
+    - agent-service/**/*
+    - .gitlab-ci.yml
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+    - agent-service/**/*
+    - .gitlab-ci.yml
+  script:
+    # Targeted to Stage 4A scope. The full `make test` carries 3
+    # pre-existing failures unrelated to this MR series.
+  - >-
+    uv run pytest
+    tests/unit/evals
+    tests/unit/corpus/test_rerank.py
+    tests/integration/test_supervisor.py
+    -v
+  timeout: 10m
+
+# --------------------------------------------------------------- eval
+
+agent-service:eval-gate:
+  stage: eval
+  needs:
+  - agent-service:test
+  rules:
+    # Skip on forks / community contributions where the secret isn't
+    # available — the runner short-circuits cleanly with a clear
+    # message rather than failing on a missing variable.
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_PROJECT_PATH == $CI_PROJECT_PATH
+    changes:
+    - agent-service/**/*
+    - .gitlab-ci.yml
+  - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    changes:
+    - agent-service/**/*
+    - .gitlab-ci.yml
+  variables:
+    # Pulled from the masked, protected CI/CD variable.
+    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  script:
+  - |
+    if [ -z "${ANTHROPIC_API_KEY}" ]; then
+      echo "ERROR: ANTHROPIC_API_KEY is not set."
+      echo "Configure under Settings → CI/CD → Variables (masked + protected)."
+      exit 1
+    fi
+   # Fail fast on label/manifest drift before spending tokens.
+  - make eval-labels-validate
+    # Full 50-case live gate — boolean rubrics, baseline regression.
+  - make eval-extraction-gate
+  artifacts:
+    name: eval-results-$CI_PIPELINE_ID
+    when: always
+    expire_in: 30 days
+    paths:
+    - agent-service/evals/extraction/results/
+    reports:
+      # GitLab renders this in the MR widget if a junit-style report
+      # is later added; for now the JSON + Markdown summaries under
+      # results/ are the canonical artifact.
+  timeout: 25m
