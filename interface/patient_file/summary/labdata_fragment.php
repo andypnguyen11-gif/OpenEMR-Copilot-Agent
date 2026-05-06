@@ -16,13 +16,33 @@ require_once("../../globals.php");
 
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
+use OpenEMR\Core\OEGlobalsBag;
 
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
 CsrfUtils::checkCsrfInput(INPUT_POST, dieOnFail: true);
 
+$labFragmentWebrootRaw = OEGlobalsBag::getInstance()->get('webroot', '');
+$labFragmentWebroot = is_string($labFragmentWebrootRaw) ? $labFragmentWebrootRaw : '';
+
+// Resolve $pid explicitly from the patient session rather than relying
+// on the implicit global set in globals.php — keeps the value typed
+// for downstream uses (the SELECT below, the upload-doc link).
+$pidFromSession = $session->get('pid');
+$pid = is_int($pidFromSession)
+    ? $pidFromSession
+    : (is_numeric($pidFromSession) ? (int) $pidFromSession : 0);
+
 ?>
 <div id='labdata' style='margin-top: 3px; margin-left: 10px; margin-right: 10px'><!--outer div-->
-<br />
+<div class="copilot-lab-upload" style="margin-top: 6px; margin-bottom: 6px;">
+    <a href="<?php echo attr($labFragmentWebroot); ?>/interface/copilot/upload_lab.php?pid=<?php echo attr_url((string) $pid); ?>"
+       target="_blank"
+       rel="noopener"
+       class="btn btn-sm btn-outline-primary"
+       onclick="top.restoreSession()">
+        <?php echo xlt('Upload lab document (AI extract)'); ?>
+    </a>
+</div>
 <?php
 //retrieve most recent set of labdata.
 $spell = "SELECT procedure_report.date_collected AS thedate, " .
