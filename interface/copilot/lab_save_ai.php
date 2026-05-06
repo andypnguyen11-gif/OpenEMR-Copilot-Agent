@@ -200,9 +200,12 @@ $globals = OEGlobalsBag::getInstance();
 $webrootRaw = $globals->get('webroot', '');
 $webroot = is_string($webrootRaw) ? $webrootRaw : '';
 
-// Take the clinician back to the chart's procedure-results page so
-// they see the new rows immediately. ``orders/list_reports.php`` is
-// the canonical "lab inbox" view.
-$dest = $webroot . '/interface/orders/list_reports.php?patient_id=' . $pid;
+// Take the clinician straight to the just-saved order's results
+// view. ``orders/list_reports.php`` is the canonical lab inbox but
+// it short-circuits without ``form_refresh`` and never auto-scopes
+// to a single patient via the URL — so it would render an empty
+// grid even though the rows are in the DB. ``single_order_results``
+// renders this specific order's procedure_report rows directly.
+$dest = $webroot . '/interface/orders/single_order_results.php?orderid=' . $orderId;
 header('Location: ' . $dest);
 exit;
