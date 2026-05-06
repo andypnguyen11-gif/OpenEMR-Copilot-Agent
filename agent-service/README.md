@@ -5,6 +5,141 @@ OpenEMR PHP app on Railway. This package is the runtime that owns the
 orchestrator, verification middleware, discrepancy engine, tools, and audit
 log; the OpenEMR PHP gateway only signs JWTs and proxies HTTP.
 
+The repo carries **two scope layers** that are deliberately kept separate:
+
+| Layer | Status | Code surface | Docs |
+|---|---|---|---|
+| **Week 1 baseline** — chart-tools-only Q&A; FHIR-backed structured tools; verification + abstention; reconciliation against the chart. | Live on `main`. | `clinical_copilot/{tools,orchestrator,discrepancy,verification,audit,…}` | `../PRD.md`, `../ARCHITECTURE.md`, `../TASKS.md` |
+| **Week 2 multimodal** — vision extraction of lab PDFs and intake forms; guideline-corpus retrieval; ExtractedField/SourceCitation contract. | In progress on `main`. **Demo path documented in [§ Week 2 — Multimodal demo](#week-2--multimodal-demo) below**. | `clinical_copilot/{schemas,documents,corpus}` (all new in W2). | `../PRD2.md`, `../W2_ARCHITECTURE.md`, `../TASKS2.md` |
+
+Graders evaluating the Week 2 milestone should read the
+**Week 2 — Multimodal demo** section first; everything below it is the
+Week 1 baseline material.
+
+---
+
+## Week 2 — Multimodal demo
+
+The Week 2 milestone for tonight is **end-to-end document ingestion and
+first evidence retrieval**. The demo runs locally without OpenEMR or
+the Symfony Documents listener — the full upload-to-queue path
+(W2-02 in `../TASKS2.md`) lands in a follow-up MR. For the demo path,
+the only services required are:
+
+* **Python 3.12 + uv** (this package).
+* **An Anthropic API key** (`ANTHROPIC_API_KEY`) for the vision
+  extractor. No FHIR server, no OpenEMR, no Postgres are needed for
+  the Week 2 demo.
+
+### Setup (one-time)
+
+```bash
+cd agent-service
+uv sync --dev
+
+# Export your Anthropic API key — or put it in agent-service/.env.
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# Build the synthetic fixture PDFs (committed; only re-run if you
+# change the builder or want to regenerate).
+uv run python -m tests.fixtures.build_pdfs
+
+# Build the BM25 corpus index from the committed markdown sources
+# under `corpus/sources/`.
+uv run python -m clinical_copilot.corpus.index --rebuild
+```
+
+### Demo path
+
+Three commands. Each is independent — they share no global state.
+
+**1. Extract a lab PDF.** Vision LLM emits structured `LabPdfFacts`
+with per-row citations; written to `data/extracted/<id>.json`.
+
+```bash
+uv run python -m clinical_copilot.scripts.ingest_document \
+    --pdf tests/fixtures/lab_pdf/glucose_panel.pdf \
+    --type lab_pdf \
+    --document-id lab-glucose-001
+```
+
+**2. Extract an intake form.** Same path, `intake_form` schema.
+"NKDA" / "denies allergies" intentionally surfaces as a single
+allergy entry with substance="NKDA" — that is an explicit
+no-known-drug-allergies assertion, distinct from an empty list.
+
+```bash
+uv run python -m clinical_copilot.scripts.ingest_document \
+    --pdf tests/fixtures/intake_form/intake_chest_pain.pdf \
+    --type intake_form \
+    --document-id intake-chest-001
+```
+
+**3. Retrieve evidence.** BM25 over the committed USPSTF / CDC / NIH /
+AHA corpus. Top-K chunks come back with `source`, `source_url`, and
+the chunk text.
+
+```bash
+uv run python -m clinical_copilot.scripts.retrieve_evidence \
+    --query "elevated LDL cholesterol statin primary prevention" \
+    --k 3
+```
+
+### Demo coverage matrix
+
+| Component | Demo cut shipped tonight | Full scope (deferred MRs) |
+|---|---|---|
+| W2-01 schemas + abstain enum | `RuntimeAbstainReason` (7 members), `SourceCitation`, `ExtractedField[T]`, `LabPdfFacts`, `IntakeFormFacts`. | Eval-side `EvalCaseState` enum, import-linter contract, eval-harness skeleton. |
+| W2-02 OpenEMR Documents bridge | **Bypassed** — local CLI (`scripts/ingest_document.py`) drops in a PDF directly. | Symfony EventDispatcher listener, HMAC payload, `extraction_jobs` queue, `GET /agent/documents/{id}`. |
+| W2-03 lab_pdf VLM extractor | Live extraction with one citation per observation row (see **Demo simplifications** below). | Per-field citation, queue worker, eval bucket of 12 cases, `extracted_facts` table. |
+| W2-04 intake_form extractor | Live extraction; single-page only; NKDA negation handled. | Stateful page-2 fallback, eval bucket of 10 cases. |
+| W2-05 citation OCR check | **Bypassed** — confidence-threshold abstain only. | Strict + degraded path with Tesseract OCR; false-reject set ≤5 %. |
+| W2-06 evidence retriever | BM25 over ~58 chunks across 11 docs; CLI. | pgvector dense + cross-encoder rerank; tool wrapper for the supervisor; eval bucket of 8 cases. |
+| W2-07 LangGraph supervisor | Not in tonight's scope. | Planner / critic / verification graph composition. |
+| W2-12 PHI redaction in spans | Not active — `LANGSMITH_TRACING=false`. | Test-first redaction layer before any LangSmith span carries extracted text. |
+
+### Demo simplifications (forward-compatible)
+
+* The vision extractor emits **one citation per observation row /
+  intake section**, not per field. Per-field citation lands in the
+  full W2-03 MR; the surface (`ExtractedField[T].citation`) is
+  identical so swapping is internal.
+* Extracted facts are persisted as JSON files under
+  `data/extracted/<document-id>.json`. The full W2-03 plan persists
+  one row per field in `extracted_facts` (alembic-managed); same
+  Pydantic shape, write-site-only change.
+* Citation validity is enforced by VLM-reported confidence
+  (`< 0.7 → LOW_CONFIDENCE`). The OCR-based bbox-vs-text check
+  (PRD2 §8.2 / Appendix A.4) is W2-05 and not wired in.
+* The retriever is BM25-only. Dense retrieval and cross-encoder
+  rerank land in W2-06 proper.
+
+### Tests
+
+The Week 2 unit tests are isolated and run without an Anthropic key
+or any external services:
+
+```bash
+uv run pytest tests/unit/schemas/ tests/unit/documents/ tests/unit/corpus/
+```
+
+Live extractor behaviour is exercised by the demo CLIs above (those
+do require `ANTHROPIC_API_KEY`).
+
+### Week 2 environment variables (only)
+
+The Week 2 demo path uses **only** these variables. Everything else
+in the [Environment Variables](#environment-variables) table below is
+Week 1 baseline territory and is not needed to run the demo.
+
+| Var | Required for the W2 demo | Default | Purpose |
+|---|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | `""` | Vision LLM call for `lab_pdf` / `intake_form` extraction. |
+| `MODEL_SLOW` | no | `claude-sonnet-4-6` | Override the extractor model (defaults to `Settings.model_slow`). |
+| `LANGSMITH_TRACING` | no | unset | Leave unset for the demo — Week 2 PHI redaction (W2-12) is not yet active. |
+
+---
+
 For overall project intent see `../PRD.md` and `../ARCHITECTURE.md`. For the
 PR-by-PR build plan see `../TASKS.md`.
 
