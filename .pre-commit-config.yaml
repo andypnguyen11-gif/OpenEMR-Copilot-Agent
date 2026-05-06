@@ -170,6 +170,30 @@ repos:
     stages:
     - pre-push
 
+  # Stage 4A extraction-eval gate, offline subset. Runs the cached
+  # rubric path + the live BM25 retrieval path — both free, ~5s wall.
+  # Catches manifest drift (count != 50, dup IDs, missing artifacts),
+  # unreviewed labels, rubric regressions on cached predictions, and
+  # retrieval-bucket gold-id misses. Live VLM cases (28 of 50) cost
+  # ~$2-3 and stay a manual `make eval-extraction-gate` step before
+  # any release branch push.
+  #
+  # The PRD2 §15 ask is "Git Hook or equivalent that runs the eval
+  # suite and blocks regressions." With no GitLab runners available
+  # this hook IS the regression gate — `git push --no-verify` is the
+  # only way around it.
+  #
+  # Install with:  prek install --hook-type pre-push
+  # Skip ad-hoc:   PREK_SKIP=agent-service-eval-gate git push
+  - id: agent-service-eval-gate
+    name: agent-service eval gate (cached + retrieval, offline)
+    entry: bash -c 'cd agent-service && uv run python -m clinical_copilot.evals.extraction.runner --use-cached'
+    language: system
+    files: ^agent-service/
+    pass_filenames: false
+    stages:
+    - pre-push
+
   - id: conventional-commits
     name: Conventional Commits
     entry: bash -c 'composer conventional-commits:check -- "$(<"$1")"' --
