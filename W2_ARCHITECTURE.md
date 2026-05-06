@@ -1,9 +1,58 @@
 # W2_ARCHITECTURE.md — Clinical Co-Pilot, Week 2
 
 **Status:** Draft for Week 2 architecture defense
-**Last updated:** 2026-05-04
+**Last updated:** 2026-05-06
 **Companion to:** ARCHITECTURE.md (v1, Week 1) — *not a replacement*. Week 2
 extends Week 1; v1 sections that aren't restated here remain in force.
+
+---
+
+## Status as of 2026-05-06 — shipped vs deferred
+
+This document is the architecture target. The Week 2 demo ships a subset;
+remaining surfaces are tracked as deferred MRs in TASKS2.md. PRD2.md
+carries the product-level status block; this section is the architecture
+delta against this document's own §1–§16.
+
+**Shipped (live in `agent-service` and the OpenEMR fork):**
+
+| Surface | Module / file |
+|---|---|
+| Document schemas + `ExtractedField[T]` | `clinical_copilot/documents/schemas/{citation,lab_pdf,intake_form}.py` |
+| Vision extractor | `clinical_copilot/documents/extractor.py` |
+| Document fetcher / page render | `clinical_copilot/documents/fetcher.py` |
+| Extracted-fact JSON store (file-backed; not Postgres) | `clinical_copilot/documents/store.py` |
+| Synchronous ingest route | `POST /api/agent/internal/ingest` + `GET /api/agent/internal/extracted/{id}` in `main.py` |
+| Corpus indexer + BM25 retriever | `clinical_copilot/corpus/{chunker,index,retriever,embedder,scrub,records}.py` |
+| Corpus sources (~58 chunks) | `agent-service/corpus/sources/{uspstf,cdc,nih,aha}/` + `LICENSES.md` |
+| Demo CLIs | `clinical_copilot/scripts/{ingest_document,retrieve_evidence}.py` |
+| Extraction eval runner + 10 cases | `tests/eval/extraction_runner.py` + `tests/eval/w2_cases/{extraction-lab,extraction-intake}/` |
+| Verification: confidence-floor abstain | `clinical_copilot/verification/abstention.py` (`LOW_CONFIDENCE`) |
+| Chart-side AI entry points (PHP) | `interface/copilot/{upload_lab,lab_review,lab_save_ai,new_patient_with_ai,intake_review,new_patient_save_ai}.php`; menu items in `interface/main/tabs/menu/menus/{standard,front_office}.json`; chart Labs button in `interface/patient_file/summary/labdata_fragment.php` |
+| Ingest gateway (PHP) | `src/Services/Copilot/IngestClient.php` (calls the agent-service multipart route) |
+| Fast-lane `get_labs` | `clinical_copilot/app_state.py` lane subset now includes `get_labs` |
+
+**Deferred (design captured in §1–§16 below; MR not yet landed):**
+
+| Surface | This doc | Reason it's deferred |
+|---|---|---|
+| Documents-subsystem post-upload Symfony listener | §3.1, §1 topology | Replaced for the demo by chart-side PHP page → multipart ingest. Production listener is MR W2-02; data shape is identical so the swap is internal. |
+| Postgres `extraction_jobs` queue (`SKIP LOCKED` worker) | §3.2, §1 | Today's path is synchronous on the ingest request — no async worker. `extracted_facts` table likewise deferred; facts persist as JSON files. |
+| `GET /agent/documents/{id}` and `/summary` endpoints | §3.3, §3.4 | Not built. Clinician review happens on `lab_review.php` / `intake_review.php`, not a polling side panel. |
+| Documents-view side panel + chart summary card | §3.3, §3.4 | Not built. The "primary extraction-state surface" of PRD2 §2 lives on the dedicated review pages instead. |
+| LangGraph multi-agent graph (planner / supervisor / critic / state / edges / nodes) | §4 | LangGraph is not a dependency. Synthesis runs through the v1 single-loop orchestrator (`orchestrator/agent.py` + `lanes.py`). The chart-tools / corpus separation is enforced today by package layout only — no `import-linter` contract. |
+| OCR strict + degraded path (`_check_document_bbox`) | §7.1 | Not built. `verification/citation_check.py` enforces the v1 citation discipline + the `LOW_CONFIDENCE` floor only. `CitationKind` and the verdict tri-state are not yet in code. |
+| Dense embedding + cross-encoder rerank | §6 | Retriever is BM25-only over 11 sources. Public `retrieve(query, k)` surface matches the planned hybrid shape; the dense path is gated on the artifacts being present. |
+| `import-linter` contract for tool-vs-RAG boundary | §10 | Not configured. The package boundary holds in code today (`tools/`, `documents/`, `corpus/` packages don't cross-import) but is not gate-enforced. |
+| Per-stage latency histogram + `latency.stage_p95` rubric | §11 | Not built. Spans carry `latency_ms` but no eval-side aggregation or budget assertion. |
+| LangSmith deny-by-default redaction layer | §8 | Not built; demo runs with `LANGSMITH_TRACING=false`. |
+| Pre-push `make copilot-eval` gate | §9 | Pre-push hook today is `agent-service-pytest` (unit + integration). `make eval` runs the v1 Q&A suite + extraction runner; not a 50-case golden set. |
+
+**Conflict resolution.** When this status block disagrees with a section
+below, this block reflects what is *deployed*; the section reflects what
+the deferred MR will deliver. Appendix-A contracts in PRD2 still bind
+whatever ships — fewer surfaces today doesn't relax the citation,
+abstention, or RBAC contracts on the surfaces that exist.
 
 ---
 
@@ -213,6 +262,39 @@ build itself logged so any rejection is auditable.
 
 ## 3. Document Ingestion Flow
 
+> **Status (2026-05-06).** §3.1 (PHP-side listener path), §3.2 (queue +
+> async worker), §3.3 (Documents-view side panel polling
+> `GET /agent/documents/{id}`), and §3.4 (chart-panel summary card via
+> `GET /agent/documents/summary`) are the planned production design and
+> have not landed. Today's path is one synchronous round-trip:
+>
+> 1. Clinician opens the chart's Labs panel and clicks "Upload lab
+>    document (AI extract)" (or, for a brand-new patient, picks
+>    "Add Patient (with AI)" from the Patient menu).
+> 2. `interface/copilot/upload_lab.php` (or `new_patient_with_ai.php`)
+>    accepts the file via OpenEMR's standard form, then POSTs the binary
+>    as multipart to `POST /api/agent/internal/ingest` on the agent
+>    service through `OpenEMR\Services\Copilot\IngestClient`. The HTTP
+>    call is service-to-service: it carries an internal-token header,
+>    *not* a clinician JWT — the patient binding is supplied as a
+>    multipart form field.
+> 3. The agent service's `ingest_route` (in `main.py`) calls
+>    `documents.extractor.run_extraction` synchronously, persists the
+>    facts as JSON via `documents.store`, and returns the parsed facts
+>    in the response body alongside `facts_url=
+>    /api/agent/internal/extracted/<document_id>` for re-reads.
+> 4. The clinician confirms / edits the extracted facts on
+>    `lab_review.php` (or `intake_review.php`). On save,
+>    `lab_save_ai.php` writes `procedure_order` + `procedure_result`
+>    rows; `new_patient_save_ai.php` creates the patient via direct
+>    INSERT and seeds `patient_data` + the lists tables.
+>
+> Re-extraction on a page reload uses
+> `GET /api/agent/internal/extracted/{document_id}` so a nav-away-and-
+> back doesn't re-spend the VLM call. There is no SKIP-LOCKED worker
+> today and no `extraction_jobs` row — the demo's "queue" is the
+> request itself.
+
 PRD2 §2.1 has the sequence diagram. This section is the *concrete
 mapping* of each lane in that diagram to a module.
 
@@ -300,6 +382,20 @@ extraction_summary.py` for the aggregation; route registered in
 ---
 
 ## 4. Multi-Agent Graph
+
+> **Status (2026-05-06).** **Not built.** LangGraph is not a
+> dependency of the deployed agent service today
+> (`agent-service/pyproject.toml` does not include `langgraph`).
+> Synthesis runs through the v1 single-loop orchestrator
+> (`clinical_copilot/orchestrator/agent.py` + `lanes.py`):
+> resolve session → look up lane → call the lane's LLM with the
+> lane's tool subset → run draft through `verification/middleware.py`
+> → return. The four-node graph below is MR W2-07; reading it as
+> *current* behaviour is wrong. The `tools/extracted_facts.py` and
+> `tools/guideline_evidence.py` wrappers that would let the v1 agent
+> reach into Week 2 stores are likewise not yet built — extraction
+> and corpus retrieval are reachable today only through the demo CLIs
+> and the `POST /api/agent/internal/ingest` route, not through chat.
 
 Four LangGraph nodes — supervisor (with planner as the entry-point
 node), intake-extractor, evidence-retriever, critic — plus the
@@ -551,6 +647,21 @@ involved in the merge** — it's deterministic.
 
 ## 6. Hybrid RAG
 
+> **Status (2026-05-06).** Corpus + indexer + BM25 retriever are
+> shipped. `corpus/sources/` holds 11 Markdown excerpts under
+> `uspstf/`, `cdc/`, `nih/`, `aha/` (~58 chunks total), each a
+> *synthetic excerpt adapted from public guidance* per
+> `corpus/sources/LICENSES.md` — a small starter corpus for the demo,
+> not the targeted ~200-doc curated set of PRD2 §7. The retriever's
+> public surface (`retrieve(query, k)`) matches the planned hybrid
+> shape and degrades cleanly to BM25-only when dense artifacts are
+> absent. Dense embedding via OpenAI (`text-embedding-3-small`) and
+> the cross-encoder rerank step are wired through `corpus/embedder.py`
+> + the retriever scaffolding but **not active in the deployed demo**;
+> they're a one-flag swap once the artifacts ship. The corpus is also
+> not yet wired into the chat synthesis path — today it is reachable
+> only via `python -m clinical_copilot.scripts.retrieve_evidence`.
+
 ### 6.1 Corpus structure
 
 ```
@@ -628,6 +739,16 @@ v1's `verification/middleware.py` is unchanged in structure. Three
 files extend with Week-2-specific paths:
 
 ### 7.1 `verification/citation_check.py` (extended)
+
+> **Status (2026-05-06).** The `CitationKind` enum and
+> `_check_document_bbox` strict-+-degraded path are deferred (MR
+> W2-05). Today, document fields abstain on confidence floor only
+> (`< 0.7 → LOW_CONFIDENCE`). `CITATION_INVALID` is a member of the
+> runtime abstain enum but is unreachable until the OCR check ships.
+> No Tesseract pass exists in `agent-service`; `pyproject.toml` does
+> not include `pytesseract`. `_check_corpus_chunk` is also not yet
+> wired — corpus citations don't traverse the chat synthesis path
+> today.
 
 Existing v1 logic checks structured-fact citations against
 FHIR-resolved records. Week 2 adds **document citations**:
@@ -720,6 +841,32 @@ the primary control.
 
 ## 9. Eval Harness
 
+> **Status (2026-05-06).** The harness package below
+> (`clinical_copilot/evals/{harness,rubrics,judge,budget,results,
+> case_state}.py` + `evals/w2/{cases.jsonl,judge.yaml,fixtures,
+> corpus_freeze,results}/`) is the planned design (MR W2-11) and has
+> **not landed**. What is shipped lives under `agent-service/tests/`,
+> not `src/clinical_copilot/`:
+>
+> - `tests/eval/extraction_runner.py` — boolean-rubric runner with
+>   `--bucket`, `--csv-out`, and an `ANTHROPIC_API_KEY`-driven live
+>   path. Per-case pass/fail to stdout; non-zero exit on any failure.
+> - `tests/eval/w2_cases/extraction-lab/` — 5 cases.
+> - `tests/eval/w2_cases/extraction-intake/` — 5 cases.
+> - `tests/fixtures/{lab_pdf,intake_form}/` — synthetic fixture
+>   PDFs/PNGs (committed; rebuildable via
+>   `python -m tests.fixtures.build_pdfs`).
+>
+> The shipped runner already enforces the boolean-only rubric
+> discipline of PRD2 §8 (`observation_count_min`, `field_equals`,
+> `field_present`, `field_abstains`, `list_min`); it does not yet
+> implement the 3-of-3 unanimous judge, the budget pre-flight, the
+> quarantine ceiling, or the `latency.stage_p95` / `phi.span_redaction`
+> rubric classes. The `make eval` target in `agent-service/Makefile`
+> chains `make check` (lint + type + pytest) → `tests/eval/runner.py`
+> (the v1 Q&A suite) and is the pre-deploy gate today; it is not the
+> 50-case pre-push gate of §9.5.
+
 ### 9.1 Layout
 
 ```
@@ -808,6 +955,19 @@ hook keeps the per-commit loop tight; the push hook is the gate.
 
 ## 10. Tool-vs-RAG Boundary Enforcement
 
+> **Status (2026-05-06).** The package boundary (`clinical_copilot/
+> tools/`, `clinical_copilot/documents/`, `clinical_copilot/corpus/`)
+> exists in code and is respected today — `corpus/` does not import
+> from `tools/` or `documents/`, and vice versa. The
+> `import-linter`-as-gate enforcement in §10.1 is **not configured**:
+> there is no `agent-service/.importlinter` file and the Makefile has
+> no `import-check` target. The §10.3 worker-level invariants (the
+> `IntakeExtractor` / `EvidenceRetriever` constructors taking nominally
+> distinct store types) are also not yet built — the synthesis path
+> doesn't have those workers as separate modules today. The structural
+> guarantee PRD2 §5.3 promises lands with MR W2-07; until then, the
+> boundary holds by convention, audited by reading the package layout.
+
 PRD2 §5.3 + Appendix A.5 are the *what*. This section is the *how*.
 
 ### 10.1 Module structure as the boundary
@@ -884,6 +1044,13 @@ enforcement PRD2 §5.3 promises.
 ---
 
 ## 11. Latency Budgets
+
+> **Status (2026-05-06).** Per-stage histogram aggregation
+> (`observability/latency.py`) and the `latency.stage_p95` rubric class
+> are deferred (MR W2-11 / W2-12). The §10.1 budgets in PRD2 are the
+> design target; nothing in the deployed agent enforces them today.
+> Spans carry `latency_ms` already, but no eval-side aggregation
+> writes the per-stage report below.
 
 PRD2 §10.1 has the per-stage budgets. This section is enforcement.
 
