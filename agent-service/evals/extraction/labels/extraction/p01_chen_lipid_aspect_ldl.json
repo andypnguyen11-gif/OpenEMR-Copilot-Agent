@@ -7,7 +7,7 @@
   },
   "required_fields": [
     {
-      "expected": "LDL",
+      "expected": "LDL Cholesterol, Calculated",
       "path": "observations[2].display.value"
     },
     {

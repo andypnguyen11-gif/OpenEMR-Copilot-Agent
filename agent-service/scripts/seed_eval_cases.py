@@ -63,13 +63,13 @@ def write_label(bucket: str, name: str, body: dict[str, Any]) -> None:
     out = LABELS_ROOT / bucket / f"{name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     body_with_meta = {"metadata": REVIEW_METADATA, **body}
-    out.write_text(json.dumps(body_with_meta, indent=2, sort_keys=True))
+    out.write_text(json.dumps(body_with_meta, indent=2, sort_keys=True) + "\n")
 
 
 def write_prediction(bucket: str, name: str, body: dict[str, Any]) -> None:
     out = PREDICTIONS_ROOT / bucket / f"{name}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(body, indent=2, sort_keys=True))
+    out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
 
 
 # --------------------------------------------------------------- 28 extraction
@@ -311,7 +311,7 @@ EXTRACTION_CASES: list[tuple[str, str, str, dict[str, Any], list[str], bool, str
         "lab_pdf",
         {
             "required_fields": [
-                {"path": "observations[2].display.value", "expected": "LDL"},
+                {"path": "observations[2].display.value", "expected": "LDL Cholesterol, Calculated"},
                 {"path": "observations[2].value.value", "expected": 158.0},
             ],
         },
