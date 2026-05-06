@@ -1,4 +1,4 @@
-.PHONY: help install check lint format type test run eval deploy discrepancy-cache-clear clean
+.PHONY: help install check lint format type test run eval eval-extraction-gate eval-extraction-smoke eval-extraction-cached eval-extraction-write-baseline eval-labels-validate deploy discrepancy-cache-clear clean
 
 UV ?= uv
 
@@ -56,6 +56,38 @@ test:
 # the `deploy` target below.
 eval: check
 	AGENT_BASE_URL=$(AGENT_BASE_URL) $(UV) run python -m tests.eval.runner
+
+# Stage 4A extraction eval gate. Runs the full 50-case suite live —
+# every case in evals/extraction/cases.jsonl drives the live extractor
+# (or a cached prediction for citation-bucket cases). Two failure modes:
+#   1. Per-rubric pass-rate drops below the threshold in baseline.json.
+#   2. Per-rubric pass-rate regresses by >5pp vs the last baseline.
+# Either fails CI. Cost: roughly $2-3 per run (~50 vision calls).
+eval-extraction-gate:
+	$(UV) run python -m clinical_copilot.evals.extraction.runner
+
+# Live smoke — only cases marked live_smoke=true. Cheap end-to-end
+# sanity check that the extractor + corpus are still wired up; doesn't
+# enforce thresholds.
+eval-extraction-smoke:
+	$(UV) run python -m clinical_copilot.evals.extraction.runner --smoke
+
+# Replay-only — uses cached prediction JSONs, no live LLM call. Used by
+# the integration smoke test and for offline iteration on rubrics.
+eval-extraction-cached:
+	$(UV) run python -m clinical_copilot.evals.extraction.runner --use-cached
+
+# Ratchet the baseline up after a deliberate quality improvement. Writes
+# baseline.json with the current run's pass rates. Use sparingly — every
+# write means future regressions are measured against a higher floor.
+eval-extraction-write-baseline:
+	$(UV) run python -m clinical_copilot.evals.extraction.runner --write-baseline
+
+# Manifest + label schema validation only — no extraction, no rubric
+# evaluation. Catches drift fast (unreviewed labels, duplicate case_ids,
+# missing artifacts) before spending tokens on a full gate run.
+eval-labels-validate:
+	$(UV) run python -m clinical_copilot.evals.extraction.runner --validate-only
 
 # Manual deploy. Make's prerequisite mechanism enforces the gate: if `eval`
 # exits non-zero, `railway up` is never invoked. Production env vars (the

@@ -1,0 +1,92 @@
+{
+  "facts": {
+    "document_id": "eval:c01",
+    "observations": [
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP12345-1"
+          },
+          "value": "LP12345-1"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "Glucose"
+          },
+          "value": "Glucose"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-01"
+          },
+          "value": "2026-04-01"
+        },
+        "flag": null,
+        "reference_high": null,
+        "reference_low": null,
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "mg/dL"
+          },
+          "value": "mg/dL"
+        },
+        "value": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.4,
+              0.2,
+              0.6,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "110.0"
+          },
+          "value": 110.0
+        }
+      }
+    ]
+  }
+}

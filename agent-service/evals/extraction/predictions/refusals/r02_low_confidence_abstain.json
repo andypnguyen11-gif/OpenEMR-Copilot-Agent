@@ -1,0 +1,83 @@
+{
+  "abstention_reason": "LOW_CONFIDENCE",
+  "facts": {
+    "document_id": "eval:r02",
+    "observations": [
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP2"
+          },
+          "value": "LP2"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "HbA1c"
+          },
+          "value": "HbA1c"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-08"
+          },
+          "value": "2026-04-08"
+        },
+        "flag": null,
+        "reference_high": null,
+        "reference_low": null,
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "%"
+          },
+          "value": "%"
+        },
+        "value": {
+          "abstain_reason": "LOW_CONFIDENCE",
+          "citation": null,
+          "value": null
+        }
+      }
+    ]
+  },
+  "synthesized_text": "Could not read the value with sufficient confidence."
+}

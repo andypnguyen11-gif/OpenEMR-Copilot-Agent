@@ -1,0 +1,81 @@
+{
+  "facts": {
+    "document_id": "eval:c06",
+    "observations": [
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP9"
+          },
+          "value": "LP9"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.92,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "Creatinine"
+          },
+          "value": "Creatinine"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-04"
+          },
+          "value": "2026-04-04"
+        },
+        "flag": null,
+        "reference_high": null,
+        "reference_low": null,
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "mg/dL"
+          },
+          "value": "mg/dL"
+        },
+        "value": {
+          "abstain_reason": "LOW_CONFIDENCE",
+          "citation": null,
+          "value": null
+        }
+      }
+    ]
+  }
+}

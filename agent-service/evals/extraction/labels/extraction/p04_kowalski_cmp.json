@@ -1,0 +1,61 @@
+{
+  "metadata": {
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-06",
+    "reviewed_by": "andy",
+    "source_notes": "seeded by scripts/seed_eval_cases.py"
+  },
+  "required_citations": [
+    {
+      "path": "observations[0].value"
+    }
+  ],
+  "required_fields": [
+    {
+      "expected": "Glucose",
+      "path": "observations[0].display.value"
+    },
+    {
+      "expected": 108.0,
+      "path": "observations[0].value.value"
+    },
+    {
+      "expected": "H",
+      "path": "observations[0].flag.value"
+    },
+    {
+      "expected": "BUN",
+      "path": "observations[1].display.value"
+    },
+    {
+      "expected": "Creatinine",
+      "path": "observations[2].display.value"
+    },
+    {
+      "expected": 1.4,
+      "path": "observations[2].value.value"
+    },
+    {
+      "expected": "H",
+      "path": "observations[2].flag.value"
+    },
+    {
+      "expected": "Potassium",
+      "path": "observations[5].display.value"
+    },
+    {
+      "expected": 3.3,
+      "path": "observations[5].value.value"
+    },
+    {
+      "expected": "L",
+      "path": "observations[5].flag.value"
+    }
+  ],
+  "required_list_min": [
+    {
+      "min_count": 14,
+      "path": "observations"
+    }
+  ]
+}

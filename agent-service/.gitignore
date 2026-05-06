@@ -45,3 +45,6 @@ data/extracted/
 oauth-registration-*.json
 seeded-patient-ids.json
 eval-patient-ids.json
+
+# Stage 4A eval results — committed summaries lifted by hand
+evals/extraction/results/

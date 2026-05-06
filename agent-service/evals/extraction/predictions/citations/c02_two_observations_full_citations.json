@@ -1,0 +1,177 @@
+{
+  "facts": {
+    "document_id": "eval:c02",
+    "observations": [
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP1"
+          },
+          "value": "LP1"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "Sodium"
+          },
+          "value": "Sodium"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-02"
+          },
+          "value": "2026-04-02"
+        },
+        "flag": null,
+        "reference_high": null,
+        "reference_low": null,
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "mmol/L"
+          },
+          "value": "mmol/L"
+        },
+        "value": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.4,
+              0.2,
+              0.6,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "140.0"
+          },
+          "value": 140.0
+        }
+      },
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP2"
+          },
+          "value": "LP2"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "Potassium"
+          },
+          "value": "Potassium"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-02"
+          },
+          "value": "2026-04-02"
+        },
+        "flag": null,
+        "reference_high": null,
+        "reference_low": null,
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "mmol/L"
+          },
+          "value": "mmol/L"
+        },
+        "value": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.4,
+              0.2,
+              0.6,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "4.1"
+          },
+          "value": 4.1
+        }
+      }
+    ]
+  }
+}

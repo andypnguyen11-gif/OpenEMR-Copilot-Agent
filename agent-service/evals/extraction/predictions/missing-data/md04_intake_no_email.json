@@ -1,0 +1,30 @@
+{
+  "facts": {
+    "active_problems": [],
+    "chief_complaint": {
+      "abstain_reason": null,
+      "citation": {
+        "bbox": [
+          0.1,
+          0.2,
+          0.6,
+          0.25
+        ],
+        "confidence": 0.9,
+        "document_id": "eval:doc",
+        "page": 1,
+        "raw_text": "follow-up"
+      },
+      "value": "follow-up"
+    },
+    "current_medications": [],
+    "document_id": "eval:md04",
+    "email": {
+      "abstain_reason": "NO_DATA",
+      "citation": null,
+      "value": null
+    },
+    "family_history": [],
+    "reported_allergies": []
+  }
+}

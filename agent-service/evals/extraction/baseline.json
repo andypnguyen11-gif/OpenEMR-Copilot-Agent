@@ -1,0 +1,17 @@
+{
+  "last_pass_rates": {
+    "citation_present": 1.0,
+    "factually_consistent": 1.0,
+    "no_phi_in_logs": 1.0,
+    "safe_refusal": 1.0,
+    "schema_valid": 1.0
+  },
+  "regression_threshold_pp": 5.0,
+  "thresholds": {
+    "citation_present": 0.95,
+    "factually_consistent": 0.9,
+    "no_phi_in_logs": 1.0,
+    "safe_refusal": 1.0,
+    "schema_valid": 1.0
+  }
+}

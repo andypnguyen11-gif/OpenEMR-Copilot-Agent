@@ -1,0 +1,53 @@
+{
+  "metadata": {
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-06",
+    "reviewed_by": "andy",
+    "source_notes": "seeded by scripts/seed_eval_cases.py"
+  },
+  "required_citations": [
+    {
+      "path": "chief_complaint"
+    }
+  ],
+  "required_fields": [
+    {
+      "expected": "James",
+      "path": "legal_first_name.value"
+    },
+    {
+      "expected": "Whitaker",
+      "path": "legal_last_name.value"
+    },
+    {
+      "expected": "1958-11-03",
+      "path": "date_of_birth.value"
+    },
+    {
+      "expected": "Male",
+      "path": "sex_assigned_at_birth.value"
+    },
+    {
+      "expected": "NKDA",
+      "path": "reported_allergies[0].substance.value"
+    }
+  ],
+  "required_list_min": [
+    {
+      "min_count": 3,
+      "path": "current_medications"
+    },
+    {
+      "min_count": 1,
+      "path": "reported_allergies"
+    },
+    {
+      "min_count": 3,
+      "path": "active_problems"
+    },
+    {
+      "min_count": 1,
+      "path": "family_history"
+    }
+  ]
+}

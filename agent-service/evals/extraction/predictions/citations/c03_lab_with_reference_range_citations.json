@@ -1,0 +1,122 @@
+{
+  "facts": {
+    "document_id": "eval:c03",
+    "observations": [
+      {
+        "code": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.1,
+              0.4,
+              0.2
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "LP3"
+          },
+          "value": "LP3"
+        },
+        "display": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.1,
+              0.2,
+              0.4,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "Hemoglobin"
+          },
+          "value": "Hemoglobin"
+        },
+        "effective_date": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.05,
+              0.9,
+              0.1
+            ],
+            "confidence": 0.99,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "2026-04-03"
+          },
+          "value": "2026-04-03"
+        },
+        "flag": null,
+        "reference_high": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.8,
+              0.3,
+              0.9,
+              0.4
+            ],
+            "confidence": 0.9,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "17.0"
+          },
+          "value": 17.0
+        },
+        "reference_low": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.7,
+              0.3,
+              0.8,
+              0.4
+            ],
+            "confidence": 0.9,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "13.0"
+          },
+          "value": 13.0
+        },
+        "unit": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.6,
+              0.2,
+              0.8,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "g/dL"
+          },
+          "value": "g/dL"
+        },
+        "value": {
+          "abstain_reason": null,
+          "citation": {
+            "bbox": [
+              0.4,
+              0.2,
+              0.6,
+              0.3
+            ],
+            "confidence": 0.95,
+            "document_id": "eval:doc",
+            "page": 1,
+            "raw_text": "13.2"
+          },
+          "value": 13.2
+        }
+      }
+    ]
+  }
+}

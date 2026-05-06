@@ -1,0 +1,25 @@
+{
+  "facts": {
+    "active_problems": [],
+    "chief_complaint": {
+      "abstain_reason": null,
+      "citation": {
+        "bbox": [
+          0.1,
+          0.05,
+          0.9,
+          0.12
+        ],
+        "confidence": 0.93,
+        "document_id": "eval:doc",
+        "page": 1,
+        "raw_text": "fatigue and palpitations"
+      },
+      "value": "fatigue and palpitations"
+    },
+    "current_medications": [],
+    "document_id": "eval:c04",
+    "family_history": [],
+    "reported_allergies": []
+  }
+}

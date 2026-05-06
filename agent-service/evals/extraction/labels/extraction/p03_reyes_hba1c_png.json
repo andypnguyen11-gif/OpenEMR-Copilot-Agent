@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-06",
+    "reviewed_by": "andy",
+    "source_notes": "seeded by scripts/seed_eval_cases.py"
+  },
+  "required_citations": [
+    {
+      "path": "observations[0].value"
+    }
+  ],
+  "required_fields": [
+    {
+      "expected": "Hemoglobin A1c",
+      "path": "observations[0].display.value"
+    },
+    {
+      "expected": 8.2,
+      "path": "observations[0].value.value"
+    },
+    {
+      "expected": "%",
+      "path": "observations[0].unit.value"
+    },
+    {
+      "expected": "H",
+      "path": "observations[0].flag.value"
+    },
+    {
+      "expected": "Fasting Glucose",
+      "path": "observations[1].display.value"
+    },
+    {
+      "expected": 152.0,
+      "path": "observations[1].value.value"
+    }
+  ],
+  "required_list_min": [
+    {
+      "min_count": 2,
+      "path": "observations"
+    }
+  ]
+}

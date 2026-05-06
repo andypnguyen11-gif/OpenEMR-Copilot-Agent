@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-06",
+    "reviewed_by": "andy",
+    "source_notes": "seeded by scripts/seed_eval_cases.py"
+  },
+  "required_fields": [
+    {
+      "expected": "Potassium",
+      "path": "observations[5].display.value"
+    },
+    {
+      "expected": "L",
+      "path": "observations[5].flag.value"
+    }
+  ]
+}
