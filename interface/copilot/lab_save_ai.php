@@ -180,7 +180,16 @@ try {
             SQL,
             [
                 $reportId,
-                $row['code'],
+                // Fall back to the analyte name when the extractor didn't
+                // return a LOINC. The chart-side renderer
+                // (single_order_results.inc.php:209) hides any row whose
+                // result_code AND document_id are both empty, so a missing
+                // code would silently drop an otherwise valid observation
+                // from the Order Results view. Storing the display name
+                // keeps the row visible and turns the LOINC educlick into
+                // a useful "look up this analyte" search rather than a
+                // dead link.
+                $row['code'] !== '' ? $row['code'] : $row['display'],
                 $row['display'],
                 $row['unit'],
                 $row['value'],
