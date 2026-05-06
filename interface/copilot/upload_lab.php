@@ -157,7 +157,12 @@ Header::setupHeader();
         .form-group { margin: 1rem 0; }
         label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
         button { padding: 0.5rem 1rem; }
+        button[disabled] { opacity: 0.6; cursor: progress; }
         .hint { color: #666; font-size: 0.9em; margin-top: 0.4rem; }
+        .copilot-loading { display: none; margin-top: 1rem; padding: 0.75rem 1rem; background: #eef5ff; border: 1px solid #b6d2ff; border-radius: 4px; color: #154f9c; }
+        .copilot-loading[data-active="true"] { display: block; }
+        .copilot-spinner { display: inline-block; width: 1em; height: 1em; vertical-align: -0.15em; margin-right: 0.5em; border: 2px solid #b6d2ff; border-top-color: #154f9c; border-radius: 50%; animation: copilot-spin 0.8s linear infinite; }
+        @keyframes copilot-spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -170,7 +175,7 @@ review and confirm before anything is written to the chart.</p>
     <div class="alert-error"><?php echo htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8'); ?></div>
 <?php endif; ?>
 
-<form method="post" enctype="multipart/form-data">
+<form method="post" enctype="multipart/form-data" data-copilot-form>
     <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="form-group">
         <label for="lab_file">Lab PDF or scanned image</label>
@@ -178,8 +183,29 @@ review and confirm before anything is written to the chart.</p>
         <div class="hint">Max page count is 5; extraction takes ~10–30s depending on length.</div>
     </div>
     <div class="form-group">
-        <button type="submit">Upload and extract</button>
+        <button type="submit" data-copilot-submit>Upload and extract</button>
+    </div>
+    <div class="copilot-loading" data-copilot-loading>
+        <span class="copilot-spinner" aria-hidden="true"></span>
+        Extracting&hellip; this can take 10&ndash;30 seconds for a single-page lab.
+        Please don&rsquo;t close this tab.
     </div>
 </form>
+
+<script>
+(function () {
+    var form = document.querySelector('form[data-copilot-form]');
+    if (!form) { return; }
+    form.addEventListener('submit', function () {
+        var btn = form.querySelector('[data-copilot-submit]');
+        var loading = form.querySelector('[data-copilot-loading]');
+        // Note: do NOT disable the file input — disabled inputs are
+        // excluded from form serialization, which would strip the
+        // upload from the multipart body and trigger "No file selected".
+        if (btn) { btn.disabled = true; btn.textContent = 'Extracting…'; }
+        if (loading) { loading.setAttribute('data-active', 'true'); }
+    });
+})();
+</script>
 </body>
 </html>
