@@ -1,7 +1,7 @@
 # TASKS2.md — Clinical Co-Pilot Week 2 Build Plan
 
 **Status:** Working task list, derived from PRD2.md + W2_ARCHITECTURE.md
-**Last updated:** 2026-05-06
+**Last updated:** 2026-05-07
 **Owner:** [you]
 
 This is an MR-by-MR build checklist for the Week 2 Clinical Co-Pilot scope.
@@ -9,28 +9,34 @@ Each top-level item is one GitLab merge request. Sub-tasks are the work
 inside that MR. Files marked **NEW** are created in the MR; files marked
 **EDIT** are existing files modified in the MR.
 
-## Landing status as of 2026-05-06
+## Landing status as of 2026-05-07
 
 The deployed Week 2 demo covers four MRs end-to-end and pulls partial
-deliverables forward from three more. The remaining seven MRs are
-explicitly deferred — design intent stands, no code yet. Read the per-MR
-status header on each block before recommending it as "next up."
+deliverables forward from several more. Significant code landed Wed–Thu
+(2026-05-06 / 2026-05-07) after the Tuesday submission cutoff — the
+supervisor + workers, the 50-case extraction eval gate + CI, and the
+hybrid retriever's dense + rerank stages — but **production wiring of
+the supervisor + hybrid retriever into the live `/api/agent/query` path
+is still deferred**. See "Submission timeline" below for the
+shipped-when breakdown. Read the per-MR status header on each block
+before recommending it as "next up."
 
 | MR | Status | Notes |
 |---|---|---|
 | W2-01 — Schemas + abstain enum | **PARTIAL (DEMO-CUT)** | Runtime schemas, `RuntimeAbstainReason`, and `ExtractedField[T]` shipped under `documents/schemas/`. Eval-side `EvalCaseState` enum, `import-linter` contract, and `evals/` package skeleton — deferred. |
-| W2-02 — OpenEMR Documents category + event hook + state-poll | **DEMO-CUT REPLACEMENT** | The Symfony listener + queue + `GET /agent/documents/{id}` are not built. Replaced by chart-side PHP pages (`upload_lab.php`, `new_patient_with_ai.php`) calling `POST /api/agent/internal/ingest` synchronously. |
-| W2-03 — `lab_pdf` VLM extraction worker | **PARTIAL (DEMO-CUT)** | Live VLM extraction shipped; one citation per observation row, not per field; persisted to `data/extracted/<id>.json`, not `extracted_facts` table. Eval bucket: 5 cases shipped (12 planned). |
-| W2-04 — `intake_form` extraction | **PARTIAL (DEMO-CUT)** | Live single-page extraction shipped; NKDA negation handled. Stateful page-2 fallback deferred. Eval bucket: 5 cases shipped (10 planned). |
+| W2-02 — OpenEMR Documents category + event hook + state-poll | **DEMO-CUT REPLACEMENT** | The Symfony listener + queue + `GET /agent/documents/{id}` are not built. Replaced by chart-side PHP pages (`upload_lab.php`, `new_patient_with_ai.php`, `upload_document.php`) calling `POST /api/agent/internal/ingest` synchronously. |
+| W2-03 — `lab_pdf` VLM extraction worker | **PARTIAL (DEMO-CUT)** | Live VLM extraction shipped; **schema is per-field** via `ExtractedField[T]` (every observation field — code/display/value/unit/date/refs/flag — carries its own `SourceCitation` or `abstain_reason`); the VLM is prompted for one bbox per row so the same citation may repeat across a row's fields. Persisted to `data/extracted/<id>.json`, not the planned `extracted_facts` Postgres table. Eval bucket: 7 cases live in the 50-case manifest (12 planned). |
+| W2-04 — `intake_form` extraction | **PARTIAL (DEMO-CUT)** | Live single-page extraction shipped; NKDA negation handled; per-field citations enforced via `ExtractedField[T]`. Stateful page-2 fallback deferred. Eval bucket: 7 cases live in the 50-case manifest (10 planned). |
 | W2-05 — Citation OCR check | **DEFERRED** | No Tesseract pass; today's gate is VLM-confidence < 0.7 only. `CitationKind` and the strict + degraded path are not in code. |
-| W2-06 — Evidence retriever | **PARTIAL (DEMO-CUT)** | BM25 over 11 sources / ~58 chunks shipped, exposed via CLI. Dense + cross-encoder rerank, tool wrapper for the supervisor, and the 8 retrieval eval cases are deferred. |
-| W2-07 — LangGraph supervisor + planner + critic | **DEFERRED** | LangGraph is not a dependency. v1 single-loop orchestrator is the synthesis path. |
+| W2-06 — Evidence retriever | **PARTIAL (CODE SHIPPED, NOT WIRED INTO LIVE PATH)** | Hybrid retriever (BM25 + dense via `OpenAIEmbedder`, RRF-fused with `k=60`) shipped in `corpus/retriever.py:62–146`; dense path is gated on the `dense.npy` artifact + `OPENAI_API_KEY` and falls back to BM25-only when absent. LLM-judge reranker shipped in `corpus/rerank.py` and called from the supervisor's `evidence_retriever` worker (`orchestrator/workers/evidence_retriever.py:81–92`). **Not wired into `/api/agent/query`** — the live chat path goes through `Orchestrator.run()` (v1) and uses chart tools, not the corpus. Cross-encoder rerank still deferred. |
+| W2-07 — Supervisor + workers | **PARTIAL (CODE SHIPPED, NOT WIRED INTO LIVE PATH)** | Supervisor + `intake_extractor` + `evidence_retriever` workers shipped in `orchestrator/supervisor.py` and `orchestrator/workers/` (commit `39f487aaf`, 2026-05-06). Plain Python via Anthropic `tool_use` dispatch — **no LangGraph dependency** (planner / critic nodes deferred). End-to-end test in `tests/integration/test_supervisor.py`; a separate `GET /api/agent/supervisor/audit/{resident_user_id}` endpoint surfaces handoff rows. **Not yet routed from `/api/agent/query`** — that route still calls `Orchestrator.run()`. The `/api/agent/internal/ingest` route calls `run_extraction()` directly, not the `intake_extractor` worker. |
 | W2-08 — Reconciliation extension (extracted vs chart) | **DEFERRED** | No new discrepancy rules or eval cases yet. |
 | W2-09 — RBAC scope test for documents | **DEFERRED** | The chart-side ingest path uses an internal-token + multipart binding; no `GET /agent/documents/{id}` JWT-bound route exists yet. RBAC tests for the planned route are deferred. The internal-token gate is unit-tested in the v1 RBAC suite. |
-| W2-10 — Abstention rendering + chart summary card | **DEFERRED** | No Documents-view side panel and no chart summary card. Clinician review happens on `lab_review.php` / `intake_review.php`. |
-| W2-11 — Pre-push eval hook + Makefile + flake policy | **PARTIAL (DEMO-CUT)** | Boolean-rubric extraction runner shipped (`tests/eval/extraction_runner.py`, 10 cases). No judge wrapper, no budget pre-flight, no quarantine ceiling, no `make copilot-eval` pre-push hook. Pre-push hook today is `agent-service-pytest`. |
+| W2-10 — Abstention rendering + chart summary card | **DEFERRED** | No Documents-view side panel and no chart summary card. Clinician review happens on `lab_review.php` / `intake_review.php` / `document_review.php`. |
+| W2-11 — Pre-push eval hook + Makefile + flake policy | **SHIPPED (POST-SUBMISSION)** | 50-case extraction eval gate landed Wed (`agent-service/evals/extraction/cases.jsonl`, runner at `src/clinical_copilot/evals/extraction/runner.py`, thresholds in `evals/extraction/baseline.json`: `citation_present ≥ 0.95`, `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`, `schema_valid = 1.0`, `no_phi_in_logs = 1.0`, regression budget 5 pp). Pre-push hook updated to invoke the gate (`4a81eca23`). **GitLab CI pipeline** added at `.gitlab-ci.yml` (`24ae138b9`); **GitHub Actions surface still missing** if the grader expects a `.github/workflows/` gate. Boolean rubrics only; no judge wrapper, no per-stage latency rubric. |
 | W2-12 — PHI redaction in LangSmith spans | **DEFERRED** | Demo runs with `LANGSMITH_TRACING=false`. Re-enabling tracing requires this MR. |
-| W2-MM — Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 45 eval cases / 7 buckets / 346+ rubrics, all green. See plans/week2-multimodal-expansion.md for the per-step breakdown. |
+| W2-MM — Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 35 multimodal eval cases (5 new buckets × 7 cases) on top of the 15 lab/intake cases for 50 total / 7 buckets / 346+ rubrics. See plans/week2-multimodal-expansion.md for the per-step breakdown. |
+| W2-CW — Chart-write confirmation path | **IN PROGRESS (FEEDBACK-CUT)** | PHP review/save flow can attach uploaded documents to an existing patient and write selected extracted sections into OpenEMR chart tables (`lists` for allergies/meds/problems via `ChartWriteService:85,129,179`; `dated_reminders` for care gaps via `:236`; `procedure_order` chain for labs). Remaining proof points: tests for `ChartWriteService` / `FactsExtractor` / save orchestration, visible write-confirmation summary, transaction/idempotency story, and a clear written position vs FHIR Bundle persistence. |
 
 Cross-cutting infrastructure that landed alongside the Week 2 demo (not
 attributed to a specific W2-XX block):
@@ -51,6 +57,225 @@ attributed to a specific W2-XX block):
 - Demo path documented in `agent-service/README.md § Week 2 — Multimodal
   demo`; that section is the canonical shipped/deferred matrix at the
   level of CLIs and env vars.
+
+## Submission timeline
+
+The Tuesday early-submission cutoff was 2026-05-05 23:06 (commit
+`522ed812c`). The reviewer who flagged "supervisor / 50-case eval / CI
+gate missing" was reading that snapshot. Subsequent commits address
+those flags but introduce a new gap: the live `/api/agent/query` path
+still does not route through the supervisor or the hybrid retriever.
+
+**Shipped by Tuesday cutoff (2026-05-05):**
+
+| Surface | Commit | Notes |
+|---|---|---|
+| Vision extractor + hybrid retriever scaffold + document schemas | `1740f03b1` | BM25 path live; dense + RRF code present (gated on `dense.npy` + `OPENAI_API_KEY`) |
+| Multimodal ingest route (`POST /api/agent/internal/ingest`) | `576b4cef0` | Synchronous, calls `run_extraction()` directly |
+| In-EMR upload + review + save flows for lab + intake | `a3f198674` | `lab_review.php`, `intake_review.php`, `lab_save_ai.php`, `new_patient_save_ai.php` |
+| Menu + side-panel entry points for the AI document flows | `70bb6d0e4` | Patient menu; chart Labs panel button; side-panel button |
+| Extraction eval runner + 10 boolean-rubric cases | `f60b8f79e` | Lab + intake buckets only |
+| Production overlay (Railway base image pin, composer tolerance) | `dd2caa173`, `29f74089f`, `bcc36b1a5`, `fd8870f96` | |
+| Fast-lane `get_labs` | `41e4baf9a` | Unblocks "what are the recent labs" in side panel |
+
+**Shipped Wed–Thu post-feedback (2026-05-06 / 2026-05-07):**
+
+| Surface | Commit | Closes which reviewer concern |
+|---|---|---|
+| Supervisor + `intake_extractor` + `evidence_retriever` workers | `39f487aaf` | "Supervisor routing not active" — code now exists; production wiring still open |
+| Stage 4A 50-case extraction eval gate | `0cced10ce` | "Eval/CI gate not at required level" — 50 cases + thresholds |
+| Pre-push hook for the eval gate | `4a81eca23` | Same — local enforcement |
+| GitLab pipeline for the eval gate | `24ae138b9` | Same — CI surface (GitHub Actions still open) |
+| Multimodal expansion (DOCX / XLSX / TIFF / HL7 ORU / HL7 ADT extractors, format classifier, universal upload, patient resolver) | `e256051d3` … `18c484abf` | Broadens "see documents" surface area beyond lab_pdf + intake_form |
+| Editable confirm-and-attach flow on universal document review | `a7ac04c02` | Closes the chart-write loop for universal upload |
+| Chart-write fixes (MIME guard, IngestResponse wrapper, type-hint UX) | `367f0b0b6`, `8bccf5f0a`, `38ea1db54`, `977651b56` | Demo polish |
+
+**The remaining gap after Wed–Thu work:** the new code paths are not
+yet routed from the demonstrated production endpoints.
+`/api/agent/query` still calls `Orchestrator.run()` (v1 single-loop,
+chart tools only — no corpus, no supervisor); `/api/agent/internal/
+ingest` still calls `run_extraction()` directly, not the
+`intake_extractor` worker. This is the honest framing for the
+reviewer-reply: the artifacts they asked for now exist; the production
+wiring is the next deliverable.
+
+## Instructor-feedback recovery checklist
+
+Each item is prefixed with the action category:
+
+- **[done — write up]** — code already exists; need a written
+  artifact (file:line evidence, commit hash, README pointer) so the
+  grader can see it. Cheap.
+- **[decide]** — a trade-off pending; pick a position and document
+  it. Cheap, but commits the team to the choice.
+- **[build]** — real new code needed.
+
+---
+
+- [ ] **[build] OpenEMR chart persistence — confirmation surface (W2-CW).**
+  The write path is in place (`save_document.php:199–238` →
+  `ChartWriteService::writeAllergies/Medications/ActiveProblems/Reminders`
+  → `lists` / `dated_reminders` / `procedure_*` tables). What's missing:
+  a visible post-save confirmation summary in the review UI ("4 facts
+  written to chart, 2 abstained — see audit row 1234"), plus an
+  idempotency story (re-clicking save must not duplicate rows). FHIR
+  Bundle export is **out of scope for early submission** — declare it
+  in the submission narrative.
+
+- [ ] **[build] Tests for the chart-write path.** Focused tests for
+  `src/Services/Copilot/ChartWrite/FactsExtractor.php`,
+  `src/Services/Copilot/ChartWrite/ChartWriteService.php`, and the
+  `interface/copilot/api/save_document.php` happy-path / abstain-path
+  orchestration. Per CLAUDE.md test policy, these ship in the same MR
+  as the confirmation-surface change above.
+
+- [ ] **[decide] Extracted-facts durability (W2-03).** Today: facts
+  persist as `data/extracted/<document-id>.json` on the agent service's
+  local disk — non-durable across container restarts on Railway.
+  Decision pending: ship the planned `extracted_facts` Postgres table
+  in early submission, or document JSON-on-disk as demo-only persistence
+  with a clear "production storage = chart tables, not the JSON
+  sidecar" framing in the submission narrative. The chart-write path
+  already lands the accepted facts into OpenEMR durably, so the JSON
+  sidecar is effectively a temp buffer between extract and review.
+
+- [ ] **[done — write up] Per-field citations — schema + UI (W2-03 + W2-04).**
+  *Schema layer:* both `lab_pdf.py` and `intake_form.py` wrap every
+  leaf in `ExtractedField[T]`; the Pydantic validator at
+  `documents/schemas/citation.py:55–89` enforces an XOR rule (every
+  value carries a `SourceCitation` or an `abstain_reason`, never
+  neither, never both). The eval gate's
+  `citation_present ≥ 0.95` threshold (`baseline.json`) makes this a
+  CI invariant.
+  *UI layer (clinician sees the citation):* `lab_review.php:160–188`
+  renders a "Citation" column per observation row;
+  `intake_review.php:145+` renders a `.citation` div under every
+  named field plus Citation columns in the problems / medications /
+  allergies tables; `document_review.php:305,448` styles
+  `.citation-hint` and yellow abstain badges. Helper:
+  `ExtractedFieldHelper::citationText()` pulls page + bbox raw text
+  from the `ExtractedField` payload.
+  Caveat: the lab VLM prompt asks for one bbox per row, so the same
+  bbox may repeat across an observation's per-field citations —
+  document this as the early-submission VLM behaviour, not a schema
+  weakness.
+  *Open follow-on:* **[build]** OCR-backed citation verification
+  (W2-05) is still deferred — `CitationKind` and the strict + degraded
+  path are not in code; the gate today is VLM-confidence < 0.7 only.
+  Bbox-on-rendered-page overlay (the "view source" modal hinted at in
+  `lab_review.php:12–14`) is also still deferred.
+
+- [ ] **[done — write up] Hybrid retrieval evidence (W2-06).**
+  `corpus/retriever.py:62–146` runs BM25 + dense (when the `dense.npy`
+  artifact exists and `OPENAI_API_KEY` is set) and fuses with RRF
+  (`k=60`); `corpus/rerank.py` runs an LLM-judge rerank over the top-20.
+  The supervisor's `evidence_retriever` worker exercises both
+  (`orchestrator/workers/evidence_retriever.py:78–92`). Tests in
+  `tests/test_retriever.py` cover the hybrid path. Submission narrative
+  must spell out: (a) the demo defaults to BM25-only because the dense
+  artifact isn't shipped to Railway today, (b) `/api/agent/query` does
+  not route through the corpus at all — corpus is exercised via the
+  retrieval CLI and the eval harness only.
+
+- [ ] **[decide] Reranker — LLM-judge vs cross-encoder.** LLM-judge is
+  shipped in `corpus/rerank.py` and called from the supervisor worker.
+  Decision pending: keep it as the early-submission substitute and
+  defend in writing (`rerank.py` header already documents the
+  trade-off — `sentence-transformers` dep weight not justified for one
+  week), or swap to a Cohere / Jina rerank API call (~5 lines, no
+  local dep weight). 30-min spike either way.
+
+- [ ] **[build] Supervisor in the live `/api/agent/query` path
+  (W2-07).** This is the largest remaining real-work item. The
+  supervisor + workers exist (`orchestrator/supervisor.py`,
+  `orchestrator/workers/*.py`, commit `39f487aaf`) and are tested
+  end-to-end (`tests/integration/test_supervisor.py`), but the
+  production query route still calls `Orchestrator.run()`. Two paths:
+  (a) wire `/api/agent/query` through `Supervisor.run()` and add a
+  feature-flag fallback to v1, with a test showing both
+  `intake_extractor` and `evidence_retriever` handoffs in a real query
+  trace; or (b) declare the supervisor as a test/audit-only surface
+  for early submission and document the production routing as
+  follow-on work. Pick before the next read.
+
+- [ ] **[done — write up, with caveat] 50-case eval (W2-11) — manifest + thresholds.**
+  `agent-service/evals/extraction/cases.jsonl` (50 lines), thresholds
+  in `evals/extraction/baseline.json`, gate runner at
+  `src/clinical_copilot/evals/extraction/runner.py:195–202` (exits
+  non-zero on threshold breach or > 5 pp regression). `Makefile` `deploy`
+  target depends on `eval`. Submission narrative must point at all four
+  artifacts.
+  **Known rubric risk to call out, not paper over:** all 50 cases are
+  in extraction buckets (lab, intake, fax, referral, workbook,
+  hl7-oru, hl7-adt). The originally-planned non-extraction buckets
+  (`reconciliation`, `retrieval`, `citation-separation`, `rbac`,
+  `abstention`) remain at zero — see the eval-suite bucket inventory
+  near the bottom of this file. A grader who reads "50-case eval"
+  and expects an end-to-end *grounded retrieval / chat* suite (rather
+  than extraction-depth) will find a numerical hit but a compositional
+  miss. Frame this honestly in the submission narrative: 50 boolean
+  rubrics covering schema validity, per-field citations, factual
+  consistency, safe refusal, and PHI-in-logs across seven extraction
+  surfaces — *not* end-to-end query → grounded-answer cases. The
+  five missing buckets are explicit follow-on work.
+
+- [ ] **[decide] CI surface — GitLab vs GitHub Actions (W2-11).**
+  GitLab pipeline is wired (commit `24ae138b9`); no `.github/workflows/`
+  gate. Decision: confirm GitLab is grader-acceptable (link the
+  pipeline URL + last-green run in the submission), or add a thin
+  GitHub Actions workflow (~20 lines of YAML) that runs the same
+  `make eval-extraction-gate` target. The latter is cheap insurance
+  if the rubric assumes GitHub.
+
+- [ ] **[build] Submission narrative.** A single short document
+  (`SUBMISSION.md` or a section in the agent-service README) that, for
+  each rubric concern, states: implemented path → proof artifact →
+  any explicit deferral. Avoid claiming "done" for code that is only
+  exercised by a CLI, helper, or test fixture. Co-located with the
+  reviewer-reply doc below.
+
+- [ ] **[build] Reviewer-reply doc.** Short, factual response to the
+  Tuesday-state reviewer feedback: each of their six points →
+  shipped/deferred status at HEAD → file:line + commit-hash evidence.
+  Acknowledges that supervisor + 50-case eval + CI gate were
+  legitimately missing at submission and shipped Wed; explains that
+  citations + hybrid retrieval scaffolding + chart-write persistence
+  were already in place at Tuesday's submission (see
+  `git show 522ed812c` for the cutoff snapshot).
+
+- [ ] **[build] End-to-end demo proof — uninterrupted clinical journey.**
+  The single artifact that ties this whole checklist together: a
+  recorded or scripted walkthrough showing one continuous flow with
+  no off-screen patching. Required beats:
+  1. **Upload** a document (lab PDF, intake form, referral DOCX,
+     fax TIFF, workbook XLSX, or HL7 message) via the universal
+     entry point.
+  2. **Extract** runs synchronously; user sees a spinner, then lands
+     on the review page.
+  3. **Review with visible citations / abstentions** — every
+     accepted field shows its page + bbox citation; abstained fields
+     show the abstain reason (NO_DATA / LOW_CONFIDENCE).
+  4. **Edit** at least one field to prove the confirm-and-attach
+     flow is editable, not read-only.
+  5. **Save to OpenEMR chart** — visible confirmation summary
+     ("4 facts written, 2 abstained"), and the data is verifiable in
+     the chart tables (`lists`, `dated_reminders`, `procedure_*`).
+  6. **Ask a clinical question** in the side panel chat that requires
+     the just-saved facts — answer cites chart data correctly.
+  7. **Ask a guideline question** that requires corpus retrieval —
+     answer cites a guideline source.
+  8. **Show observable handoffs** — pull up
+     `GET /api/agent/supervisor/audit/{user_id}` (or whatever the
+     observability surface is once #7 in this checklist lands) to
+     show the supervisor → worker dispatches that produced the
+     answer.
+  Beats 6–8 require the supervisor-on-live-path item above to land
+  first. If that's deferred for early submission, the demo cuts after
+  beat 5 and the submission narrative is explicit that beats 6–8 are
+  the next milestone. UI-polish work beyond what's required for these
+  beats is **out of scope** — the original feedback was that the demo
+  was UI-overinvested; don't re-invest. Goal: prove the contract
+  works, not that the surface is pretty.
 
 MR identifiers (`W2-01` … `W2-12`) match the test matrix in
 `PRD2.md §15.1` exactly so the cross-references between PRD2,
@@ -1537,23 +1762,37 @@ W2_ARCHITECTURE §8.
 
 ## Eval-suite bucket inventory (cross-MR view)
 
-> **Status (2026-05-06).** Two of seven buckets are populated. Shipped
-> path is `agent-service/tests/eval/w2_cases/<bucket>/` (note the
-> `tests/eval/w2_cases/` prefix, not the planned
-> `evals/w2/<bucket>/`). Total cases shipped: 10. The remaining
-> buckets (`reconciliation`, `retrieval`, `citation-separation`,
-> `rbac`, `abstention`) and their owning MRs are deferred.
+> **Status (2026-05-07).** **50 cases shipped, all in extraction
+> buckets** (not the planned mix). The shipped composition reflects
+> the W2-MM multimodal expansion: instead of populating
+> `reconciliation` / `retrieval` / `citation-separation` / `rbac` /
+> `abstention`, 35 cases were authored across five new extraction
+> buckets (fax, referral, workbook, hl7-oru, hl7-adt). The
+> originally-planned non-extraction buckets remain at zero. Shipped
+> path: `agent-service/evals/extraction/cases.jsonl` (50 lines,
+> bucket per case) plus per-case fixtures under
+> `agent-service/tests/eval/w2_cases/extraction-<bucket>/`.
 >
-> | Bucket | Planned | Shipped | Owner MR |
+> | Bucket | Originally planned | Actually shipped | Owner MR |
 > |---|---|---|---|
-> | `extraction-lab` | 12 | **5** | W2-03 |
-> | `extraction-intake` | 10 | **5** | W2-04 |
-> | `reconciliation` | 8 | 0 | W2-08 |
-> | `retrieval` | 8 | 0 | W2-06 |
-> | `citation-separation` | 6 | 0 | W2-07 |
-> | `rbac` | 4 | 0 (covered by v1 `tests/eval/cases/rbac_bypass/`, 10 cases) | W2-09 |
-> | `abstention` | 2 | 0 | W2-10 |
-> | **Total** | **50** | **10** | |
+> | `extraction-lab` | 12 | **7** | W2-03 |
+> | `extraction-intake` | 10 | **7** | W2-04 |
+> | `extraction-fax` | — | **7** | W2-MM |
+> | `extraction-referral` | — | **7** | W2-MM |
+> | `extraction-workbook` | — | **7** | W2-MM |
+> | `extraction-hl7-oru` | — | **7** | W2-MM |
+> | `extraction-hl7-adt` | — | **8** | W2-MM |
+> | `reconciliation` | 8 | 0 | W2-08 (deferred) |
+> | `retrieval` | 8 | 0 | W2-06 (deferred) |
+> | `citation-separation` | 6 | 0 | W2-07 (deferred) |
+> | `rbac` | 4 | 0 (covered by v1 `tests/eval/cases/rbac_bypass/`, 10 cases) | W2-09 (deferred) |
+> | `abstention` | 2 | 0 | W2-10 (deferred) |
+> | **Total** | **50** | **50** | |
+>
+> Reading: the rubric's 50-case target is met; the *composition* differs
+> from the original plan (depth on extraction surfaces over breadth
+> across the rubric categories). The non-extraction buckets remain the
+> follow-on work.
 
 For convenience, a single view of the 50 eval cases distributed across
 MRs. The harness uses these bucket names directly (`evals/w2/<bucket>/`).

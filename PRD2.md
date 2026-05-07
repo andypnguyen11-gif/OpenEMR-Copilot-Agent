@@ -2,7 +2,7 @@
   Clinical Co-Pilot — Product Requirements Document (Week 2)
 
   Status: Working PRD — extends PRD.md (v3); feeds W2_ARCHITECTURE.md, TASKS.md
-  Last updated: 2026-05-06
+  Last updated: 2026-05-07
   Owner: [you]
 
   Relationship to v3 PRD:
@@ -17,45 +17,85 @@
     §13.
 
   ---
-  Status as of 2026-05-06 — what shipped vs what is deferred.
+  Status as of 2026-05-07 — what shipped vs what is deferred.
 
   This PRD is the design target. The Week 2 demo ships a focused subset
   end-to-end; the remaining items are tracked in TASKS2.md as deferred MRs.
   When a section below describes a deferred surface, this status block is the
   signal — read the section as design intent, not deployed behaviour.
   `agent-service/README.md § Week 2 — Multimodal demo` carries the canonical
-  shipped/deferred matrix; this is the product-facing summary.
+  shipped/deferred matrix; this is the product-facing summary. **TASKS2.md §
+  "Submission timeline"** carries the by-commit breakdown of what landed by
+  the Tuesday early-submission cutoff vs. what landed Wed–Thu after
+  reviewer feedback — the granular dating lives there.
 
-  Shipped:
+  Shipped (live in code at HEAD):
   - **Vision extraction** of `lab_pdf` and `intake_form` documents through a
     direct multipart route on the agent service
     (`POST /api/agent/internal/ingest`). One Anthropic vision call per
-    document, structured-output via the Pydantic schema, single citation per
-    row / section, persisted as JSON under `data/extracted/<id>.json`.
+    document, structured-output via the Pydantic schema, **per-field
+    citations** (every leaf is `ExtractedField[T]` and the validator at
+    `documents/schemas/citation.py:55–89` rejects values without a
+    `SourceCitation` or `abstain_reason`), persisted as JSON under
+    `data/extracted/<id>.json`.
+  - **Multimodal extractors** for `referral_docx`, `fax_tiff`,
+    `workbook_xlsx`, `hl7_oru`, `hl7_adt` (registry-based dispatch in
+    `documents/extractor.py`), a **universal `upload_document.php`**
+    entrypoint with format classifier
+    (`src/Services/Copilot/DocumentClassifier.php`), and a **patient
+    resolver** that suggests existing-chart matches from extracted
+    demographics (`src/Services/Copilot/PatientMatch/`).
   - **Chart-side entry points** for the AI flow: an "Upload lab document
     (AI extract)" button on the patient summary's Labs panel
     (`interface/patient_file/summary/labdata_fragment.php`) and a parallel
     button on the in-chart Co-Pilot side panel; an "Add Patient (with AI)"
-    item in the Patient menu for front-desk intake.
+    item in the Patient menu for front-desk intake; a universal "Upload
+    document" entry point.
   - **Page-driven review and save** (`interface/copilot/{upload_lab,
     lab_review,lab_save_ai,new_patient_with_ai,intake_review,
-    new_patient_save_ai}.php`). Clinician confirms / edits the extracted
-    facts before they write to `procedure_result` (labs) or `patient_data`
-    + lists tables (intake).
+    new_patient_save_ai,upload_document,document_review}.php`).
+    Clinician confirms / edits the extracted facts before
+    `interface/copilot/api/save_document.php:199–238` calls
+    `ChartWriteService` to write into `lists` (allergies / medications /
+    active problems), `dated_reminders` (care gaps), or the
+    `procedure_order` chain (lab observations).
   - **Hybrid corpus retriever** under `agent-service/corpus/sources/`: 11
     Markdown excerpts adapted from USPSTF / CDC / NIH / AHA public guidance
     (license basis in `corpus/sources/LICENSES.md`), chunked sentence-window
-    (3/1), BM25-only retrieval (`rank-bm25`), exposed via
-    `clinical_copilot.scripts.retrieve_evidence` CLI.
-  - **Extraction eval suite**: 10 boolean-rubric cases under
-    `agent-service/tests/eval/w2_cases/{extraction-lab,extraction-intake}/`
-    (5 lab + 5 intake), runnable via
-    `python -m tests.eval.extraction_runner`. Boolean rubrics only.
+    (3/1). `corpus/retriever.py:62–146` runs **BM25 + dense via
+    `OpenAIEmbedder` and fuses with RRF (`k=60`)** when the dense
+    artifact and embedder are available; falls back to BM25-only when
+    not. **LLM-judge reranker** in `corpus/rerank.py` re-scores the
+    top-20.
+  - **Supervisor + workers** (`orchestrator/supervisor.py`,
+    `orchestrator/workers/{intake_extractor,evidence_retriever}.py`).
+    Plain Python via Anthropic `tool_use` dispatch — supervisor exposes
+    `dispatch_intake_extractor` and `dispatch_evidence_retriever` tools
+    and the model routes between them. Each handoff logged as a
+    `Handoff` row, surfaced via `GET /api/agent/supervisor/audit/
+    {resident_user_id}`. Tested end-to-end in
+    `tests/integration/test_supervisor.py`.
+  - **50-case extraction eval gate** (`agent-service/evals/extraction/
+    cases.jsonl`, runner at
+    `src/clinical_copilot/evals/extraction/runner.py:195–202`). Thresholds
+    in `evals/extraction/baseline.json`: `citation_present ≥ 0.95`,
+    `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`,
+    `schema_valid = 1.0`, `no_phi_in_logs = 1.0`, regression budget
+    5 pp. **Pre-push hook** invokes the gate; **GitLab CI pipeline**
+    runs it on push.
   - **Fast-lane `get_labs`**: side-panel chat now resolves "what are the
     recent labs" without abstaining (was NO_DATA before — tool was outside
     the fast-lane subset).
 
   Deferred (design captured here, MR not yet landed — see TASKS2.md):
+  - **Production wiring of supervisor + hybrid retriever** into the live
+    `/api/agent/query` path. The supervisor and the hybrid retriever are
+    shipped in code and exercised by tests + the eval harness, but the
+    live chat route still calls `Orchestrator.run()` (v1 single-loop) —
+    chart tools only, no corpus, no supervisor. The
+    `/api/agent/internal/ingest` route likewise calls `run_extraction()`
+    directly, not the `intake_extractor` worker. This is the largest
+    real-work item for the next read.
   - **Documents-subsystem post-upload event hook** (PRD §2 / §2.1, MR
     W2-02). Replaced for the demo by the chart-side page-driven flow above.
     The category-as-boundary discussion in §2 still applies once the
@@ -63,31 +103,36 @@
     pages* reach the extractor.
   - **Documents-view side panel + chart summary card** (§2 / §3 / §3.4 of
     W2_ARCHITECTURE; MR W2-10). Not built — clinician review happens on
-    the dedicated `lab_review.php` / `intake_review.php` pages instead of
-    a side panel polling `GET /agent/documents/{id}`.
-  - **LangGraph multi-agent graph** (planner / supervisor / critic nodes —
-    PRD §5 / §5.1 / §5.2; MR W2-07). Not built — Week 2 ships on top of
-    the v1 single-loop orchestrator (`orchestrator/agent.py` +
-    `lanes.py`). LangGraph is not a dependency. The chart-tools / corpus
-    boundary is preserved structurally by package layout
-    (`tools/` vs `corpus/`), not by an `import-linter` contract.
+    the dedicated `lab_review.php` / `intake_review.php` /
+    `document_review.php` pages instead of a side panel polling
+    `GET /agent/documents/{id}`.
+  - **LangGraph framework upgrade** (planner / critic nodes — PRD §5 /
+    §5.1 / §5.2; MR W2-07 stretch). The two-worker supervisor ships in
+    plain Python (no LangGraph dep). Planner and critic nodes from the
+    original four-node design are deferred. The chart-tools / corpus
+    boundary is preserved structurally by package layout (`tools/` vs
+    `corpus/`), not by an `import-linter` contract.
   - **OCR strict + degraded path for citations** (§6 verification step 2,
     §8.2; MR W2-05). The demo uses VLM-emitted confidence only:
     `confidence < 0.7` → `LOW_CONFIDENCE` abstain. No Tesseract pass.
     `CITATION_INVALID` is in the enum but unreachable until the OCR check
     lands.
-  - **Dense + cross-encoder rerank** for the corpus (§7 retrieval pipeline,
-    MR W2-06). Today the retriever is BM25-only over 11 sources. The
-    public surface (`retrieve(query, k)`) matches the planned hybrid
-    shape, so the swap is internal.
-  - **Eval gate beyond extraction**: only `extraction-lab` and
-    `extraction-intake` buckets exist (10 cases, not 50). No
+  - **Cross-encoder rerank** for the corpus (§7 retrieval pipeline, MR
+    W2-06). Today's reranker is an LLM-judge in `corpus/rerank.py` (the
+    file's header documents the trade-off — `sentence-transformers` dep
+    weight not justified for one week). A Cohere / Jina rerank API call
+    is the cheaper post-submission swap.
+  - **GitHub Actions surface for the eval gate** (MR W2-11 stretch).
+    GitLab CI is wired; no `.github/workflows/` gate exists. If the
+    grader expects a GitHub-side gate, a thin workflow that runs
+    `make eval-extraction-gate` is the cheapest add.
+  - **Eval buckets beyond extraction**: only the extraction buckets
+    exist (50 cases across 7 buckets — `extraction-lab`,
+    `extraction-intake`, plus five multimodal buckets). No
     `reconciliation` / `retrieval` / `citation-separation` / `rbac` /
     `abstention` buckets, no judge-evaluated rubrics, no budget pre-flight.
-    The W2-related pre-push hook is still pytest-only
-    (`agent-service-pytest`) — not the `make copilot-eval` gate of §8.
     `make eval` runs the v1 Q&A suite + extraction runner against a
-    deployed agent, not a 50-case golden suite.
+    deployed agent.
   - **PHI redaction layer** for LangSmith spans (§9; MR W2-12). Demo path
     runs with `LANGSMITH_TRACING=false`; the redaction layer is not yet
     wired. Re-enabling LangSmith requires that MR.
@@ -95,7 +140,9 @@
     Facts persist as JSON files; no Postgres job queue, no
     `SELECT … FOR UPDATE SKIP LOCKED` worker. The agent service has no
     background worker process — extraction is synchronous on the ingest
-    request.
+    request. The chart-write path lands accepted facts into OpenEMR
+    durably, so the JSON sidecar is effectively a temp buffer between
+    extract and review.
 
   Conflict-resolution rule for this status block. Where this block and a
   later section disagree (e.g. §5 describes a four-node graph; this block
@@ -153,19 +200,21 @@
   ---
   2. Build on what OpenEMR already has
 
-  > **Status (2026-05-06).** The design below — Documents subsystem reuse,
+  > **Status (2026-05-07).** The design below — Documents subsystem reuse,
   > new category, post-upload Symfony event, Documents-view side panel —
   > is the planned production path (MR W2-02 + W2-10) and has not landed.
   > The deployed Week 2 demo bypasses the category gate and the listener
   > entirely: clinicians enter the AI flow from chart-side buttons
-  > (`labdata_fragment.php` lab panel, Co-Pilot side panel, Patient menu),
-  > the PHP page POSTs the binary directly to
-  > `POST /api/agent/internal/ingest` on the agent service, and the
-  > clinician confirms / edits the extracted facts on `lab_review.php` /
-  > `intake_review.php` before any write to `procedure_result` or
-  > `patient_data`. The "containment boundary" today is *the entry point
-  > itself* (only the AI pages reach the extractor), not a category on
-  > the documents table.
+  > (`labdata_fragment.php` lab panel, Co-Pilot side panel, Patient menu,
+  > universal `upload_document.php`), the PHP page POSTs the binary
+  > directly to `POST /api/agent/internal/ingest` on the agent service,
+  > and the clinician confirms / edits the extracted facts on
+  > `lab_review.php` / `intake_review.php` / `document_review.php` before
+  > `interface/copilot/api/save_document.php` writes to `lists` /
+  > `dated_reminders` / `procedure_*` via `ChartWriteService`. The
+  > "containment boundary" today is *the entry point itself* (only the
+  > AI pages reach the extractor), not a category on the documents
+  > table.
 
   OpenEMR ships a mature document subsystem. **The Week 2 build does not
   reimplement upload, storage, categorization, or access control.** Reuse, do
@@ -345,18 +394,23 @@
   ---
   5. Multi-Agent Architecture
 
-  > **Status (2026-05-06).** The four-node LangGraph graph below is the
-  > planned design for MR W2-07 and **has not landed**. LangGraph is not
-  > a dependency of the deployed agent service today. Synthesis still
-  > runs through the v1 single-loop orchestrator (`orchestrator/agent.py`
-  > + `lanes.py`). The intake-extractor exists *only* as the async-side
-  > extractor invoked by `POST /api/agent/internal/ingest`; it is not
-  > yet a query-time worker. The evidence-retriever exists as a CLI
-  > (`scripts/retrieve_evidence.py`) but is not yet wired into chat
-  > responses — the synthesis path does not call the corpus today. The
-  > planner / critic / handoff-logging story below describes how the
-  > graph will compose once W2-07 ships; until then, the v1 verification
-  > middleware remains the only post-draft gate.
+  > **Status (2026-05-07).** A two-worker supervisor has shipped in
+  > plain Python (no LangGraph dependency). `orchestrator/supervisor.py`
+  > exposes `dispatch_intake_extractor` and `dispatch_evidence_retriever`
+  > as Anthropic `tool_use` blocks; the model picks. Each handoff is
+  > logged as a `Handoff` row, surfaced via
+  > `GET /api/agent/supervisor/audit/{resident_user_id}`. End-to-end
+  > test in `tests/integration/test_supervisor.py`. **Planner and
+  > critic nodes from the four-node design below are still deferred**
+  > (W2-07 stretch). **Production wiring is also still deferred:**
+  > `/api/agent/query` calls `Orchestrator.run()` (v1 single-loop), and
+  > `/api/agent/internal/ingest` calls `run_extraction()` directly — not
+  > the supervisor's `intake_extractor` worker. The supervisor is
+  > exercised today by tests + the audit endpoint; chat synthesis still
+  > runs through v1 with the v1 verification middleware as the only
+  > post-draft gate. The four-node graph below describes the W2-07
+  > stretch design (LangGraph framework + planner / critic) that the
+  > current plain-Python supervisor will evolve toward.
 
   The graph is small on purpose. The grading rubric explicitly warns against
   the supervisor becoming a black box. Four nodes, every handoff logged:
@@ -682,18 +736,24 @@
   ---
   7. Hybrid RAG Over Guideline Corpus
 
-  > **Status (2026-05-06).** The corpus is built and indexed; the
-  > retriever is BM25-only. Today's corpus is **11 Markdown sources**
-  > (~58 chunks) under `agent-service/corpus/sources/{uspstf,cdc,nih,
-  > aha}/`, each a *synthetic excerpt adapted from public guidance* per
+  > **Status (2026-05-07).** The corpus is built and indexed; the
+  > retriever supports **BM25 + dense (via `OpenAIEmbedder`) fused with
+  > RRF (`k=60`)** — see `corpus/retriever.py:62–146` — and an
+  > **LLM-judge reranker** in `corpus/rerank.py` re-scores the top-20.
+  > Today's corpus is **11 Markdown sources** (~58 chunks) under
+  > `agent-service/corpus/sources/{uspstf,cdc,nih,aha}/`, each a
+  > *synthetic excerpt adapted from public guidance* per
   > `corpus/sources/LICENSES.md` — not the canonical text and not for
-  > clinical use. Dense embedding + cross-encoder rerank are deferred
-  > (MR W2-06 proper); the public surface
-  > `clinical_copilot.corpus.retriever.retrieve(query, k)` is shipped
-  > and degrades cleanly to BM25-only when the dense artifacts aren't
-  > present. The retriever is not yet wired into the chat synthesis
-  > path — today it is reachable only via the
-  > `clinical_copilot.scripts.retrieve_evidence` CLI.
+  > clinical use. The dense path is gated on the `dense.npy` artifact +
+  > `OPENAI_API_KEY` and falls back cleanly to BM25-only when absent
+  > (the demo runs BM25-only on Railway today). **Cross-encoder rerank**
+  > (Cohere / Jina API or local `bge-reranker`) is deferred — the
+  > LLM-judge is the early-submission substitute. The retriever is
+  > **still not wired into the chat synthesis path** — `/api/agent/
+  > query` does not call the corpus. It is reachable today via the
+  > `clinical_copilot.scripts.retrieve_evidence` CLI, the supervisor's
+  > `evidence_retriever` worker (which itself is not yet on the live
+  > query path), and the eval harness.
 
   Corpus. A small (~200-document) curated set of ambulatory-medicine
   guideline excerpts. **Source content is restricted to material we have a
@@ -764,18 +824,23 @@
   ---
   8. Eval Gate (local pre-push hook)
 
-  > **Status (2026-05-06).** The 50-case suite, the budget pre-flight,
-  > the 3-of-3 unanimous judge, the quarantine ceiling, and the
-  > pre-push `make copilot-eval` gate are all deferred (MR W2-11). What
-  > exists today: 10 boolean-rubric cases (5 lab + 5 intake) under
-  > `agent-service/tests/eval/w2_cases/`, runnable via
-  > `python -m tests.eval.extraction_runner` (deterministic pass/fail
-  > to stdout, optional `--csv-out`). Boolean rubrics only — same
-  > spirit as §8 below, smaller scope. The pre-push hook today is
-  > `agent-service-pytest` (unit + integration tests, no eval). The
-  > existing `make eval` target runs the v1 Q&A suite + the extraction
-  > runner against a deployed agent; it is not the 50-case golden set
-  > of this section.
+  > **Status (2026-05-07).** The **50-case extraction eval gate** is
+  > shipped: cases at `agent-service/evals/extraction/cases.jsonl`,
+  > runner at `src/clinical_copilot/evals/extraction/runner.py:195–202`
+  > (exits non-zero on threshold breach), thresholds in
+  > `evals/extraction/baseline.json` (`schema_valid = 1.0`,
+  > `citation_present ≥ 0.95`, `factually_consistent ≥ 0.90`,
+  > `safe_refusal = 1.0`, `no_phi_in_logs = 1.0`, regression budget
+  > 5 pp). The **pre-push hook** invokes the gate (`agent-service/
+  > scripts/pre-push.sh`); the **GitLab CI pipeline** (`.gitlab-ci.yml`)
+  > runs it on push. **Still deferred:** budget pre-flight, 3-of-3
+  > unanimous judge wrapper, quarantine ceiling, and a GitHub Actions
+  > surface (only GitLab is wired; if the grader expects
+  > `.github/workflows/`, a thin GH Actions workflow that calls
+  > `make eval-extraction-gate` is the cheapest add). Boolean rubrics
+  > only — same spirit as §8 below, smaller scope. Eval buckets beyond
+  > extraction (reconciliation / retrieval / citation-separation / rbac
+  > / abstention) are still deferred.
 
   This is the rubric's hard gate. *A working demo that cannot block
   regressions has not met the Week 2 standard.* Treated as P0.
@@ -949,7 +1014,7 @@
   ---
   9. Observability & PHI Safety
 
-  > **Status (2026-05-06).** The deny-by-default span filter, regex
+  > **Status (2026-05-07).** The deny-by-default span filter, regex
   > PHI-signal detector, and `phi.span_redaction` rubric are deferred
   > (MR W2-12, test-first). The Week 2 demo runs with
   > `LANGSMITH_TRACING=false` so no extracted text reaches LangSmith;
@@ -1314,14 +1379,21 @@
 
   ### 15.1 Test matrix per MR
 
-  > **Status (2026-05-06).** The shipped W2 demo covers MRs W2-01
-  > (schemas + abstain enum), W2-03 (lab_pdf VLM extractor) and W2-04
-  > (intake_form extractor). MR W2-06 ships the corpus + BM25 retriever
-  > and source set, but not the dense / rerank pipeline. The remaining
-  > MRs (W2-02 Documents bridge, W2-05 OCR check, W2-07 LangGraph,
+  > **Status (2026-05-07).** The shipped W2 demo covers MRs W2-01
+  > (schemas + abstain enum), W2-03 (lab_pdf VLM extractor), W2-04
+  > (intake_form extractor), W2-MM (multimodal expansion), and W2-CW
+  > (chart-write path). MR W2-06 ships the corpus + **hybrid retriever
+  > (BM25 + dense + RRF) + LLM-judge rerank** in code, but the
+  > production query route does not call it. MR W2-07 ships a
+  > **plain-Python supervisor + 2 workers** in code (no LangGraph;
+  > planner / critic deferred) — likewise not on the live query path.
+  > MR W2-11 ships the **50-case extraction eval gate + pre-push hook
+  > + GitLab CI**; GitHub Actions surface is the remaining gap. The
+  > remaining MRs (W2-02 Documents bridge, W2-05 OCR check,
   > W2-08 reconciliation extension, W2-09 RBAC tests over documents,
-  > W2-10 abstention rendering, W2-11 eval gate, W2-12 PHI redaction)
-  > are deferred — see TASKS2.md for the per-MR landing status.
+  > W2-10 abstention rendering, W2-12 PHI redaction) are deferred —
+  > see TASKS2.md for the per-MR landing status and the "Submission
+  > timeline" subsection for shipped-when commit hashes.
 
   Each Week 2 MR must include the test classes below. The matrix is the
   source of truth that TASKS.md draws from per-MR. *Eval-suite cases* are
