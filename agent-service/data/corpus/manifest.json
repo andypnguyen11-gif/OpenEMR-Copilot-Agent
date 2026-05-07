@@ -1,0 +1,643 @@
+{
+  "version": 1,
+  "doc_count": 11,
+  "chunk_count": 58,
+  "permitted_sources": [
+    "AHA",
+    "CDC",
+    "NIH/NHLBI",
+    "USPSTF"
+  ],
+  "dense_built": true,
+  "embedding_dim": 1536,
+  "documents": [
+    {
+      "doc_id": "aha/chest_pain_evaluation",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029",
+      "date": "2021-10-28",
+      "topics": [
+        "chest pain",
+        "ACS",
+        "troponin",
+        "ECG",
+        "cardiac"
+      ],
+      "sha256": "45ec7f37c728ba06"
+    },
+    {
+      "doc_id": "cdc/adult_immunization_schedule",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html",
+      "date": "2025-01-01",
+      "topics": [
+        "vaccines",
+        "immunization",
+        "influenza",
+        "pneumococcal",
+        "Tdap",
+        "shingles",
+        "COVID"
+      ],
+      "sha256": "880319b9d239cca0"
+    },
+    {
+      "doc_id": "cdc/tobacco_cessation",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm",
+      "date": "2024-09-01",
+      "topics": [
+        "smoking",
+        "tobacco",
+        "cessation",
+        "nicotine",
+        "varenicline",
+        "bupropion"
+      ],
+      "sha256": "bc514899c62704ba"
+    },
+    {
+      "doc_id": "nih/cholesterol_thresholds",
+      "title": "Cholesterol thresholds and management overview (NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/blood-cholesterol",
+      "date": "2024-01-01",
+      "topics": [
+        "cholesterol",
+        "LDL",
+        "HDL",
+        "triglycerides",
+        "lipid panel"
+      ],
+      "sha256": "5d9da1226fec2b6c"
+    },
+    {
+      "doc_id": "uspstf/aspirin_primary_prevention",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication",
+      "date": "2022-04-26",
+      "topics": [
+        "aspirin",
+        "primary prevention",
+        "cardiovascular disease",
+        "bleeding"
+      ],
+      "sha256": "9cd2230ec40d47e9"
+    },
+    {
+      "doc_id": "uspstf/breast_cancer_screening",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults",
+      "date": "2024-04-30",
+      "topics": [
+        "breast cancer",
+        "screening",
+        "mammography"
+      ],
+      "sha256": "3b0c2be4f5475e6b"
+    },
+    {
+      "doc_id": "uspstf/colorectal_cancer_screening",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening",
+      "date": "2021-05-18",
+      "topics": [
+        "colorectal cancer",
+        "screening",
+        "colonoscopy",
+        "FIT"
+      ],
+      "sha256": "c7e4b4f659b4f603"
+    },
+    {
+      "doc_id": "uspstf/hypertension_screening",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening",
+      "date": "2021-04-27",
+      "topics": [
+        "hypertension",
+        "blood pressure",
+        "screening",
+        "ABPM"
+      ],
+      "sha256": "fae4cc234909b284"
+    },
+    {
+      "doc_id": "uspstf/lung_cancer_screening",
+      "title": "Lung cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/lung-cancer-screening",
+      "date": "2021-03-09",
+      "topics": [
+        "lung cancer",
+        "screening",
+        "low-dose CT",
+        "smoking"
+      ],
+      "sha256": "c47c6904c16f34e9"
+    },
+    {
+      "doc_id": "uspstf/prediabetes_diabetes_screening",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes",
+      "date": "2021-08-24",
+      "topics": [
+        "diabetes",
+        "prediabetes",
+        "screening",
+        "glucose",
+        "A1c"
+      ],
+      "sha256": "2296505117ae9970"
+    },
+    {
+      "doc_id": "uspstf/statin_primary_prevention",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication",
+      "date": "2022-08-23",
+      "topics": [
+        "cardiovascular disease",
+        "statins",
+        "primary prevention",
+        "cholesterol",
+        "LDL"
+      ],
+      "sha256": "c2ba1e88c59267b9"
+    }
+  ],
+  "chunks": [
+    {
+      "chunk_id": "aha/chest_pain_evaluation#0",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "Patients who present with new-onset chest pain that is suggestive of an acute coronary syndrome should be evaluated promptly. Initial evaluation includes a focused history and physical, a 12-lead ECG within 10 minutes of presentation, and high-sensitivity cardiac troponin measurement. Pretest likelihood of obstructive coronary artery disease can be estimated using validated risk scores (e.g.",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/chest_pain_evaluation#1",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "Initial evaluation includes a focused history and physical, a 12-lead ECG within 10 minutes of presentation, and high-sensitivity cardiac troponin measurement. Pretest likelihood of obstructive coronary artery disease can be estimated using validated risk scores (e.g. HEART score).",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/chest_pain_evaluation#2",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "Pretest likelihood of obstructive coronary artery disease can be estimated using validated risk scores (e.g. HEART score). Low-risk patients with non-ischemic ECG changes and undetectable high-sensitivity troponin can frequently be evaluated in the outpatient setting; intermediate- and high-risk patients warrant emergency department referral.",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/chest_pain_evaluation#3",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "HEART score). Low-risk patients with non-ischemic ECG changes and undetectable high-sensitivity troponin can frequently be evaluated in the outpatient setting; intermediate- and high-risk patients warrant emergency department referral. Concerning features that argue for emergency evaluation include chest pain at rest, pain associated with diaphoresis or syncope, ischemic ECG changes, troponin elevation, or known coronary artery disease.",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/chest_pain_evaluation#4",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "Low-risk patients with non-ischemic ECG changes and undetectable high-sensitivity troponin can frequently be evaluated in the outpatient setting; intermediate- and high-risk patients warrant emergency department referral. Concerning features that argue for emergency evaluation include chest pain at rest, pain associated with diaphoresis or syncope, ischemic ECG changes, troponin elevation, or known coronary artery disease. Worsening exertional chest pain in a patient with established cardiac disease (for example, prior myocardial infarction or known multivessel CAD) should be treated as unstable angina until proven otherwise.",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/chest_pain_evaluation#5",
+      "source_doc_id": "aha/chest_pain_evaluation",
+      "text": "Concerning features that argue for emergency evaluation include chest pain at rest, pain associated with diaphoresis or syncope, ischemic ECG changes, troponin elevation, or known coronary artery disease. Worsening exertional chest pain in a patient with established cardiac disease (for example, prior myocardial infarction or known multivessel CAD) should be treated as unstable angina until proven otherwise. Cardiac risk factors that raise pretest likelihood include older age, male sex, family history of premature coronary disease, diabetes, hypertension, dyslipidemia, and current tobacco use.",
+      "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#0",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "CDC recommends that all adults receive an annual influenza vaccine, ideally in September or October. All licensed influenza vaccines appropriate for the patient's age and health status are acceptable. Pneumococcal vaccination is recommended for adults 65 years or older and for adults 19 to 64 years with certain medical conditions (chronic heart, lung, or liver disease; diabetes; immunocompromise; cigarette smoking).",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#1",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "All licensed influenza vaccines appropriate for the patient's age and health status are acceptable. Pneumococcal vaccination is recommended for adults 65 years or older and for adults 19 to 64 years with certain medical conditions (chronic heart, lung, or liver disease; diabetes; immunocompromise; cigarette smoking). Either PCV20 alone or PCV15 followed by PPSV23 is acceptable; current preference favors PCV20 for simplicity.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#2",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "Pneumococcal vaccination is recommended for adults 65 years or older and for adults 19 to 64 years with certain medical conditions (chronic heart, lung, or liver disease; diabetes; immunocompromise; cigarette smoking). Either PCV20 alone or PCV15 followed by PPSV23 is acceptable; current preference favors PCV20 for simplicity. Tdap (tetanus, diphtheria, acellular pertussis) is given once in adulthood, then a Td or Tdap booster every 10 years.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#3",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "Either PCV20 alone or PCV15 followed by PPSV23 is acceptable; current preference favors PCV20 for simplicity. Tdap (tetanus, diphtheria, acellular pertussis) is given once in adulthood, then a Td or Tdap booster every 10 years. Pregnant patients should receive Tdap during each pregnancy at 27 to 36 weeks' gestation.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#4",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "Tdap (tetanus, diphtheria, acellular pertussis) is given once in adulthood, then a Td or Tdap booster every 10 years. Pregnant patients should receive Tdap during each pregnancy at 27 to 36 weeks' gestation. Recombinant zoster vaccine (Shingrix) is recommended for adults 50 years or older as a 2-dose series, regardless of prior shingles or prior live zoster vaccine.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#5",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "Pregnant patients should receive Tdap during each pregnancy at 27 to 36 weeks' gestation. Recombinant zoster vaccine (Shingrix) is recommended for adults 50 years or older as a 2-dose series, regardless of prior shingles or prior live zoster vaccine. The series is also recommended for immunocompromised adults 19 years or older.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/adult_immunization_schedule#6",
+      "source_doc_id": "cdc/adult_immunization_schedule",
+      "text": "Recombinant zoster vaccine (Shingrix) is recommended for adults 50 years or older as a 2-dose series, regardless of prior shingles or prior live zoster vaccine. The series is also recommended for immunocompromised adults 19 years or older. COVID-19 vaccination is recommended for all adults; the current season's updated formulation should be used.",
+      "title": "Adult immunization schedule \u2014 routine vaccines (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
+    },
+    {
+      "chunk_id": "cdc/tobacco_cessation#0",
+      "source_doc_id": "cdc/tobacco_cessation",
+      "text": "All adults should be asked about tobacco use, and adults who use tobacco should be advised to stop and offered both behavioral counseling and pharmacotherapy. The combined approach approximately doubles the likelihood of quit success compared to brief advice alone. First-line pharmacotherapy options include nicotine replacement therapy (patch, gum, lozenge, inhaler, or nasal spray), varenicline, and bupropion SR.",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
+    },
+    {
+      "chunk_id": "cdc/tobacco_cessation#1",
+      "source_doc_id": "cdc/tobacco_cessation",
+      "text": "The combined approach approximately doubles the likelihood of quit success compared to brief advice alone. First-line pharmacotherapy options include nicotine replacement therapy (patch, gum, lozenge, inhaler, or nasal spray), varenicline, and bupropion SR. Combination NRT (a long-acting patch with a short-acting form for breakthrough cravings) is more effective than single-form NRT.",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
+    },
+    {
+      "chunk_id": "cdc/tobacco_cessation#2",
+      "source_doc_id": "cdc/tobacco_cessation",
+      "text": "First-line pharmacotherapy options include nicotine replacement therapy (patch, gum, lozenge, inhaler, or nasal spray), varenicline, and bupropion SR. Combination NRT (a long-acting patch with a short-acting form for breakthrough cravings) is more effective than single-form NRT. Pregnant patients should be offered behavioral counseling; routine pharmacotherapy use during pregnancy is not recommended owing to limited safety data, though clinicians may consider NRT case by case when behavioral support alone is insufficient.",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
+    },
+    {
+      "chunk_id": "cdc/tobacco_cessation#3",
+      "source_doc_id": "cdc/tobacco_cessation",
+      "text": "Combination NRT (a long-acting patch with a short-acting form for breakthrough cravings) is more effective than single-form NRT. Pregnant patients should be offered behavioral counseling; routine pharmacotherapy use during pregnancy is not recommended owing to limited safety data, though clinicians may consider NRT case by case when behavioral support alone is insufficient. For adults with cardiovascular disease, tobacco cessation reduces the risk of recurrent cardiovascular events more than any single medication.",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
+    },
+    {
+      "chunk_id": "cdc/tobacco_cessation#4",
+      "source_doc_id": "cdc/tobacco_cessation",
+      "text": "Pregnant patients should be offered behavioral counseling; routine pharmacotherapy use during pregnancy is not recommended owing to limited safety data, though clinicians may consider NRT case by case when behavioral support alone is insufficient. For adults with cardiovascular disease, tobacco cessation reduces the risk of recurrent cardiovascular events more than any single medication. Cessation counseling should be offered at every clinical encounter.",
+      "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
+    },
+    {
+      "chunk_id": "nih/cholesterol_thresholds#0",
+      "source_doc_id": "nih/cholesterol_thresholds",
+      "text": "A standard fasting lipid panel reports total cholesterol, LDL cholesterol, HDL cholesterol, and triglycerides. Reference ranges commonly printed on U.S. lab reports include: * Total cholesterol: less than 200 mg/dL (desirable). * LDL cholesterol: less than 100 mg/dL (optimal); 130 mg/dL or higher is borderline-to-high and is one criterion for the dyslipidemia risk factor used in cardiovascular risk calculators. * HDL cholesterol: greater than 40 mg/dL in men and greater than 50 mg/dL in women is desirable; values below 40 mg/dL count as a cardiovascular risk factor. * Triglycerides: less than 150 mg/dL (normal). A non-HDL cholesterol value (total minus HDL) of 130 mg/dL or higher roughly tracks an LDL of 100 mg/dL or higher and is increasingly used as a treatment threshold in patients with elevated triglycerides where calculated LDL is unreliable.",
+      "title": "Cholesterol thresholds and management overview (NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/blood-cholesterol"
+    },
+    {
+      "chunk_id": "nih/cholesterol_thresholds#1",
+      "source_doc_id": "nih/cholesterol_thresholds",
+      "text": "Reference ranges commonly printed on U.S. lab reports include: * Total cholesterol: less than 200 mg/dL (desirable). * LDL cholesterol: less than 100 mg/dL (optimal); 130 mg/dL or higher is borderline-to-high and is one criterion for the dyslipidemia risk factor used in cardiovascular risk calculators. * HDL cholesterol: greater than 40 mg/dL in men and greater than 50 mg/dL in women is desirable; values below 40 mg/dL count as a cardiovascular risk factor. * Triglycerides: less than 150 mg/dL (normal). A non-HDL cholesterol value (total minus HDL) of 130 mg/dL or higher roughly tracks an LDL of 100 mg/dL or higher and is increasingly used as a treatment threshold in patients with elevated triglycerides where calculated LDL is unreliable. Initial management for borderline values is typically lifestyle modification (diet, physical activity, weight management); statin therapy is layered in based on overall cardiovascular risk per the USPSTF / AHA-ACC primary-prevention guidance.",
+      "title": "Cholesterol thresholds and management overview (NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/blood-cholesterol"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#0",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "For adults aged 40 to 59 years with a 10-year cardiovascular disease risk of 10 percent or greater, the decision to initiate low-dose aspirin for the primary prevention of cardiovascular disease should be individualized. The net benefit of aspirin use in this group is small (Grade C). Persons who are not at increased risk for bleeding and who are willing to take low-dose aspirin daily are more likely to benefit.",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#1",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "The net benefit of aspirin use in this group is small (Grade C). Persons who are not at increased risk for bleeding and who are willing to take low-dose aspirin daily are more likely to benefit. For adults 60 years or older, the U.S.",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#2",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "Persons who are not at increased risk for bleeding and who are willing to take low-dose aspirin daily are more likely to benefit. For adults 60 years or older, the U.S. Preventive Services Task Force recommends against initiating low-dose aspirin for the primary prevention of cardiovascular disease (Grade D).",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#3",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "For adults 60 years or older, the U.S. Preventive Services Task Force recommends against initiating low-dose aspirin for the primary prevention of cardiovascular disease (Grade D). The risk of major bleeding offsets cardiovascular benefit at this age.",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#4",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "Preventive Services Task Force recommends against initiating low-dose aspirin for the primary prevention of cardiovascular disease (Grade D). The risk of major bleeding offsets cardiovascular benefit at this age. These recommendations apply to primary prevention only.",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/aspirin_primary_prevention#5",
+      "source_doc_id": "uspstf/aspirin_primary_prevention",
+      "text": "The risk of major bleeding offsets cardiovascular benefit at this age. These recommendations apply to primary prevention only. They do not apply to patients with established cardiovascular disease (history of myocardial infarction, ischemic stroke, or angiographic coronary disease), for whom secondary prevention with aspirin remains standard of care.",
+      "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/aspirin-use-to-prevent-cardiovascular-disease-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/breast_cancer_screening#0",
+      "source_doc_id": "uspstf/breast_cancer_screening",
+      "text": "The U.S. Preventive Services Task Force recommends biennial screening mammography for women aged 40 to 74 years. This is a Grade B recommendation.",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults"
+    },
+    {
+      "chunk_id": "uspstf/breast_cancer_screening#1",
+      "source_doc_id": "uspstf/breast_cancer_screening",
+      "text": "Preventive Services Task Force recommends biennial screening mammography for women aged 40 to 74 years. This is a Grade B recommendation. The evidence is insufficient to assess the balance of benefits and harms of screening mammography in women aged 75 years or older (Grade I).",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults"
+    },
+    {
+      "chunk_id": "uspstf/breast_cancer_screening#2",
+      "source_doc_id": "uspstf/breast_cancer_screening",
+      "text": "This is a Grade B recommendation. The evidence is insufficient to assess the balance of benefits and harms of screening mammography in women aged 75 years or older (Grade I). Biennial (every 2 years) screening offers a more favorable benefit-to-harm balance than annual screening for most women in this age range, though both intervals reduce breast cancer mortality.",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults"
+    },
+    {
+      "chunk_id": "uspstf/breast_cancer_screening#3",
+      "source_doc_id": "uspstf/breast_cancer_screening",
+      "text": "The evidence is insufficient to assess the balance of benefits and harms of screening mammography in women aged 75 years or older (Grade I). Biennial (every 2 years) screening offers a more favorable benefit-to-harm balance than annual screening for most women in this age range, though both intervals reduce breast cancer mortality. Women with a personal or family history suggestive of higher-risk inherited cancer syndromes should be referred for genetic counseling.",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults"
+    },
+    {
+      "chunk_id": "uspstf/breast_cancer_screening#4",
+      "source_doc_id": "uspstf/breast_cancer_screening",
+      "text": "Biennial (every 2 years) screening offers a more favorable benefit-to-harm balance than annual screening for most women in this age range, though both intervals reduce breast cancer mortality. Women with a personal or family history suggestive of higher-risk inherited cancer syndromes should be referred for genetic counseling. The recommendation does not apply to women with prior breast cancer, high-risk lesions, prior chest radiation, or known BRCA1/BRCA2 mutations.",
+      "title": "Breast cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/breast-cancer-screening-adults"
+    },
+    {
+      "chunk_id": "uspstf/colorectal_cancer_screening#0",
+      "source_doc_id": "uspstf/colorectal_cancer_screening",
+      "text": "The U.S. Preventive Services Task Force recommends screening for colorectal cancer in all adults aged 45 to 75 years. This is a Grade B recommendation.",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/colorectal_cancer_screening#1",
+      "source_doc_id": "uspstf/colorectal_cancer_screening",
+      "text": "Preventive Services Task Force recommends screening for colorectal cancer in all adults aged 45 to 75 years. This is a Grade B recommendation. Adults aged 76 to 85 years should be screened selectively based on overall health, prior screening history, and patient preference (Grade C).",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/colorectal_cancer_screening#2",
+      "source_doc_id": "uspstf/colorectal_cancer_screening",
+      "text": "This is a Grade B recommendation. Adults aged 76 to 85 years should be screened selectively based on overall health, prior screening history, and patient preference (Grade C). Acceptable screening strategies include high-sensitivity guaiac fecal occult blood test (gFOBT) or fecal immunochemical test (FIT) annually, multitarget stool DNA every 1 to 3 years, CT colonography every 5 years, flexible sigmoidoscopy every 5 years (or every 10 years with annual FIT), and colonoscopy every 10 years.",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/colorectal_cancer_screening#3",
+      "source_doc_id": "uspstf/colorectal_cancer_screening",
+      "text": "Adults aged 76 to 85 years should be screened selectively based on overall health, prior screening history, and patient preference (Grade C). Acceptable screening strategies include high-sensitivity guaiac fecal occult blood test (gFOBT) or fecal immunochemical test (FIT) annually, multitarget stool DNA every 1 to 3 years, CT colonography every 5 years, flexible sigmoidoscopy every 5 years (or every 10 years with annual FIT), and colonoscopy every 10 years. Screening reduces colorectal cancer incidence and mortality.",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/colorectal_cancer_screening#4",
+      "source_doc_id": "uspstf/colorectal_cancer_screening",
+      "text": "Acceptable screening strategies include high-sensitivity guaiac fecal occult blood test (gFOBT) or fecal immunochemical test (FIT) annually, multitarget stool DNA every 1 to 3 years, CT colonography every 5 years, flexible sigmoidoscopy every 5 years (or every 10 years with annual FIT), and colonoscopy every 10 years. Screening reduces colorectal cancer incidence and mortality. The net benefit is substantial for adults aged 50 to 75, moderate for adults aged 45 to 49, and small for adults aged 76 to 85.",
+      "title": "Colorectal cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/colorectal-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#0",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "The U.S. Preventive Services Task Force recommends screening for hypertension in adults 18 years or older with office blood pressure measurement. This is a Grade A recommendation.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#1",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "Preventive Services Task Force recommends screening for hypertension in adults 18 years or older with office blood pressure measurement. This is a Grade A recommendation. The recommendation also calls for confirmation of high blood pressure outside the clinical setting before starting treatment.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#2",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "This is a Grade A recommendation. The recommendation also calls for confirmation of high blood pressure outside the clinical setting before starting treatment. Acceptable confirmation methods include 24-hour ambulatory blood pressure monitoring (the reference standard) or home blood pressure monitoring.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#3",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "The recommendation also calls for confirmation of high blood pressure outside the clinical setting before starting treatment. Acceptable confirmation methods include 24-hour ambulatory blood pressure monitoring (the reference standard) or home blood pressure monitoring. Out-of-office measurement reduces misclassification caused by white-coat hypertension and improves cardiovascular outcomes when used to guide therapy.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#4",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "Acceptable confirmation methods include 24-hour ambulatory blood pressure monitoring (the reference standard) or home blood pressure monitoring. Out-of-office measurement reduces misclassification caused by white-coat hypertension and improves cardiovascular outcomes when used to guide therapy. Adults aged 18 to 39 years at average risk should be rescreened every 3 to 5 years; adults 40 years or older or with risk factors should be rescreened annually.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/hypertension_screening#5",
+      "source_doc_id": "uspstf/hypertension_screening",
+      "text": "Out-of-office measurement reduces misclassification caused by white-coat hypertension and improves cardiovascular outcomes when used to guide therapy. Adults aged 18 to 39 years at average risk should be rescreened every 3 to 5 years; adults 40 years or older or with risk factors should be rescreened annually. Risk factors include overweight or obesity, Black race, and family history of hypertension.",
+      "title": "Screening for hypertension in adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/hypertension-in-adults-screening"
+    },
+    {
+      "chunk_id": "uspstf/lung_cancer_screening#0",
+      "source_doc_id": "uspstf/lung_cancer_screening",
+      "text": "The U.S. Preventive Services Task Force recommends annual screening for lung cancer with low-dose computed tomography in adults aged 50 to 80 years who have a 20 pack-year smoking history and currently smoke or have quit within the past 15 years. This is a Grade B recommendation.",
+      "title": "Lung cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/lung-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/lung_cancer_screening#1",
+      "source_doc_id": "uspstf/lung_cancer_screening",
+      "text": "Preventive Services Task Force recommends annual screening for lung cancer with low-dose computed tomography in adults aged 50 to 80 years who have a 20 pack-year smoking history and currently smoke or have quit within the past 15 years. This is a Grade B recommendation. Screening should be discontinued once a person has not smoked for 15 years or develops a health problem that substantially limits life expectancy or the ability or willingness to have curative lung surgery.",
+      "title": "Lung cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/lung-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/lung_cancer_screening#2",
+      "source_doc_id": "uspstf/lung_cancer_screening",
+      "text": "This is a Grade B recommendation. Screening should be discontinued once a person has not smoked for 15 years or develops a health problem that substantially limits life expectancy or the ability or willingness to have curative lung surgery. Compared to the prior 2013 recommendation, the 2021 update lowered the starting age from 55 to 50 and the pack-year threshold from 30 to 20.",
+      "title": "Lung cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/lung-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/lung_cancer_screening#3",
+      "source_doc_id": "uspstf/lung_cancer_screening",
+      "text": "Screening should be discontinued once a person has not smoked for 15 years or develops a health problem that substantially limits life expectancy or the ability or willingness to have curative lung surgery. Compared to the prior 2013 recommendation, the 2021 update lowered the starting age from 55 to 50 and the pack-year threshold from 30 to 20. The change was driven by evidence that screening reduces lung cancer mortality at lower exposure thresholds, particularly among women and Black adults who tend to develop lung cancer at lower cumulative tobacco exposure.",
+      "title": "Lung cancer screening (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/lung-cancer-screening"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#0",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "The U.S. Preventive Services Task Force recommends screening for prediabetes and type 2 diabetes in adults aged 35 to 70 years who have overweight or obesity. This is a Grade B recommendation.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#1",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "Preventive Services Task Force recommends screening for prediabetes and type 2 diabetes in adults aged 35 to 70 years who have overweight or obesity. This is a Grade B recommendation. Clinicians should offer or refer patients with prediabetes to effective preventive interventions.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#2",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "This is a Grade B recommendation. Clinicians should offer or refer patients with prediabetes to effective preventive interventions. Acceptable screening tests include fasting plasma glucose, hemoglobin A1c, or oral glucose tolerance testing.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#3",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "Clinicians should offer or refer patients with prediabetes to effective preventive interventions. Acceptable screening tests include fasting plasma glucose, hemoglobin A1c, or oral glucose tolerance testing. A fasting plasma glucose of 100 to 125 mg/dL or an A1c of 5.7 to 6.4 percent indicates prediabetes; a fasting plasma glucose of 126 mg/dL or higher on two occasions, or an A1c of 6.5 percent or higher, indicates diabetes.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#4",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "Acceptable screening tests include fasting plasma glucose, hemoglobin A1c, or oral glucose tolerance testing. A fasting plasma glucose of 100 to 125 mg/dL or an A1c of 5.7 to 6.4 percent indicates prediabetes; a fasting plasma glucose of 126 mg/dL or higher on two occasions, or an A1c of 6.5 percent or higher, indicates diabetes. A single elevated random plasma glucose value is not sufficient for diagnosis without confirmatory testing.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/prediabetes_diabetes_screening#5",
+      "source_doc_id": "uspstf/prediabetes_diabetes_screening",
+      "text": "A fasting plasma glucose of 100 to 125 mg/dL or an A1c of 5.7 to 6.4 percent indicates prediabetes; a fasting plasma glucose of 126 mg/dL or higher on two occasions, or an A1c of 6.5 percent or higher, indicates diabetes. A single elevated random plasma glucose value is not sufficient for diagnosis without confirmatory testing. Patients with prediabetes benefit from intensive behavioral counseling on diet and physical activity, and selected patients may benefit from metformin.",
+      "title": "Screening for prediabetes and type 2 diabetes (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/screening-for-prediabetes-and-type-2-diabetes"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#0",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "The U.S. Preventive Services Task Force recommends that adults aged 40 to 75 years who have one or more cardiovascular disease (CVD) risk factors and an estimated 10-year CVD risk of 10% or greater initiate a statin for the primary prevention of CVD. This is a Grade B recommendation.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#1",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "Preventive Services Task Force recommends that adults aged 40 to 75 years who have one or more cardiovascular disease (CVD) risk factors and an estimated 10-year CVD risk of 10% or greater initiate a statin for the primary prevention of CVD. This is a Grade B recommendation. Adults aged 40 to 75 years with one or more CVD risk factors and a 10-year CVD risk of 7.5% to less than 10% may selectively be offered a statin.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#2",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "This is a Grade B recommendation. Adults aged 40 to 75 years with one or more CVD risk factors and a 10-year CVD risk of 7.5% to less than 10% may selectively be offered a statin. This is a Grade C recommendation; the net benefit is small.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#3",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "Adults aged 40 to 75 years with one or more CVD risk factors and a 10-year CVD risk of 7.5% to less than 10% may selectively be offered a statin. This is a Grade C recommendation; the net benefit is small. CVD risk factors in the underlying evidence base include dyslipidemia (LDL-C greater than 130 mg/dL or HDL-C less than 40 mg/dL), diabetes, hypertension, and smoking.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#4",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "This is a Grade C recommendation; the net benefit is small. CVD risk factors in the underlying evidence base include dyslipidemia (LDL-C greater than 130 mg/dL or HDL-C less than 40 mg/dL), diabetes, hypertension, and smoking. The 10-year CVD risk estimate is calculated using the AHA/ACC Pooled Cohort Equations.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/statin_primary_prevention#5",
+      "source_doc_id": "uspstf/statin_primary_prevention",
+      "text": "CVD risk factors in the underlying evidence base include dyslipidemia (LDL-C greater than 130 mg/dL or HDL-C less than 40 mg/dL), diabetes, hypertension, and smoking. The 10-year CVD risk estimate is calculated using the AHA/ACC Pooled Cohort Equations. For adults 76 years or older, the current evidence is insufficient (Grade I) to assess the balance of benefits and harms of initiating a statin for primary prevention.",
+      "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    }
+  ]
+}

@@ -24,7 +24,17 @@ agent.db
 *.log
 
 # Week 2 demo runtime artifacts (regenerated from committed sources/fixtures)
-data/corpus/
+# Ignore everything under data/corpus/ except the pre-built indexes —
+# those ship in the Docker image so the prod retriever runs hybrid
+# (BM25 + dense + LLM-judge rerank) on every slow-lane query without
+# rebuilding at boot. Rebuild locally via
+# ``uv run python -m clinical_copilot.corpus.index --rebuild`` after
+# editing anything under ``corpus/sources/`` (needs ``OPENAI_API_KEY``
+# for the dense step).
+data/corpus/*
+!data/corpus/bm25.pkl
+!data/corpus/dense.pkl
+!data/corpus/manifest.json
 data/extracted/
 
 # IDE

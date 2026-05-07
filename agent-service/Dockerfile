@@ -19,6 +19,12 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md alembic.ini ./
 COPY src ./src
 COPY tests/fixtures ./tests/fixtures
+# Pre-built corpus indexes (BM25 + dense + manifest). Required for the
+# hybrid retriever; without them ``CorpusRetriever()`` raises
+# FileNotFoundError on startup and ``app_state`` disables the supervisor
+# wiring (the slow-lane chat falls back to the v1 Orchestrator). Rebuild
+# locally via ``uv run python -m clinical_copilot.corpus.index --rebuild``.
+COPY data/corpus ./data/corpus
 
 RUN uv sync --frozen --no-dev
 
