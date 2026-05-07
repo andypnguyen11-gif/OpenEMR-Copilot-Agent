@@ -1,0 +1,26 @@
+{
+  "case_id": "extraction-referral/p06_johnson_referral",
+  "bucket": "extraction-referral",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/docx/p06-johnson-referral.docx",
+  "document_type": "referral_docx",
+  "description": "Johnson referral letter \u2014 nephrology referral for HFrEF + CKD3a + medication reconciliation discrepancy.",
+  "expectations": {
+    "list_min": {
+      "past_medical_history": 5,
+      "current_medications": 7,
+      "pertinent_labs": 5
+    },
+    "field_equals": {
+      "patient_name.value": "Marcus Johnson",
+      "patient_dob.value": "1954-02-08",
+      "patient_mrn.value": "HFH-8866213",
+      "referring_provider.value": "Olivia Bennett, MD"
+    },
+    "field_present": [
+      "reason_for_referral",
+      "history_summary",
+      "requested_action",
+      "allergies"
+    ]
+  }
+}

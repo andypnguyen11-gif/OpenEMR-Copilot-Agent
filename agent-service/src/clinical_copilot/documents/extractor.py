@@ -33,6 +33,7 @@ from typing import Any, Literal, cast
 from anthropic import Anthropic
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from clinical_copilot.documents.extractors.referral_docx import extract_referral_docx
 from clinical_copilot.documents.fetcher import (
     RenderedPage,
     encode_jpeg_bytes,
@@ -408,7 +409,7 @@ def _stub_extractor(document_type: DocumentType, task_ref: str) -> _ExtractorFn:
 _EXTRACTORS: dict[DocumentType, _ExtractorFn] = {
     "lab_pdf": _extract_lab_dispatch,
     "intake_form": _extract_intake_dispatch,
-    "referral_docx": _stub_extractor("referral_docx", "Week 2 Step 3 (DOCX referral)"),
+    "referral_docx": extract_referral_docx,
     "fax_tiff": _extract_fax_tiff_dispatch,
     "workbook_xlsx": _stub_extractor("workbook_xlsx", "Week 2 Step 5 (XLSX workbook)"),
     "hl7_oru": _stub_extractor("hl7_oru", "Week 2 Step 6 (HL7 ORU-R01)"),

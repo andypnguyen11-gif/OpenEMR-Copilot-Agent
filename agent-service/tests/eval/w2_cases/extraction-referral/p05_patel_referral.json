@@ -1,0 +1,25 @@
+{
+  "case_id": "extraction-referral/p05_patel_referral",
+  "bucket": "extraction-referral",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/docx/p05-patel-referral.docx",
+  "document_type": "referral_docx",
+  "description": "Patel referral letter \u2014 pulmonology pre-conception planning for moderate persistent asthma.",
+  "expectations": {
+    "list_min": {
+      "past_medical_history": 3,
+      "current_medications": 5,
+      "pertinent_labs": 2
+    },
+    "field_equals": {
+      "patient_name.value": "Aisha Patel",
+      "patient_dob.value": "1991-06-15",
+      "patient_mrn.value": "EMR-4413089",
+      "referring_provider.value": "Renee Caldwell, MD"
+    },
+    "field_present": [
+      "reason_for_referral",
+      "history_summary",
+      "requested_action"
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "case_id": "extraction-referral/p01_chen_referral",
+  "bucket": "extraction-referral",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/docx/p01-chen-referral.docx",
+  "document_type": "referral_docx",
+  "description": "Chen referral letter \u2014 cardiology referral for statin-refractory hyperlipidemia.",
+  "expectations": {
+    "list_min": {
+      "past_medical_history": 3,
+      "current_medications": 4,
+      "pertinent_labs": 4
+    },
+    "field_equals": {
+      "patient_name.value": "Margaret Chen",
+      "patient_dob.value": "1968-03-12",
+      "patient_mrn.value": "BHS-2847163",
+      "letter_date.value": "2026-05-06",
+      "referring_provider.value": "Helen Park, MD",
+      "allergies.value": "NKDA"
+    },
+    "field_present": [
+      "reason_for_referral",
+      "history_summary",
+      "requested_action",
+      "recipient_provider"
+    ]
+  }
+}

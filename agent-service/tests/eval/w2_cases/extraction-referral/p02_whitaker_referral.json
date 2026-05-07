@@ -1,0 +1,27 @@
+{
+  "case_id": "extraction-referral/p02_whitaker_referral",
+  "bucket": "extraction-referral",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/docx/p02-whitaker-referral.docx",
+  "document_type": "referral_docx",
+  "description": "Whitaker referral letter \u2014 urgent GI referral for microcytic anemia on apixaban.",
+  "expectations": {
+    "list_min": {
+      "past_medical_history": 4,
+      "current_medications": 4,
+      "pertinent_labs": 5
+    },
+    "field_equals": {
+      "patient_name.value": "James Whitaker",
+      "patient_dob.value": "1958-11-22",
+      "patient_mrn.value": "NMM-9912448",
+      "letter_date.value": "2026-05-06",
+      "referring_provider.value": "Daniel Ortega, DO"
+    },
+    "field_present": [
+      "reason_for_referral",
+      "history_summary",
+      "requested_action",
+      "allergies"
+    ]
+  }
+}

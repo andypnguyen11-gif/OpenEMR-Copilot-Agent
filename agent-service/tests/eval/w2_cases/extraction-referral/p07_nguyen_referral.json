@@ -1,0 +1,25 @@
+{
+  "case_id": "extraction-referral/p07_nguyen_referral",
+  "bucket": "extraction-referral",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/docx/p07-nguyen-referral.docx",
+  "document_type": "referral_docx",
+  "description": "Nguyen referral letter \u2014 endocrinology referral for newly diagnosed Hashimoto thyroiditis.",
+  "expectations": {
+    "list_min": {
+      "past_medical_history": 3,
+      "current_medications": 3,
+      "pertinent_labs": 4
+    },
+    "field_equals": {
+      "patient_name.value": "Olivia Nguyen",
+      "patient_dob.value": "1997-10-19",
+      "patient_mrn.value": "UWM-3320175",
+      "referring_provider.value": "Stephen Walsh, MD"
+    },
+    "field_present": [
+      "reason_for_referral",
+      "history_summary",
+      "requested_action"
+    ]
+  }
+}
