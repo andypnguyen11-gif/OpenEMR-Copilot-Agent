@@ -49,10 +49,23 @@ from typing import Any
 from anthropic import Anthropic
 
 from clinical_copilot.config import get_settings
-from clinical_copilot.documents.extractor import DocumentType, extract
+from clinical_copilot.documents.extractor import (
+    DocumentType,
+    ExtractorError,
+    UnsupportedDocumentTypeError,
+    extract,
+)
 
 CASES_ROOT = Path(__file__).resolve().parent / "w2_cases"
-DEFAULT_BUCKETS = ("extraction-lab", "extraction-intake")
+DEFAULT_BUCKETS = (
+    "extraction-lab",
+    "extraction-intake",
+    "extraction-referral",
+    "extraction-fax",
+    "extraction-workbook",
+    "extraction-hl7-oru",
+    "extraction-hl7-adt",
+)
 
 _INDEX_RE = re.compile(r"^(?P<name>[A-Za-z_]\w*)(?:\[(?P<idx>\d+)\])?$")
 
@@ -251,13 +264,52 @@ def run_case(
     document_type: DocumentType = case.get("document_type", "lab_pdf")
     document_id = f"eval:{case_id}"
 
-    result = extract(
-        client=client,
-        model=model,
-        document_id=document_id,
-        document_type=document_type,
-        pdf_path=document_path,
-    )
+    try:
+        result = extract(
+            client=client,
+            model=model,
+            document_id=document_id,
+            document_type=document_type,
+            pdf_path=document_path,
+        )
+    except UnsupportedDocumentTypeError as exc:
+        # Stubbed extractor — surface as a single failure rubric so
+        # the runner exits non-zero without crashing other cases.
+        return CaseResult(
+            case_id=case_id,
+            bucket=bucket,
+            rubrics=[
+                RubricResult(
+                    case_id=case_id,
+                    bucket=bucket,
+                    rubric_name="extractor_implemented",
+                    target=document_type,
+                    expected="<implemented>",
+                    observed="UNSUPPORTED_DOCUMENT_TYPE",
+                    passed=False,
+                    note=str(exc),
+                )
+            ],
+        )
+    except ExtractorError as exc:
+        # Generic extractor failure (VLM error, schema mismatch, etc.).
+        return CaseResult(
+            case_id=case_id,
+            bucket=bucket,
+            rubrics=[
+                RubricResult(
+                    case_id=case_id,
+                    bucket=bucket,
+                    rubric_name="extractor_succeeds",
+                    target=document_type,
+                    expected="<no error>",
+                    observed=type(exc).__name__,
+                    passed=False,
+                    note=str(exc),
+                )
+            ],
+        )
+
     facts = result.facts.model_dump(mode="json")
     rubrics = evaluate_case(case, facts)
     return CaseResult(case_id=case_id, bucket=bucket, rubrics=rubrics)

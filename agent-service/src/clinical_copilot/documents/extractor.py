@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -50,7 +51,19 @@ from clinical_copilot.documents.schemas.intake_form import (
 from clinical_copilot.documents.schemas.lab_pdf import LabObservation, LabPdfFacts
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
-DocumentType = Literal["lab_pdf", "intake_form"]
+DocumentType = Literal[
+    "lab_pdf",
+    "intake_form",
+    "referral_docx",
+    "fax_tiff",
+    "workbook_xlsx",
+    "hl7_oru",
+    "hl7_adt",
+]
+"""All document types the registry knows about. New types land here first
+so the worker / eval runner / case manifests can reference them before
+their extractor implementation is wired in. Unimplemented types raise
+``UnsupportedDocumentTypeError`` (a subclass of ``ExtractorError``)."""
 
 # Confidence below this threshold flips a value to LOW_CONFIDENCE per
 # PRD2 §6. Single source so eval and runtime see the same number.
@@ -267,6 +280,20 @@ class ExtractorError(RuntimeError):
     a TOOL_FAILURE abstention."""
 
 
+class UnsupportedDocumentTypeError(ExtractorError):
+    """Raised when the registry has no implementation for a known
+    ``DocumentType``. Distinct from a generic ExtractorError so callers
+    (the worker, eval runner) can map it to ``UNSUPPORTED_DOCUMENT_TYPE``
+    abstention rather than a transient TOOL_FAILURE retry."""
+
+
+# Per-type extractor signature. All extractors take the same kwargs even
+# when they don't need a VLM client (text-based extractors like docx /
+# xlsx / hl7 just ignore ``client`` and ``model``). This keeps the
+# dispatch point uniform.
+_ExtractorFn = Callable[..., "BaseModel"]
+
+
 def extract(
     *,
     client: Anthropic,
@@ -275,37 +302,98 @@ def extract(
     document_type: DocumentType,
     pdf_path: Path,
 ) -> ExtractionResult:
-    """Run extraction on every page of `pdf_path`, merging across pages
-    according to the document type's strategy.
+    """Dispatch ``document_type`` to its registered extractor.
+
+    ``pdf_path`` is the on-disk path to the document — it is named for
+    historical reasons (the first two extractors took PDFs) but accepts
+    any path the dispatched extractor knows how to read (.tiff, .docx,
+    .xlsx, .hl7, etc.).
     """
 
-    pages = render_document(pdf_path)
-    if not pages:
-        raise ExtractorError(f"No pages rendered from {pdf_path}")
+    extractor_fn = _EXTRACTORS.get(document_type)
+    if extractor_fn is None:
+        raise UnsupportedDocumentTypeError(
+            f"document_type {document_type!r} is not implemented yet. "
+            f"Implemented: {sorted(_EXTRACTORS)}"
+        )
 
-    facts: LabPdfFacts | IntakeFormFacts
-    if document_type == "lab_pdf":
-        facts = _extract_lab(
-            client=client, model=model, document_id=document_id, pages=pages
-        )
-    elif document_type == "intake_form":
-        facts = _extract_intake(
-            client=client, model=model, document_id=document_id, pages=pages
-        )
-    else:
-        raise ExtractorError(f"Unknown document_type: {document_type!r}")
+    facts = extractor_fn(
+        client=client,
+        model=model,
+        document_id=document_id,
+        document_path=pdf_path,
+    )
 
     return ExtractionResult(
         document_id=document_id,
         document_type=document_type,
         facts=facts,
-        raw_tool_input={"pages": len(pages)},
+        raw_tool_input={"document_path": str(pdf_path)},
     )
 
 
 # ---------------------------------------------------------------------------
 # Per-document-type extraction
 # ---------------------------------------------------------------------------
+
+
+def _extract_lab_dispatch(
+    *,
+    client: Anthropic,
+    model: str,
+    document_id: str,
+    document_path: Path,
+) -> LabPdfFacts:
+    pages = render_document(document_path)
+    if not pages:
+        raise ExtractorError(f"No pages rendered from {document_path}")
+    return _extract_lab(
+        client=client, model=model, document_id=document_id, pages=pages
+    )
+
+
+def _extract_intake_dispatch(
+    *,
+    client: Anthropic,
+    model: str,
+    document_id: str,
+    document_path: Path,
+) -> IntakeFormFacts:
+    pages = render_document(document_path)
+    if not pages:
+        raise ExtractorError(f"No pages rendered from {document_path}")
+    return _extract_intake(
+        client=client, model=model, document_id=document_id, pages=pages
+    )
+
+
+def _stub_extractor(document_type: DocumentType, task_ref: str) -> _ExtractorFn:
+    """Build a not-yet-implemented stub extractor.
+
+    Each Week 2 multimodal expansion step replaces its stub with the
+    real implementation. Until then, calling the stub raises
+    ``UnsupportedDocumentTypeError`` so the eval runner / supervisor
+    can map to ``UNSUPPORTED_DOCUMENT_TYPE`` abstention rather than
+    crash on a malformed call.
+    """
+
+    def _impl(**_: object) -> BaseModel:
+        raise UnsupportedDocumentTypeError(
+            f"{document_type!r} extractor is not implemented yet ({task_ref})."
+        )
+
+    return _impl
+
+
+_EXTRACTORS: dict[DocumentType, _ExtractorFn] = {
+    "lab_pdf": _extract_lab_dispatch,
+    "intake_form": _extract_intake_dispatch,
+    "referral_docx": _stub_extractor("referral_docx", "Week 2 Step 3 (DOCX referral)"),
+    "fax_tiff": _stub_extractor("fax_tiff", "Week 2 Step 2 (TIFF fax packet)"),
+    "workbook_xlsx": _stub_extractor("workbook_xlsx", "Week 2 Step 5 (XLSX workbook)"),
+    "hl7_oru": _stub_extractor("hl7_oru", "Week 2 Step 6 (HL7 ORU-R01)"),
+    "hl7_adt": _stub_extractor("hl7_adt", "Week 2 Step 7 (HL7 ADT-A08)"),
+}
 
 
 def _extract_lab(

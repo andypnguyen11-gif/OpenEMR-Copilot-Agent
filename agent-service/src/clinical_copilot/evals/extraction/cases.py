@@ -58,6 +58,11 @@ class DocumentType(StrEnum):
 
     LAB_PDF = "lab_pdf"
     INTAKE_FORM = "intake_form"
+    REFERRAL_DOCX = "referral_docx"
+    FAX_TIFF = "fax_tiff"
+    WORKBOOK_XLSX = "workbook_xlsx"
+    HL7_ORU = "hl7_oru"
+    HL7_ADT = "hl7_adt"
     RETRIEVAL = "retrieval"
     REFUSAL = "refusal"
 

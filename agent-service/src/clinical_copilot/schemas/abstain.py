@@ -57,3 +57,8 @@ class RuntimeAbstainReason(StrEnum):
     """The per-field citation failed the OCR check (PRD2 §8.2 /
     Appendix A.4): bbox does not exist on the rendered page, OCR text
     does not match the claimed value, or the bbox is degenerate."""
+
+    UNSUPPORTED_DOCUMENT_TYPE = "UNSUPPORTED_DOCUMENT_TYPE"
+    """Caller passed a ``document_type`` the extractor registry does not
+    know how to handle. Distinct from TOOL_FAILURE so the UI can surface
+    "we don't read that document type yet" instead of a generic retry."""

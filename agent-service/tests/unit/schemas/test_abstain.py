@@ -6,7 +6,7 @@ from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 from clinical_copilot.verification.abstention import AbstentionState
 
 
-def test_runtime_abstain_reason_has_all_seven_canonical_members() -> None:
+def test_runtime_abstain_reason_has_all_canonical_members() -> None:
     expected = {
         "NO_DATA",
         "VERIFICATION_FAILED",
@@ -15,6 +15,7 @@ def test_runtime_abstain_reason_has_all_seven_canonical_members() -> None:
         "LOW_CONFIDENCE",
         "OUT_OF_SCHEMA",
         "CITATION_INVALID",
+        "UNSUPPORTED_DOCUMENT_TYPE",
     }
     assert {m.name for m in RuntimeAbstainReason} == expected
     # String values match member names — wire serialization contract.
