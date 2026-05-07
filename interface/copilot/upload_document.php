@@ -241,13 +241,14 @@ Header::setupHeader();
             accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.docx,.xlsx,.hl7,.txt"
             required>
         <div class="hint">Max ~10MB. Extraction takes 5–60s depending on length and format.</div>
+        <div class="hint" data-detected-type role="status" aria-live="polite"></div>
     </div>
-    <div class="form-group">
-        <label for="type_hint">Type hint (only used for PDF / PNG / JPG — others are auto-detected)</label>
+    <div class="form-group" data-type-hint-group>
+        <label for="type_hint">Type hint <span class="hint">(only used when the file is a PDF, PNG, or JPG — every other format is auto-detected from the file)</span></label>
         <select name="type_hint" id="type_hint">
-            <option value="<?php echo DocumentClassifier::HINT_AUTO; ?>">Auto (default to lab)</option>
-            <option value="<?php echo DocumentClassifier::HINT_LAB; ?>">This is a lab report</option>
-            <option value="<?php echo DocumentClassifier::HINT_INTAKE; ?>">This is an intake form</option>
+            <option value="<?php echo DocumentClassifier::HINT_AUTO; ?>">Auto-detect</option>
+            <option value="<?php echo DocumentClassifier::HINT_LAB; ?>">Force lab report</option>
+            <option value="<?php echo DocumentClassifier::HINT_INTAKE; ?>">Force intake form</option>
         </select>
     </div>
     <div class="form-group">
@@ -264,6 +265,57 @@ Header::setupHeader();
 (function () {
     var form = document.querySelector('form[data-copilot-form]');
     if (!form) { return; }
+
+    // Mirror of the PHP-side classifier's extension → display-name map.
+    // The hint dropdown is only useful for the AMBIGUOUS formats (PDF /
+    // PNG / JPG); every other extension drives the document_type
+    // deterministically from the extension alone, so we hide the hint
+    // for those and surface a "Detected: ..." preview instead.
+    var EXT_LABELS = {
+        'pdf':  { label: 'PDF — defaults to lab report; switch the hint below to upload as an intake form', ambiguous: true },
+        'png':  { label: 'PNG image — defaults to lab report; switch the hint below to upload as an intake form', ambiguous: true },
+        'jpg':  { label: 'JPG image — defaults to lab report; switch the hint below to upload as an intake form', ambiguous: true },
+        'jpeg': { label: 'JPG image — defaults to lab report; switch the hint below to upload as an intake form', ambiguous: true },
+        'tif':  { label: 'Detected: multi-page fax packet (TIFF)', ambiguous: false },
+        'tiff': { label: 'Detected: multi-page fax packet (TIFF)', ambiguous: false },
+        'docx': { label: 'Detected: referral letter (DOCX)', ambiguous: false },
+        'xlsx': { label: 'Detected: patient workbook (XLSX)', ambiguous: false },
+        'hl7':  { label: 'Detected: HL7 v2 message (ORU vs ADT decided after upload)', ambiguous: false },
+        'txt':  { label: 'Plain text — will be classified after upload (likely HL7 if it starts with MSH|)', ambiguous: false }
+    };
+
+    var fileInput = form.querySelector('#document_file');
+    var detectedNode = form.querySelector('[data-detected-type]');
+    var hintGroup = form.querySelector('[data-type-hint-group]');
+
+    function updateDetected() {
+        if (!fileInput || !detectedNode || !hintGroup) { return; }
+        var name = fileInput.value || '';
+        var dot = name.lastIndexOf('.');
+        var ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+        var info = EXT_LABELS[ext];
+        if (!ext) {
+            detectedNode.textContent = '';
+            hintGroup.style.display = '';
+            return;
+        }
+        if (!info) {
+            detectedNode.textContent = 'Unknown extension — the server will reject this file.';
+            hintGroup.style.display = '';
+            return;
+        }
+        detectedNode.textContent = info.label;
+        // Hide the hint dropdown for unambiguous extensions so the user
+        // doesn't misread "Auto-detect" as something that overrides the
+        // file's own format.
+        hintGroup.style.display = info.ambiguous ? '' : 'none';
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', updateDetected);
+    }
+    updateDetected();
+
     form.addEventListener('submit', function () {
         var btn = form.querySelector('[data-copilot-submit]');
         var loading = form.querySelector('[data-copilot-loading]');
