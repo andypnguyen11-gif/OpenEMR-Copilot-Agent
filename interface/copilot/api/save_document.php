@@ -44,6 +44,9 @@ use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\ChartWrite\ChartWriteService;
+use OpenEMR\Services\Copilot\ChartWrite\ChartWriteSummary;
+use OpenEMR\Services\Copilot\ChartWrite\FactsExtractor;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
 use Symfony\Component\HttpFoundation\Request;
@@ -61,10 +64,19 @@ $documentIdRaw = $request->request->get('document_id');
 $documentTypeRaw = $request->request->get('document_type');
 $patientChoiceRaw = $request->request->get('patient_choice', 'unassigned');
 $editedFactsForm = $request->request->all('facts');
+$writeSectionsRaw = $request->request->all('write_sections');
 
 $documentId = is_string($documentIdRaw) ? $documentIdRaw : '';
 $documentType = is_string($documentTypeRaw) ? $documentTypeRaw : '';
 $patientChoice = is_string($patientChoiceRaw) ? $patientChoiceRaw : 'unassigned';
+// $writeSectionsRaw is the form's checked checkboxes — names like
+// "allergies" / "medications" / "active_problems" / "care_gaps" /
+// "lab_observations". Empty when no checkboxes were ticked.
+/** @var list<non-empty-string> $checkedSections */
+$checkedSections = array_values(array_filter(
+    $writeSectionsRaw,
+    static fn (mixed $entry): bool => is_string($entry) && $entry !== '',
+));
 
 if ($documentId === '' || $documentType === '') {
     http_response_code(400);
@@ -188,8 +200,62 @@ if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
         'UPDATE documents SET foreign_id = ? WHERE id = ?',
         [$targetPid, (int) $bareDocId],
     );
+
+    // Write each checked extracted-facts section into the patient's
+    // chart tables. Sections the clinician unchecked (or that this
+    // document type doesn't carry) are skipped silently.
+    $authUserIdRaw = $session->get('authUserID');
+    $authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
+        : (is_numeric($authUserIdRaw) ? (int) $authUserIdRaw : 0);
+    $writeService = new ChartWriteService($authUserId);
+    $writeSummary = new ChartWriteSummary();
+
+    if (in_array('allergies', $checkedSections, true)) {
+        $rows = FactsExtractor::allergies($mergedFacts, $documentType);
+        $writeSummary->record('allergies', $writeService->writeAllergies($targetPid, $rows));
+    }
+    if (in_array('medications', $checkedSections, true)) {
+        $rows = FactsExtractor::medications($mergedFacts, $documentType);
+        $writeSummary->record('medications', $writeService->writeMedications($targetPid, $rows));
+    }
+    if (in_array('active_problems', $checkedSections, true)) {
+        $rows = FactsExtractor::activeProblems($mergedFacts, $documentType);
+        $writeSummary->record('active_problems', $writeService->writeActiveProblems($targetPid, $rows));
+    }
+    if (in_array('care_gaps', $checkedSections, true)) {
+        $rows = FactsExtractor::careGaps($mergedFacts, $documentType);
+        $writeSummary->record('care_gaps', $writeService->writeReminders($targetPid, $rows));
+    }
+    if (in_array('lab_observations', $checkedSections, true)) {
+        $payload = FactsExtractor::labObservations($mergedFacts, $documentType);
+        $writeSummary->record('lab_observations', $writeService->writeLabObservations(
+            $targetPid,
+            $payload['panel_name'],
+            $payload['panel_loinc'],
+            $payload['report_date'],
+            $payload['observations'],
+        ));
+    }
+
+    // Surface the write summary on the chart redirect via a flash
+    // query param so the user knows what landed.
+    $flash = $writeSummary->isEmpty()
+        ? ''
+        : http_build_query([
+            'copilot_flash' => sprintf(
+                'Wrote %d row(s) to chart from %s: %s',
+                $writeSummary->totalRowsWritten(),
+                $documentType,
+                implode(', ', array_map(
+                    static fn (string $section, int $count) => sprintf('%s=%d', $section, $count),
+                    array_keys($writeSummary->counts()),
+                    array_values($writeSummary->counts()),
+                )),
+            ),
+        ]);
     header('Location: ' . $webroot . '/interface/main/main_screen.php?'
-        . http_build_query(['set_pid' => $targetPid]));
+        . http_build_query(['set_pid' => $targetPid])
+        . ($flash !== '' ? '&' . $flash : ''));
     exit;
 }
 

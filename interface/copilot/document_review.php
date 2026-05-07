@@ -51,6 +51,7 @@ use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\ChartWrite\FactsExtractor;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\DocumentClassifier;
 use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
@@ -233,6 +234,45 @@ foreach ($matchCandidates as $c) {
 // against the typed-union schema.
 $factsInner = is_array($facts) ? $facts : [];
 
+// Which "Write to chart" sections does this document type carry data
+// for? Drives the checkbox list below the patient picker. The tuple
+// is [section_id, label, populated]. Populated is a quick heuristic
+// — "is there at least one row of data for this section in the
+// extracted facts" — used to disable the checkbox when the section
+// would be a no-op.
+$availableWriteSections = [];
+$candidateSections = [
+    DocumentClassifier::TYPE_INTAKE_FORM => [
+        ['allergies', 'Allergies → Allergies card'],
+        ['medications', 'Medications → Medications card'],
+        ['active_problems', 'Active problems / PMH → Issues card'],
+    ],
+    DocumentClassifier::TYPE_REFERRAL_DOCX => [
+        ['allergies', 'Allergies → Allergies card'],
+        ['medications', 'Medications → Medications card'],
+        ['active_problems', 'Active problems / PMH → Issues card'],
+    ],
+    DocumentClassifier::TYPE_WORKBOOK_XLSX => [
+        ['allergies', 'Allergies → Allergies card'],
+        ['medications', 'Medications → Medications card'],
+        ['care_gaps', 'Care gaps → Patient Reminders'],
+        ['lab_observations', 'Lab observations → Labs card'],
+    ],
+    DocumentClassifier::TYPE_LAB_PDF => [
+        ['lab_observations', 'Lab observations → Labs card'],
+    ],
+    DocumentClassifier::TYPE_HL7_ORU => [
+        ['lab_observations', 'Lab observations → Labs card'],
+    ],
+];
+foreach ($candidateSections[$documentType] ?? [] as [$id, $label]) {
+    $availableWriteSections[] = [
+        'id' => $id,
+        'label' => $label,
+        'populated' => FactsExtractor::sectionPopulated($factsInner, $documentType, $id),
+    ];
+}
+
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
 $csrfToken = CsrfUtils::collectCsrfToken(session: $session);
 
@@ -272,6 +312,10 @@ Header::setupHeader();
         details.raw-json { margin: 1rem 0; }
         details.raw-json summary { cursor: pointer; color: #555; }
         details.raw-json pre { background: #fbfbfb; padding: 1rem; border: 1px solid #eee; overflow-x: auto; max-height: 400px; }
+        ul.write-sections { list-style: none; padding-left: 0; margin: 0.5rem 0 1rem; }
+        ul.write-sections li { padding: 0.3rem 0; }
+        ul.write-sections label { font-weight: 500; cursor: pointer; }
+        ul.write-sections input[disabled] + * { color: #aaa; }
     </style>
 </head>
 <body>
@@ -372,7 +416,33 @@ Header::setupHeader();
     <input type="hidden" name="patient_choice" value="unassigned">
     <?php endif; ?>
 
-    <h2>2. Review &amp; edit extracted facts</h2>
+    <?php if ($availableWriteSections !== []): ?>
+    <h2>2. Write extracted data to chart sections</h2>
+    <p class="meta">
+        Each ticked section gets written to the corresponding chart
+        card when you confirm. Untick a section to skip writing it
+        (the source document is still attached either way). Greyed-
+        out checkboxes have no extracted data to write.
+    </p>
+    <ul class="write-sections">
+        <?php foreach ($availableWriteSections as $section): ?>
+            <li>
+                <label>
+                    <input type="checkbox"
+                        name="write_sections[]"
+                        value="<?php echo htmlspecialchars($section['id'], ENT_QUOTES, 'UTF-8'); ?>"
+                        <?php echo $section['populated'] ? 'checked' : 'disabled'; ?>>
+                    <?php echo htmlspecialchars($section['label'], ENT_QUOTES, 'UTF-8'); ?>
+                    <?php if (!$section['populated']): ?>
+                        <span class="empty-hint">(no data extracted)</span>
+                    <?php endif; ?>
+                </label>
+            </li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+
+    <h2><?php echo $availableWriteSections !== [] ? '3' : '2'; ?>. Review &amp; edit extracted facts</h2>
     <p class="meta">
         Edit any field that the extractor got wrong. The 📎 icon shows
         the source citation the value was pulled from. Yellow badges
@@ -382,7 +452,7 @@ Header::setupHeader();
     <?php echo FactsFormHelper::renderFacts($factsInner, '', ''); ?>
 
     <div class="actions">
-        <button type="submit">Save edits &amp; attach to patient</button>
+        <button type="submit">Save edits, write to chart &amp; attach</button>
         <a class="secondary" href="<?php echo htmlspecialchars($webroot . '/interface/copilot/upload_document.php', ENT_QUOTES, 'UTF-8'); ?>">
             Upload another document
         </a>
