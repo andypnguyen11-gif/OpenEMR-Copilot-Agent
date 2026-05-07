@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-workbook/p02_whitaker_workbook",
+  "bucket": "extraction-workbook",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/xlsx/p02-whitaker-workbook.xlsx",
+  "document_type": "workbook_xlsx",
+  "description": "Whitaker workbook \u2014 anticoagulated patient with anemia workup.",
+  "expectations": {
+    "list_min": {
+      "medications": 4,
+      "lab_readings": 18,
+      "care_gaps": 6
+    },
+    "field_equals": {
+      "patient.name.value": "James Whitaker",
+      "patient.dob.value": "1958-11-22",
+      "patient.mrn.value": "NMM-9912448"
+    },
+    "field_present": [
+      "patient.pcp",
+      "patient.allergies"
+    ]
+  }
+}

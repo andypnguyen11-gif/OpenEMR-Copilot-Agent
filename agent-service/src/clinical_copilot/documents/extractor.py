@@ -34,6 +34,7 @@ from anthropic import Anthropic
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clinical_copilot.documents.extractors.referral_docx import extract_referral_docx
+from clinical_copilot.documents.extractors.workbook_xlsx import extract_workbook_xlsx
 from clinical_copilot.documents.fetcher import (
     RenderedPage,
     encode_jpeg_bytes,
@@ -411,7 +412,7 @@ _EXTRACTORS: dict[DocumentType, _ExtractorFn] = {
     "intake_form": _extract_intake_dispatch,
     "referral_docx": extract_referral_docx,
     "fax_tiff": _extract_fax_tiff_dispatch,
-    "workbook_xlsx": _stub_extractor("workbook_xlsx", "Week 2 Step 5 (XLSX workbook)"),
+    "workbook_xlsx": extract_workbook_xlsx,
     "hl7_oru": _stub_extractor("hl7_oru", "Week 2 Step 6 (HL7 ORU-R01)"),
     "hl7_adt": _stub_extractor("hl7_adt", "Week 2 Step 7 (HL7 ADT-A08)"),
 }

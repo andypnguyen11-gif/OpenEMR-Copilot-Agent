@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-workbook/p06_johnson_workbook",
+  "bucket": "extraction-workbook",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/xlsx/p06-johnson-workbook.xlsx",
+  "document_type": "workbook_xlsx",
+  "description": "Johnson workbook \u2014 HFrEF + CKD3a + medication reconciliation discrepancy (largest workbook in cohort).",
+  "expectations": {
+    "list_min": {
+      "medications": 7,
+      "lab_readings": 20,
+      "care_gaps": 8
+    },
+    "field_equals": {
+      "patient.name.value": "Marcus Johnson",
+      "patient.dob.value": "1954-02-08",
+      "patient.mrn.value": "HFH-8866213"
+    },
+    "field_present": [
+      "patient.pcp",
+      "patient.allergies"
+    ]
+  }
+}

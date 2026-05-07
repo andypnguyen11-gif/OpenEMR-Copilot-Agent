@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-workbook/p05_patel_workbook",
+  "bucket": "extraction-workbook",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/xlsx/p05-patel-workbook.xlsx",
+  "document_type": "workbook_xlsx",
+  "description": "Patel workbook \u2014 pre-conception planning for moderate persistent asthma.",
+  "expectations": {
+    "list_min": {
+      "medications": 5,
+      "lab_readings": 9,
+      "care_gaps": 7
+    },
+    "field_equals": {
+      "patient.name.value": "Aisha Patel",
+      "patient.dob.value": "1991-06-15",
+      "patient.mrn.value": "EMR-4413089"
+    },
+    "field_present": [
+      "patient.pcp",
+      "patient.allergies"
+    ]
+  }
+}

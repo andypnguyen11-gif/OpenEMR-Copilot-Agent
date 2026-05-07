@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-workbook/p04_kowalski_workbook",
+  "bucket": "extraction-workbook",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/xlsx/p04-kowalski-workbook.xlsx",
+  "document_type": "workbook_xlsx",
+  "description": "Kowalski workbook \u2014 transaminitis patient with broad lab trending.",
+  "expectations": {
+    "list_min": {
+      "medications": 3,
+      "lab_readings": 15,
+      "care_gaps": 6
+    },
+    "field_equals": {
+      "patient.name.value": "Robert Kowalski",
+      "patient.dob.value": "1971-09-30",
+      "patient.mrn.value": "NWM-7724501"
+    },
+    "field_present": [
+      "patient.pcp",
+      "patient.allergies"
+    ]
+  }
+}

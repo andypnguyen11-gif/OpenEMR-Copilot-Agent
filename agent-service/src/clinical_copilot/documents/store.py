@@ -20,6 +20,7 @@ from clinical_copilot.documents.schemas.fax_tiff import FaxTiffFacts
 from clinical_copilot.documents.schemas.intake_form import IntakeFormFacts
 from clinical_copilot.documents.schemas.lab_pdf import LabPdfFacts
 from clinical_copilot.documents.schemas.referral_docx import ReferralDocxFacts
+from clinical_copilot.documents.schemas.workbook_xlsx import WorkbookXlsxFacts
 
 # `data/` is gitignored at the repo level; demo runs persist here.
 _DEFAULT_STORE_ROOT = Path(__file__).resolve().parents[3] / "data" / "extracted"
@@ -29,7 +30,9 @@ _DEFAULT_STORE_ROOT = Path(__file__).resolve().parents[3] / "data" / "extracted"
 # top-level shapes raise on read rather than silently re-typing as the
 # wrong model — preventing a fax-packet write from being read back as
 # an empty LabPdfFacts.
-_FactsUnion = LabPdfFacts | IntakeFormFacts | FaxTiffFacts | ReferralDocxFacts
+_FactsUnion = (
+    LabPdfFacts | IntakeFormFacts | FaxTiffFacts | ReferralDocxFacts | WorkbookXlsxFacts
+)
 _ADAPTER: TypeAdapter[_FactsUnion] = TypeAdapter(_FactsUnion)
 
 

@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-workbook/p07_nguyen_workbook",
+  "bucket": "extraction-workbook",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/xlsx/p07-nguyen-workbook.xlsx",
+  "document_type": "workbook_xlsx",
+  "description": "Nguyen workbook \u2014 newly diagnosed Hashimoto patient on levothyroxine titration.",
+  "expectations": {
+    "list_min": {
+      "medications": 3,
+      "lab_readings": 12,
+      "care_gaps": 6
+    },
+    "field_equals": {
+      "patient.name.value": "Olivia Nguyen",
+      "patient.dob.value": "1997-10-19",
+      "patient.mrn.value": "UWM-3320175"
+    },
+    "field_present": [
+      "patient.pcp",
+      "patient.allergies"
+    ]
+  }
+}
