@@ -98,6 +98,8 @@ repos:
     entry: php -l
     language: system
     files: \.php$
+    stages:
+    - pre-commit
 
   - id: composer-validate
     name: Validate composer.json
@@ -118,12 +120,16 @@ repos:
     entry: composer phpcbf --
     language: system
     files: \.php$
+    stages:
+    - pre-commit
 
   - id: phpcs
     name: PHP_CodeSniffer
     entry: composer phpcs --
     language: system
     files: \.php$
+    stages:
+    - pre-commit
 
   - id: phpstan
     name: PHPStan Static Analysis
@@ -131,12 +137,16 @@ repos:
     language: system
     files: \.php$
     pass_filenames: false
+    stages:
+    - pre-commit
 
   - id: rector
     name: Rector
     entry: composer rector-fix --
     language: system
     files: \.php$
+    stages:
+    - pre-commit
 
   - id: composer-require-checker
     name: Composer Require Checker
@@ -144,6 +154,8 @@ repos:
     language: system
     files: ^(composer\.json|.*\.php)$
     pass_filenames: false
+    stages:
+    - pre-commit
 
   - id: discrepancy-fixture-check
     name: Discrepancy Fixture Drift Check
