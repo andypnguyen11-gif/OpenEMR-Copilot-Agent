@@ -39,6 +39,8 @@ use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\DocumentClassifier;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchScorer;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchService;
 
 if (!AclMain::aclCheckCore('patients', 'demo')) {
     http_response_code(403);
@@ -129,6 +131,85 @@ $abstainSummary = is_array($facts) && isset($facts['abstain_summary']) && is_arr
     : null;
 
 /**
+ * Pull (first, last, dob, mrn) out of an extracted-fact payload by
+ * document type. The shape varies per type — intake forms surface
+ * legal_first_name / legal_last_name as separate fields, fax packets
+ * give a single patient_name we have to split on whitespace, etc.
+ *
+ * Returns an array with four nullable string keys. Skipping a field
+ * when the value is missing or in an abstain state is intentional —
+ * the patient matcher treats null as "don't filter on this".
+ *
+ * @param array<mixed,mixed>|null $factsBody
+ * @return array{first_name:?string, last_name:?string, dob:?string, mrn:?string}
+ */
+$extractDemographics = static function (?array $factsBody, string $type): array {
+    $out = ['first_name' => null, 'last_name' => null, 'dob' => null, 'mrn' => null];
+    if ($factsBody === null) {
+        return $out;
+    }
+    $factsInner = $factsBody['facts'] ?? null;
+    if (!is_array($factsInner)) {
+        return $out;
+    }
+
+    $valueOf = static function (mixed $field): ?string {
+        if (!is_array($field)) {
+            return null;
+        }
+        $v = $field['value'] ?? null;
+        return is_string($v) && $v !== '' ? $v : null;
+    };
+
+    $splitName = static function (?string $full): array {
+        if ($full === null) {
+            return [null, null];
+        }
+        $parts = preg_split('/\s+/', trim($full)) ?: [];
+        if (count($parts) === 1) {
+            return [null, $parts[0]];
+        }
+        return [$parts[0], end($parts) ?: null];
+    };
+
+    if ($type === DocumentClassifier::TYPE_INTAKE_FORM) {
+        $out['first_name'] = $valueOf($factsInner['legal_first_name'] ?? null);
+        $out['last_name'] = $valueOf($factsInner['legal_last_name'] ?? null);
+        $out['dob'] = $valueOf($factsInner['date_of_birth'] ?? null);
+        $out['mrn'] = $valueOf($factsInner['medical_record_number'] ?? null);
+    } elseif ($type === DocumentClassifier::TYPE_REFERRAL_DOCX) {
+        [$out['first_name'], $out['last_name']] = $splitName($valueOf($factsInner['patient_name'] ?? null));
+        $out['dob'] = $valueOf($factsInner['patient_dob'] ?? null);
+        $out['mrn'] = $valueOf($factsInner['patient_mrn'] ?? null);
+    } elseif ($type === DocumentClassifier::TYPE_FAX_TIFF) {
+        [$out['first_name'], $out['last_name']] = $splitName($valueOf($factsInner['patient_name'] ?? null));
+        $out['dob'] = $valueOf($factsInner['patient_dob'] ?? null);
+    }
+    // lab_pdf doesn't carry demographics; workbook/hl7 land in their
+    // own steps with their own demographics extractors.
+    return $out;
+};
+
+$demographics = $extractDemographics(
+    is_array($facts) ? $facts : null,
+    $documentType,
+);
+
+$matchCandidates = [];
+$matchHasDemographics = $demographics['first_name'] !== null
+    || $demographics['last_name'] !== null
+    || $demographics['mrn'] !== null;
+if ($matchHasDemographics) {
+    $matchService = new PatientMatchService();
+    $matchCandidates = $matchService->match(
+        $demographics['first_name'],
+        $demographics['last_name'],
+        $demographics['dob'],
+        $demographics['mrn'],
+    );
+}
+
+/**
  * Narrowing helper for the abstain-summary counts. The facts payload is
  * a generic ``array<mixed,mixed>`` because it round-trips through JSON;
  * phpstan level 10 forbids ``(int) <mixed>`` so each count is parsed
@@ -163,6 +244,11 @@ Header::setupHeader();
         .actions { margin: 1.5rem 0; }
         .actions a { display: inline-block; padding: 0.5rem 1rem; background: #2057a8; color: white; text-decoration: none; border-radius: 3px; margin-right: 0.5rem; }
         .actions a.secondary { background: #e0e0e0; color: #333; }
+        .match-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95em; }
+        .match-table th, .match-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
+        .match-table th { background: #f4f4f4; }
+        .match-table tr.preselected { background: #f0f8ff; }
+        .match-table tr.preselected td:first-child { color: #154f9c; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -185,6 +271,67 @@ Header::setupHeader();
         citation-invalid: <?php echo $abstainCount($abstainSummary, 'citation_invalid_field_count'); ?>;
         out-of-schema: <?php echo $abstainCount($abstainSummary, 'out_of_schema_field_count'); ?>.
     </div>
+<?php endif; ?>
+
+<?php if ($matchHasDemographics): ?>
+    <h2>Patient match</h2>
+    <p class="meta">
+        Extracted demographics:
+        <strong><?php echo htmlspecialchars(trim(($demographics['first_name'] ?? '') . ' ' . ($demographics['last_name'] ?? '')) ?: '(none)', ENT_QUOTES, 'UTF-8'); ?></strong>
+        <?php if ($demographics['dob'] !== null): ?>
+            | DOB <?php echo htmlspecialchars($demographics['dob'], ENT_QUOTES, 'UTF-8'); ?>
+        <?php endif; ?>
+        <?php if ($demographics['mrn'] !== null): ?>
+            | MRN <?php echo htmlspecialchars($demographics['mrn'], ENT_QUOTES, 'UTF-8'); ?>
+        <?php endif; ?>
+    </p>
+    <?php if (count($matchCandidates) === 0): ?>
+        <div class="alert-info">
+            No existing patient matched these demographics above the
+            review threshold (<?php echo PatientMatchScorer::REVIEW_THRESHOLD * 100; ?>%).
+            Default action: <strong>create new patient</strong>.
+        </div>
+    <?php else: ?>
+        <table class="match-table">
+            <thead>
+                <tr>
+                    <th>Confidence</th>
+                    <th>Patient</th>
+                    <th>DOB</th>
+                    <th>MRN</th>
+                    <th>Why</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($matchCandidates as $c): ?>
+                    <tr<?php echo PatientMatchScorer::shouldPreselect($c->score) ? ' class="preselected"' : ''; ?>>
+                        <td><?php echo number_format($c->score * 100, 0); ?>%</td>
+                        <td><?php echo htmlspecialchars($c->firstName . ' ' . $c->lastName, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($c->dob, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($c->mrn ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td><?php echo htmlspecialchars($c->matchReason, ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td>
+                            <a href="<?php echo htmlspecialchars(
+                                $webroot . '/interface/patient_file/summary/demographics.php?set_pid=' . $c->pid,
+                                ENT_QUOTES,
+                                'UTF-8',
+                                     ); ?>">Open chart</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p class="meta">
+            Preselect threshold: <?php echo PatientMatchScorer::PRESELECT_THRESHOLD * 100; ?>%.
+            Above that, the row is auto-suggested as the match. Below, the
+            clinician picks. The chart-side document attach (rewriting
+            <code>documents.foreign_id</code> from the placeholder pid 0
+            to the matched pid) lands in a follow-up; for now the doc
+            stays in the unassigned-uploads bucket until the clinician
+            opens the chart and confirms.
+        </p>
+    <?php endif; ?>
 <?php endif; ?>
 
 <?php if ($continueNote !== ''): ?>
