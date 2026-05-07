@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-fax/p02_whitaker_fax",
+  "bucket": "extraction-fax",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/tiff/p02-whitaker-fax-packet.tiff",
+  "document_type": "fax_tiff",
+  "description": "Whitaker fax packet \u2014 4 pages, urgent GI referral for microcytic anemia on apixaban.",
+  "expectations": {
+    "list_min": {
+      "pages": 4
+    },
+    "field_equals": {
+      "pages[0].page_type.value": "cover",
+      "patient_name.value": "James Whitaker",
+      "patient_dob.value": "1958-11-22"
+    },
+    "field_present": [
+      "patient_name",
+      "patient_dob",
+      "sender_name",
+      "fax_date"
+    ]
+  }
+}

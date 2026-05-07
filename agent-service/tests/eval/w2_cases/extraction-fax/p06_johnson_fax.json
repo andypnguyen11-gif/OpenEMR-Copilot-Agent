@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-fax/p06_johnson_fax",
+  "bucket": "extraction-fax",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/tiff/p06-johnson-fax-packet.tiff",
+  "document_type": "fax_tiff",
+  "description": "Johnson fax packet \u2014 5 pages, urgent nephrology referral for HFrEF + CKD3a + medication reconciliation discrepancy.",
+  "expectations": {
+    "list_min": {
+      "pages": 5
+    },
+    "field_equals": {
+      "pages[0].page_type.value": "cover",
+      "patient_name.value": "Marcus Johnson",
+      "patient_dob.value": "1954-02-08"
+    },
+    "field_present": [
+      "patient_name",
+      "patient_dob",
+      "sender_name",
+      "fax_date"
+    ]
+  }
+}

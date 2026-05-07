@@ -42,7 +42,9 @@ def test_every_document_type_has_a_registry_entry() -> None:
 
 @pytest.mark.parametrize(
     "document_type",
-    ["referral_docx", "fax_tiff", "workbook_xlsx", "hl7_oru", "hl7_adt"],
+    # Each Week 2 step removes its type from this list as the real
+    # extractor lands. ``fax_tiff`` shipped in Step 2.
+    ["referral_docx", "workbook_xlsx", "hl7_oru", "hl7_adt"],
 )
 def test_stub_extractors_raise_unsupported(document_type: str) -> None:
     with pytest.raises(UnsupportedDocumentTypeError) as exc_info:

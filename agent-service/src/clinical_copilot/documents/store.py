@@ -16,13 +16,19 @@ from pathlib import Path
 
 from pydantic import TypeAdapter
 
+from clinical_copilot.documents.schemas.fax_tiff import FaxTiffFacts
 from clinical_copilot.documents.schemas.intake_form import IntakeFormFacts
 from clinical_copilot.documents.schemas.lab_pdf import LabPdfFacts
 
 # `data/` is gitignored at the repo level; demo runs persist here.
 _DEFAULT_STORE_ROOT = Path(__file__).resolve().parents[3] / "data" / "extracted"
 
-_FactsUnion = LabPdfFacts | IntakeFormFacts
+# Each multimodal-expansion step adds its facts class to this union as
+# its extractor lands. The TypeAdapter validates round-trips, so unknown
+# top-level shapes raise on read rather than silently re-typing as the
+# wrong model — preventing a fax-packet write from being read back as
+# an empty LabPdfFacts.
+_FactsUnion = LabPdfFacts | IntakeFormFacts | FaxTiffFacts
 _ADAPTER: TypeAdapter[_FactsUnion] = TypeAdapter(_FactsUnion)
 
 

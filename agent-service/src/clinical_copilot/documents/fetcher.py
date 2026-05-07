@@ -45,9 +45,11 @@ def render_document(path: Path) -> list[RenderedPage]:
     """Render every page of `path` to a PIL.Image.
 
     PDFs go through pypdfium2 at `RENDER_DPI`. Single-image documents
-    (PNG, JPG, JPEG, TIFF, BMP, WEBP) are loaded directly and returned
-    as a one-page list. Unknown extensions fall back to the image
-    loader — most scanners produce one of the listed formats.
+    (PNG, JPG, JPEG, BMP, WEBP) are loaded directly and returned as a
+    one-page list. Multi-page TIFFs (fax packets — one of the cohort-5
+    file formats) are iterated via Pillow's ``n_frames`` so each page
+    becomes its own ``RenderedPage``. Unknown extensions fall back to
+    the image loader — most scanners produce one of the listed formats.
     """
 
     if not path.exists():
@@ -56,6 +58,8 @@ def render_document(path: Path) -> list[RenderedPage]:
     suffix = path.suffix.lower()
     if suffix == ".pdf":
         return _render_pdf(path)
+    if suffix in {".tif", ".tiff"}:
+        return _render_tiff(path)
     if suffix in _IMAGE_EXTS:
         return _render_image(path)
     raise ValueError(
@@ -101,6 +105,37 @@ def _render_image(path: Path) -> list[RenderedPage]:
             height_px=image.height,
         )
     ]
+
+
+def _render_tiff(path: Path) -> list[RenderedPage]:
+    """Iterate every frame of a (possibly multi-page) TIFF.
+
+    Fax-packet TIFFs in the cohort-5 set are 4-5 pages of bilevel
+    (mode '1') CCITT-compressed scans at 1700×2200. The conversion to
+    RGB is mandatory before JPEG encoding — saving a mode-'1' image as
+    JPEG raises an OSError. The long-edge cap then trims the page so
+    it stays within the Anthropic vision per-image budget.
+    """
+
+    pages: list[RenderedPage] = []
+    with Image.open(path) as tiff:
+        frame_count = getattr(tiff, "n_frames", 1)
+        for index in range(frame_count):
+            tiff.seek(index)
+            # ``copy()`` detaches the frame from the seek cursor so the
+            # subsequent iteration does not mutate the page we just
+            # appended (a real Pillow gotcha on multi-frame formats).
+            frame = tiff.copy().convert("RGB")
+            frame = _cap_long_edge(frame)
+            pages.append(
+                RenderedPage(
+                    page_number=index + 1,
+                    image=frame,
+                    width_px=frame.width,
+                    height_px=frame.height,
+                )
+            )
+    return pages
 
 
 def _cap_long_edge(image: Image.Image) -> Image.Image:

@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-fax/p05_patel_fax",
+  "bucket": "extraction-fax",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/tiff/p05-patel-fax-packet.tiff",
+  "document_type": "fax_tiff",
+  "description": "Patel fax packet \u2014 4 pages, pulmonology pre-conception planning for moderate persistent asthma.",
+  "expectations": {
+    "list_min": {
+      "pages": 4
+    },
+    "field_equals": {
+      "pages[0].page_type.value": "cover",
+      "patient_name.value": "Aisha Patel",
+      "patient_dob.value": "1991-06-15"
+    },
+    "field_present": [
+      "patient_name",
+      "patient_dob",
+      "sender_name",
+      "fax_date"
+    ]
+  }
+}

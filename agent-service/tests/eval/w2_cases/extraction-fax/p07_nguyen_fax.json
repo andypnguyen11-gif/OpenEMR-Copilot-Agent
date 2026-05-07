@@ -1,0 +1,23 @@
+{
+  "case_id": "extraction-fax/p07_nguyen_fax",
+  "bucket": "extraction-fax",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/tiff/p07-nguyen-fax-packet.tiff",
+  "document_type": "fax_tiff",
+  "description": "Nguyen fax packet \u2014 4 pages, endocrinology referral for newly diagnosed Hashimoto thyroiditis.",
+  "expectations": {
+    "list_min": {
+      "pages": 4
+    },
+    "field_equals": {
+      "pages[0].page_type.value": "cover",
+      "patient_name.value": "Olivia Nguyen",
+      "patient_dob.value": "1997-10-19"
+    },
+    "field_present": [
+      "patient_name",
+      "patient_dob",
+      "sender_name",
+      "fax_date"
+    ]
+  }
+}

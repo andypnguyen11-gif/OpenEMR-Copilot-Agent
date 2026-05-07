@@ -39,6 +39,11 @@ from clinical_copilot.documents.fetcher import (
     render_document,
 )
 from clinical_copilot.documents.schemas.citation import ExtractedField, SourceCitation
+from clinical_copilot.documents.schemas.fax_tiff import (
+    FaxPage,
+    FaxPageType,
+    FaxTiffFacts,
+)
 from clinical_copilot.documents.schemas.intake_form import (
     ActiveProblem,
     FamilyHistoryEntry,
@@ -367,6 +372,21 @@ def _extract_intake_dispatch(
     )
 
 
+def _extract_fax_tiff_dispatch(
+    *,
+    client: Anthropic,
+    model: str,
+    document_id: str,
+    document_path: Path,
+) -> FaxTiffFacts:
+    pages = render_document(document_path)
+    if not pages:
+        raise ExtractorError(f"No pages rendered from {document_path}")
+    return _extract_fax(
+        client=client, model=model, document_id=document_id, pages=pages
+    )
+
+
 def _stub_extractor(document_type: DocumentType, task_ref: str) -> _ExtractorFn:
     """Build a not-yet-implemented stub extractor.
 
@@ -389,7 +409,7 @@ _EXTRACTORS: dict[DocumentType, _ExtractorFn] = {
     "lab_pdf": _extract_lab_dispatch,
     "intake_form": _extract_intake_dispatch,
     "referral_docx": _stub_extractor("referral_docx", "Week 2 Step 3 (DOCX referral)"),
-    "fax_tiff": _stub_extractor("fax_tiff", "Week 2 Step 2 (TIFF fax packet)"),
+    "fax_tiff": _extract_fax_tiff_dispatch,
     "workbook_xlsx": _stub_extractor("workbook_xlsx", "Week 2 Step 5 (XLSX workbook)"),
     "hl7_oru": _stub_extractor("hl7_oru", "Week 2 Step 6 (HL7 ORU-R01)"),
     "hl7_adt": _stub_extractor("hl7_adt", "Week 2 Step 7 (HL7 ADT-A08)"),
@@ -951,6 +971,162 @@ _LAB_SYSTEM_PROMPT = (
     "0..1 in (x0, y0, x1, y1) with top-left origin. Each observation's "
     "bbox should cover the entire row (analyte name through flag column)."
 )
+
+# ---------------------------------------------------------------------------
+# Fax-packet (multi-page TIFF) extraction
+# ---------------------------------------------------------------------------
+
+
+class RawFaxPage(BaseModel):
+    """One page of a fax packet, classified + summarized by the VLM."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_type: Literal["cover", "referral", "lab_report", "intake_form", "other"]
+    summary: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    citation: RawCitation
+    # Cover-sheet derived metadata. The VLM sets these only when the page
+    # is a cover; non-cover pages should leave them null.
+    patient_name: str | None = None
+    patient_dob: str | None = None  # ISO YYYY-MM-DD
+    sender_name: str | None = None
+    fax_date: str | None = None  # ISO YYYY-MM-DD
+
+
+_FAX_TOOL: dict[str, Any] = {
+    "name": "fax_page_classification",
+    "description": (
+        "Classify ONE page of a multi-page fax packet. Return the page "
+        "type, a one-sentence summary of what the page contains, and a "
+        "confidence score. If the page is the COVER sheet, also extract "
+        "the printed patient name, patient DOB (ISO YYYY-MM-DD), sender "
+        "name, and fax date (ISO YYYY-MM-DD); leave those fields null on "
+        "non-cover pages. The citation bbox should cover the most "
+        "informative region of the page (header for covers, the printed "
+        "letterhead or section title for body pages); coordinates are "
+        "normalized 0..1 with top-left origin."
+    ),
+    "input_schema": _tool_schema(RawFaxPage),
+}
+
+
+_FAX_SYSTEM_PROMPT = (
+    "You are a medical document triage assistant. The image is one page "
+    "of a multi-page clinical fax packet (a fax-machine bilevel scan, "
+    "often skewed and noisy). Classify the page using the "
+    "fax_page_classification tool.\n\n"
+    "page_type values:\n"
+    "  * 'cover' — the routing / metadata page that names the patient, "
+    "the sender, the recipient, and the page count.\n"
+    "  * 'referral' — a narrative referral letter from a referring "
+    "provider.\n"
+    "  * 'lab_report' — a printed lab-result panel.\n"
+    "  * 'intake_form' — a patient-completed intake or history form.\n"
+    "  * 'other' — anything else (imaging report, billing form, "
+    "illegible page, blank fax separator).\n\n"
+    "Bias toward 'other' when uncertain. Mis-classifying a page as "
+    "'lab_report' causes downstream code to attempt to attach values to "
+    "the labs table, so only emit 'lab_report' when you can clearly read "
+    "lab values with units.\n\n"
+    "Confidence reflects how sure you are of the classification — drop "
+    "below 0.7 if the page is too noisy to read with confidence; the "
+    "downstream pipeline will mark such pages as low-confidence and ask "
+    "the clinician to review manually.\n\n"
+    "Cover-sheet fields (patient_name, patient_dob, sender_name, "
+    "fax_date) are ONLY for pages where page_type='cover'. Leave them "
+    "null on every other page type. Dates are ISO YYYY-MM-DD."
+)
+
+
+def _extract_fax(
+    *, client: Anthropic, model: str, document_id: str, pages: list[RenderedPage]
+) -> FaxTiffFacts:
+    raw_pages: list[RawFaxPage] = []
+    for page in pages:
+        raw_pages.append(
+            _call_vlm(
+                client=client,
+                model=model,
+                tool=_FAX_TOOL,
+                tool_model=RawFaxPage,
+                page=page,
+                system_prompt=_FAX_SYSTEM_PROMPT,
+            )
+        )
+
+    extracted_pages: list[FaxPage] = []
+    for index, raw in enumerate(raw_pages):
+        cite = _to_source_citation(document_id=document_id, raw=raw.citation)
+        low_conf = raw.confidence < CONFIDENCE_THRESHOLD
+        # The page_number is structural (it's the index of the rendered
+        # page) and never abstains. We still wrap it in ExtractedField
+        # so the schema stays uniform with the other extractors.
+        page_number_field = _field(index + 1, cite, low_conf=False)
+        try:
+            page_type_value = FaxPageType(raw.page_type)
+        except ValueError:
+            # The Literal at the VLM tool layer rejects unknown values,
+            # but enforce here too so a future loosening doesn't break
+            # the strongly-typed downstream surface.
+            page_type_value = FaxPageType.OTHER
+        page_type_field = _field(page_type_value, cite, low_conf)
+        summary_field = _field(raw.summary, cite, low_conf)
+        extracted_pages.append(
+            FaxPage(
+                page_number=page_number_field,
+                page_type=page_type_field,
+                summary=summary_field,
+            )
+        )
+
+    # Pull cover-sheet metadata from the highest-confidence cover page
+    # (if multiple), or from any cover page that has it. Falls back to
+    # None when no cover page exists or no metadata is printed.
+    cover_candidates = [
+        (raw, _to_source_citation(document_id=document_id, raw=raw.citation))
+        for raw in raw_pages
+        if raw.page_type == "cover"
+    ]
+    cover_candidates.sort(key=lambda pair: pair[0].confidence, reverse=True)
+
+    patient_name_field: ExtractedField[str] | None = None
+    patient_dob_field: ExtractedField[date] | None = None
+    sender_name_field: ExtractedField[str] | None = None
+    fax_date_field: ExtractedField[date] | None = None
+
+    for raw, cite in cover_candidates:
+        low_conf = raw.confidence < CONFIDENCE_THRESHOLD
+        if patient_name_field is None and raw.patient_name:
+            patient_name_field = _optional_field(raw.patient_name, cite, low_conf)
+        if patient_dob_field is None and raw.patient_dob:
+            try:
+                parsed = datetime.strptime(raw.patient_dob, "%Y-%m-%d").date()
+                patient_dob_field = _optional_field(parsed, cite, low_conf)
+            except ValueError:
+                patient_dob_field = ExtractedField[date](
+                    abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA
+                )
+        if sender_name_field is None and raw.sender_name:
+            sender_name_field = _optional_field(raw.sender_name, cite, low_conf)
+        if fax_date_field is None and raw.fax_date:
+            try:
+                parsed_fd = datetime.strptime(raw.fax_date, "%Y-%m-%d").date()
+                fax_date_field = _optional_field(parsed_fd, cite, low_conf)
+            except ValueError:
+                fax_date_field = ExtractedField[date](
+                    abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA
+                )
+
+    return FaxTiffFacts(
+        document_id=document_id,
+        pages=extracted_pages,
+        patient_name=patient_name_field,
+        patient_dob=patient_dob_field,
+        sender_name=sender_name_field,
+        fax_date=fax_date_field,
+    )
+
 
 _INTAKE_SYSTEM_PROMPT = (
     "You are a medical document extractor. The image is one page of a "
