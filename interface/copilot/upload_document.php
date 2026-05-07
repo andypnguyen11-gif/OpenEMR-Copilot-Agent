@@ -28,6 +28,12 @@
 
 declare(strict_types=1);
 
+// Recover ``$_GET['site']`` from HTTP_HOST when the iframe lands here
+// without site_id in the session — see _site_recovery.php for context.
+// Must run BEFORE globals.php so its die("Site ID is missing...") branch
+// never fires.
+require_once(__DIR__ . "/_site_recovery.php");
+
 require_once(__DIR__ . "/../globals.php");
 require_once(__DIR__ . "/../../library/documents.php");
 
@@ -36,6 +42,7 @@ use GuzzleHttp\Psr7\HttpFactory;
 use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
+use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
@@ -70,6 +77,8 @@ $authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
 $request = Request::createFromGlobals();
 $errorMessage = '';
 $detectedType = '';
+/** @var list<array<string,mixed>> $duplicateMatches */
+$duplicateMatches = [];
 
 if ($request->isMethod('POST')) {
     CsrfUtils::checkCsrfInput(INPUT_POST, session: $session, dieOnFail: true);
@@ -77,6 +86,11 @@ if ($request->isMethod('POST')) {
     $upload = $request->files->get('document_file');
     $hintRaw = $request->request->get('type_hint', DocumentClassifier::HINT_AUTO);
     $hint = is_string($hintRaw) ? $hintRaw : DocumentClassifier::HINT_AUTO;
+    // The duplicate-detection short-circuit below renders an alert and
+    // asks the user to re-select the file with this hidden checkbox set,
+    // signalling "I know it's a duplicate and want a separate copy."
+    $forceDupRaw = $request->request->get('force_duplicate', '');
+    $forceDuplicate = is_string($forceDupRaw) && $forceDupRaw === '1';
 
     if (!$upload instanceof UploadedFile) {
         $errorMessage = 'No file selected.';
@@ -96,11 +110,68 @@ if ($request->isMethod('POST')) {
         $head = (string) file_get_contents($tmpName, false, null, 0, 1024);
         $fileBytes = (string) file_get_contents($tmpName);
 
-        try {
-            $documentType = DocumentClassifier::classify($origName, $mimeType, $head, $hint);
-            $detectedType = $documentType;
-        } catch (ClassifierException $e) {
-            $errorMessage = 'Could not determine document type: ' . $e->getMessage();
+        // Duplicate-file short-circuit: addNewDocument hashes uploads
+        // with sha3-512 and stores the hex in documents.hash. If we've
+        // seen this exact byte sequence before, surface the prior
+        // upload(s) instead of silently re-extracting and stacking
+        // duplicate chart writes when the user confirms on the review
+        // screen. The clinician can override by re-selecting the file
+        // with the "upload anyway" checkbox ticked.
+        //
+        // ``foreign_id > 0`` filter is the "committed uploads only"
+        // gate: we ignore orphans where the user uploaded but never
+        // clicked Save on the review page (foreign_id stays at "00").
+        // Otherwise an abandoned upload would block the user from ever
+        // re-trying the same file, and they'd hit a dup alert that
+        // blocks them from finishing the workflow they originally
+        // started. Committed = attached to a real chart = the only
+        // state where re-uploading would actually duplicate clinical
+        // writes.
+        if (!$forceDuplicate) {
+            $fileHashHex = hash('sha3-512', $fileBytes);
+            $duplicateMatches = QueryUtils::fetchRecords(
+                'SELECT d.id, d.foreign_id, d.name, d.date,
+                        pd.fname, pd.lname, pd.pubpid
+                   FROM documents d
+                   LEFT JOIN patient_data pd
+                          ON pd.pid = d.foreign_id
+                  WHERE d.hash = ?
+                    AND d.foreign_id IS NOT NULL
+                    AND d.foreign_id > 0
+                    AND (d.deleted IS NULL OR d.deleted = 0)
+                  ORDER BY d.id DESC
+                  LIMIT 5',
+                [$fileHashHex],
+            );
+            if ($duplicateMatches !== []) {
+                ServiceContainer::getLogger()->info('copilot.upload_document.duplicate_detected', [
+                    'origName' => $origName,
+                    'priorIds' => array_map(
+                        static function (array $row): int {
+                            $id = $row['id'] ?? null;
+                            return is_int($id) ? $id : (is_numeric($id) ? (int) $id : 0);
+                        },
+                        $duplicateMatches,
+                    ),
+                ]);
+            }
+        }
+
+        // When a duplicate is detected, fall through to the page render
+        // without calling addNewDocument or the agent ingest — the form
+        // below will surface the prior upload(s) and offer "Upload as a
+        // separate copy" / link to the existing chart.
+        if ($duplicateMatches === []) {
+            try {
+                $documentType = DocumentClassifier::classify($origName, $mimeType, $head, $hint);
+                $detectedType = $documentType;
+            } catch (ClassifierException $e) {
+                $errorMessage = 'Could not determine document type: ' . $e->getMessage();
+                $documentType = '';
+            }
+        } else {
+            // Avoid the "if ($documentType !== '')" branch below — there's
+            // no document type to act on when we're rendering the dup alert.
             $documentType = '';
         }
 
@@ -211,6 +282,21 @@ Header::setupHeader();
         body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 720px; }
         h1 { margin-top: 0; }
         .alert-error { background: #fee; border: 1px solid #faa; padding: 0.75rem 1rem; margin: 1rem 0; }
+        .alert-warn {
+            background: #fff8e6; border: 1px solid #e6c46a; padding: 0.9rem 1.1rem;
+            margin: 1rem 0; border-radius: 4px; color: #5a4400;
+        }
+        .alert-warn strong { font-size: 1.05em; color: #5a4400; }
+        .alert-warn ul { margin: 0.5rem 0 0.75rem; padding-left: 1.4rem; }
+        .alert-warn li { padding: 0.15rem 0; }
+        .alert-warn li code { background: #f4ecd0; padding: 0.05em 0.3em; border-radius: 2px; }
+        .alert-warn .dup-actions { margin-top: 0.6rem; }
+        .alert-warn .dup-actions a {
+            display: inline-block; padding: 0.4rem 0.9rem; background: #2057a8;
+            color: white; text-decoration: none; border-radius: 3px; margin-right: 0.4rem;
+            font-size: 0.95em;
+        }
+        .alert-warn .dup-actions a.secondary { background: #e0e0e0; color: #333; }
         .form-group { margin: 1rem 0; }
         label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
         select, input[type=file] { width: 100%; padding: 0.4rem; }
@@ -252,6 +338,83 @@ Header::setupHeader();
     <div class="alert-error"><?php echo htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8'); ?></div>
 <?php endif; ?>
 
+<?php if ($duplicateMatches !== []): ?>
+    <div class="alert-warn">
+        <strong>Possible duplicate upload</strong>
+        <p style="margin: 0.4rem 0;">
+            The file you just selected has the same SHA-3-512 hash as
+            <?php echo count($duplicateMatches) === 1 ? 'a prior upload' : count($duplicateMatches) . ' prior uploads'; ?>
+            in this site. Saving it again would re-extract and may stack
+            duplicate chart writes when you confirm on the review screen.
+        </p>
+        <ul>
+            <?php foreach ($duplicateMatches as $dup): ?>
+                <?php
+                $dupIdRaw = $dup['id'] ?? null;
+                $dupId = is_int($dupIdRaw) ? $dupIdRaw : (is_numeric($dupIdRaw) ? (int) $dupIdRaw : 0);
+                $dupName = is_string($dup['name'] ?? null) ? $dup['name'] : '(unnamed)';
+                $dupDate = is_string($dup['date'] ?? null) ? $dup['date'] : '';
+                $dupForeignIdRaw = $dup['foreign_id'] ?? null;
+                $dupForeignId = is_int($dupForeignIdRaw)
+                    ? $dupForeignIdRaw
+                    : (is_numeric($dupForeignIdRaw) ? (int) $dupForeignIdRaw : 0);
+                $dupFname = is_string($dup['fname'] ?? null) ? $dup['fname'] : '';
+                $dupLname = is_string($dup['lname'] ?? null) ? $dup['lname'] : '';
+                $dupPubpidRaw = $dup['pubpid'] ?? null;
+                $dupPubpid = is_string($dupPubpidRaw)
+                    ? $dupPubpidRaw
+                    : (is_int($dupPubpidRaw) || is_float($dupPubpidRaw) ? (string) $dupPubpidRaw : '');
+                $dupPatient = trim($dupFname . ' ' . $dupLname);
+                ?>
+                <li>
+                    <code><?php echo htmlspecialchars($dupName, ENT_QUOTES, 'UTF-8'); ?></code>
+                    (id <?php echo $dupId; ?>)
+                    <?php if ($dupDate !== ''): ?>
+                        — uploaded <?php echo htmlspecialchars($dupDate, ENT_QUOTES, 'UTF-8'); ?>
+                    <?php endif; ?>
+                    <?php if ($dupForeignId > 0 && $dupPatient !== ''): ?>
+                        — attached to <strong><?php echo htmlspecialchars($dupPatient, ENT_QUOTES, 'UTF-8'); ?></strong>
+                        (pid <?php echo $dupForeignId; ?><?php
+                        if ($dupPubpid !== '' && $dupPubpid !== (string) $dupForeignId) {
+                            echo ', MRN ' . htmlspecialchars($dupPubpid, ENT_QUOTES, 'UTF-8');
+                        } ?>)
+                    <?php elseif ($dupForeignId > 0): ?>
+                        — attached to pid <?php echo $dupForeignId; ?>
+                    <?php else: ?>
+                        — not yet attached to a chart
+                    <?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+        <div class="dup-actions">
+            <?php
+            $firstDup = $duplicateMatches[0];
+            $firstDupForeignIdRaw = $firstDup['foreign_id'] ?? null;
+            $firstDupForeignId = is_int($firstDupForeignIdRaw)
+                ? $firstDupForeignIdRaw
+                : (is_numeric($firstDupForeignIdRaw) ? (int) $firstDupForeignIdRaw : 0);
+            ?>
+            <?php if ($firstDupForeignId > 0): ?>
+                <a href="<?php echo htmlspecialchars(
+                    $webroot . '/interface/patient_file/summary/demographics.php?'
+                        . http_build_query(['set_pid' => $firstDupForeignId]),
+                    ENT_QUOTES,
+                    'UTF-8',
+                         ); ?>">Open existing chart</a>
+            <?php endif; ?>
+            <a class="secondary" href="<?php echo htmlspecialchars(
+                $webroot . '/interface/copilot/upload_document.php',
+                ENT_QUOTES,
+                'UTF-8',
+                                       ); ?>">Cancel</a>
+        </div>
+        <p style="margin: 0.8rem 0 0; font-size: 0.9em;">
+            To upload it as a separate copy anyway, re-select the file below
+            and tick <em>Upload as a separate copy (I know it&rsquo;s a duplicate)</em>.
+        </p>
+    </div>
+<?php endif; ?>
+
 <form method="post" enctype="multipart/form-data" data-copilot-form>
     <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
     <div class="form-group">
@@ -273,6 +436,18 @@ Header::setupHeader();
             <option value="<?php echo DocumentClassifier::HINT_INTAKE; ?>">Force intake form</option>
         </select>
     </div>
+    <?php if ($duplicateMatches !== []): ?>
+        <div class="form-group">
+            <label style="font-weight: 500;">
+                <input type="checkbox" name="force_duplicate" value="1">
+                Upload as a separate copy (I know it&rsquo;s a duplicate)
+            </label>
+            <div class="hint">
+                Without this ticked, re-uploading the same file will keep
+                landing on this duplicate alert.
+            </div>
+        </div>
+    <?php endif; ?>
     <div class="form-group">
         <button type="submit" data-copilot-submit>Upload and extract</button>
     </div>

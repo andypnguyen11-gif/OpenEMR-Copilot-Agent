@@ -1,6 +1,16 @@
 <?php declare(strict_types = 1);
 
 $ignoreErrors = [];
+// _site_recovery.php runs BEFORE globals.php boots OpenEMR's session
+// abstraction, so the only way to recover a missing site_id is to write
+// it into $_GET where globals.php's existing recovery branch (line 282-309)
+// will pick it up. This mirrors why interface/globals.php itself has
+// $_GET reads in this baseline. See _site_recovery.php's docblock.
+$ignoreErrors[] = [
+    'message' => '#^Direct access to \\$_GET is forbidden\\. Use Symfony\'s Request object or filter_input\\(\\) instead\\.$#',
+    'count' => 1,
+    'path' => __DIR__ . '/../../interface/copilot/_site_recovery.php',
+];
 $ignoreErrors[] = [
     'message' => '#^Direct access to \\$_SERVER is forbidden\\. Use Symfony\'s Request object or filter_input\\(\\) instead\\.$#',
     'count' => 3,

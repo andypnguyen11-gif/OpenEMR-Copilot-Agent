@@ -22,6 +22,7 @@
 
 declare(strict_types=1);
 
+require_once(__DIR__ . "/_site_recovery.php");
 require_once(__DIR__ . "/../globals.php");
 
 use OpenEMR\BC\ServiceContainer;
@@ -32,6 +33,8 @@ use OpenEMR\Common\Database\SqlQueryException;
 use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\OEGlobalsBag;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchScorer;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchService;
 
 $globalsBag = OEGlobalsBag::getInstance();
 $srcdirRaw = $globalsBag->get('srcdir', '');
@@ -89,6 +92,175 @@ $tobaccoPackYears = trim($readPost('tobacco_pack_years'));
 if ($fname === '' || $lname === '' || $dob === '' || $sex === '') {
     http_response_code(400);
     exit('first name, last name, date of birth, and sex are required');
+}
+
+// Duplicate-patient guard. Same logic as ``api/save_document.php``:
+// if the (fname, lname, DOB) we're about to INSERT crosses the
+// matcher's PRESELECT_THRESHOLD against an existing chart, refuse to
+// create unless the clinician has confirmed via
+// ``force_create_duplicate``. Re-emits every other POST field as a
+// hidden input so the clinician's edits to problems / meds / etc.
+// aren't lost when they confirm — POSTing back to this same handler
+// with the override flag set runs the full insert path.
+$forceCreateDupRaw = filter_input(INPUT_POST, 'force_create_duplicate');
+$forceCreateDup = is_string($forceCreateDupRaw) && $forceCreateDupRaw === '1';
+if (!$forceCreateDup) {
+    $matchService = new PatientMatchService();
+    $existingMatches = $matchService->match(
+        $fname,
+        $lname,
+        $dob,
+        $externalMrn !== '' ? $externalMrn : null,
+    );
+    $blockingMatches = array_values(array_filter(
+        $existingMatches,
+        static fn ($candidate): bool => PatientMatchScorer::shouldPreselect($candidate->score),
+    ));
+    if ($blockingMatches !== []) {
+        $webrootRaw = $globalsBag->get('webroot', '');
+        $webroot = is_string($webrootRaw) ? $webrootRaw : '';
+
+        /**
+         * Recursively walk the POST array and emit one ``<input type="hidden">``
+         * per leaf, preserving the bracket-name structure (so ``problem_save[3]``
+         * round-trips correctly on resubmit).
+         *
+         * @param array<int|string, mixed> $data
+         */
+        $emitHiddenInputs = static function (array $data, string $prefix = '') use (&$emitHiddenInputs): string {
+            $out = '';
+            foreach ($data as $key => $value) {
+                $name = $prefix === ''
+                    ? (string) $key
+                    : $prefix . '[' . $key . ']';
+                if ($name === 'force_create_duplicate') {
+                    // Don't echo the override back — we're about to inject
+                    // it explicitly on the force-create form below.
+                    continue;
+                }
+                if (is_array($value)) {
+                    $out .= $emitHiddenInputs($value, $name);
+                    continue;
+                }
+                // Scalar leaves only — anything else (object, resource) can't
+                // safely round-trip through a form input. The intake-review
+                // form posts only string scalars, so nothing legitimate is
+                // dropped here.
+                if (!is_scalar($value)) {
+                    continue;
+                }
+                $out .= sprintf(
+                    '<input type="hidden" name="%s" value="%s">',
+                    htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8'),
+                );
+            }
+            return $out;
+        };
+
+        $rawPost = filter_input_array(INPUT_POST);
+        $hiddenPostInputs = is_array($rawPost) ? $emitHiddenInputs($rawPost) : '';
+
+        ?><!DOCTYPE html>
+<html>
+<head>
+    <title>Possible duplicate patient</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 760px; }
+        h1 { margin-top: 0; }
+        .alert-warn {
+            background: #fff8e6; border: 1px solid #e6c46a; padding: 1rem 1.25rem;
+            border-radius: 4px; margin: 1rem 0; color: #5a4400;
+        }
+        .alert-warn strong { font-size: 1.05em; }
+        ul.match-list { list-style: none; padding: 0; margin: 0.6rem 0; }
+        ul.match-list li {
+            padding: 0.55rem 0.75rem; border: 1px solid #e0e0e0;
+            border-radius: 3px; background: #fafafa; margin-bottom: 0.4rem;
+        }
+        ul.match-list strong { color: #154f9c; }
+        ul.match-list code { background: #f4ecd0; padding: 0.05em 0.3em; border-radius: 2px; }
+        ul.match-list .actions { margin-top: 0.4rem; }
+        ul.match-list .actions a {
+            display: inline-block; padding: 0.35rem 0.8rem; background: #2057a8;
+            color: white; text-decoration: none; border-radius: 3px;
+            margin-right: 0.4rem; font-size: 0.9em;
+        }
+        .force-create {
+            margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee;
+            font-size: 0.95em;
+        }
+        .force-create button {
+            padding: 0.45rem 1rem; background: #e0e0e0; color: #333;
+            border: 1px solid #999; border-radius: 3px; cursor: pointer;
+        }
+        .back-link { margin-top: 1.5rem; font-size: 0.9em; color: #555; }
+    </style>
+</head>
+<body>
+<div class="alert-warn">
+    <strong>This patient may already exist.</strong>
+    <p style="margin: 0.5rem 0;">
+        <strong><?php echo htmlspecialchars($fname . ' ' . $lname, ENT_QUOTES, 'UTF-8'); ?></strong>,
+        DOB <?php echo htmlspecialchars($dob, ENT_QUOTES, 'UTF-8'); ?> matches
+        <?php echo count($blockingMatches) === 1 ? 'an existing chart' : count($blockingMatches) . ' existing charts'; ?>
+        at high confidence. Creating a new chart now would duplicate the patient.
+    </p>
+</div>
+
+<h2>Existing charts that match</h2>
+<ul class="match-list">
+        <?php foreach ($blockingMatches as $candidate): ?>
+        <li>
+            <strong><?php echo htmlspecialchars($candidate->firstName . ' ' . $candidate->lastName, ENT_QUOTES, 'UTF-8'); ?></strong>
+            — pid <code><?php echo $candidate->pid; ?></code>
+            | DOB <?php echo htmlspecialchars($candidate->dob, ENT_QUOTES, 'UTF-8'); ?>
+            <?php if ($candidate->mrn !== null && $candidate->mrn !== ''): ?>
+                | MRN <code><?php echo htmlspecialchars((string) $candidate->mrn, ENT_QUOTES, 'UTF-8'); ?></code>
+            <?php endif; ?>
+            <span style="color:#666; font-size:0.85em;">
+                — <?php echo number_format($candidate->score * 100, 0); ?>%
+                (<?php echo htmlspecialchars($candidate->matchReason, ENT_QUOTES, 'UTF-8'); ?>)
+            </span>
+            <div class="actions">
+                <a href="<?php echo htmlspecialchars(
+                    $webroot . '/interface/patient_file/summary/demographics.php?'
+                        . http_build_query(['set_pid' => $candidate->pid]),
+                    ENT_QUOTES,
+                    'UTF-8',
+                         ); ?>">Open existing chart</a>
+            </div>
+        </li>
+    <?php endforeach; ?>
+</ul>
+
+<div class="force-create">
+    <p>
+        Different person who happens to have the same name and date of birth
+        (twins, etc.)? Force-create a separate chart with the demographics
+        you just entered:
+    </p>
+    <form method="post"
+          action="<?php echo htmlspecialchars(
+              $webroot . '/interface/copilot/new_patient_save_ai.php',
+              ENT_QUOTES,
+              'UTF-8',
+                  ); ?>">
+        <?php echo $hiddenPostInputs; ?>
+        <input type="hidden" name="force_create_duplicate" value="1">
+        <button type="submit">Create as a separate chart anyway</button>
+    </form>
+</div>
+
+<p class="back-link">
+    Or use your browser&rsquo;s Back button to return to the intake review and
+    edit the demographics if the agent extracted them incorrectly.
+</p>
+</body>
+</html>
+        <?php
+        exit;
+    }
 }
 
 // We INSERT directly rather than calling library/patient.inc.php's

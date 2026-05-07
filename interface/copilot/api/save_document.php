@@ -33,6 +33,7 @@
 
 declare(strict_types=1);
 
+require_once(__DIR__ . "/../_site_recovery.php");
 require_once(__DIR__ . "/../../globals.php");
 
 use GuzzleHttp\Client as GuzzleClient;
@@ -41,6 +42,7 @@ use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
@@ -48,7 +50,10 @@ use OpenEMR\Services\Copilot\ChartWrite\ChartWriteService;
 use OpenEMR\Services\Copilot\ChartWrite\ChartWriteSummary;
 use OpenEMR\Services\Copilot\ChartWrite\FactsExtractor;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
+use OpenEMR\Services\Copilot\DocumentClassifier;
 use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchScorer;
+use OpenEMR\Services\Copilot\PatientMatch\PatientMatchService;
 use Symfony\Component\HttpFoundation\Request;
 
 if (!AclMain::aclCheckCore('patients', 'demo')) {
@@ -176,21 +181,109 @@ if ($putResponse === null || $putResponse->statusCode !== 200) {
     ));
 }
 
+// ``document_id`` from the agent service is "openemr:doc:<id>" — for any
+// branch that needs to flip ``documents.foreign_id`` we need the bare
+// numeric id. Compute once.
+$bareDocId = str_starts_with($documentId, 'openemr:doc:')
+    ? substr($documentId, strlen('openemr:doc:'))
+    : $documentId;
+
+$authUserIdRaw = $session->get('authUserID');
+$authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
+    : (is_numeric($authUserIdRaw) ? (int) $authUserIdRaw : 0);
+
+/**
+ * Run the chart-write block for whichever sections the clinician ticked
+ * on the review page. Returns a summary the success page can render.
+ *
+ * Shared between the existing-patient and create-new-patient branches —
+ * both write into the same lists/reminders/procedure tables, only the
+ * pid differs.
+ *
+ * @param list<non-empty-string> $checked
+ * @param array<mixed,mixed>     $facts    Merged extracted facts.
+ */
+$runChartWrites = static function (
+    int $pid,
+    array $checked,
+    array $facts,
+    string $type,
+    int $userId,
+): ChartWriteSummary {
+    $service = new ChartWriteService($userId);
+    $summary = new ChartWriteSummary();
+    if (in_array('allergies', $checked, true)) {
+        $summary->record('allergies', $service->writeAllergies(
+            $pid,
+            FactsExtractor::allergies($facts, $type),
+        ));
+    }
+    if (in_array('medications', $checked, true)) {
+        $summary->record('medications', $service->writeMedications(
+            $pid,
+            FactsExtractor::medications($facts, $type),
+        ));
+    }
+    if (in_array('active_problems', $checked, true)) {
+        $summary->record('active_problems', $service->writeActiveProblems(
+            $pid,
+            FactsExtractor::activeProblems($facts, $type),
+        ));
+    }
+    if (in_array('care_gaps', $checked, true)) {
+        $summary->record('care_gaps', $service->writeReminders(
+            $pid,
+            FactsExtractor::careGaps($facts, $type),
+        ));
+    }
+    if (in_array('lab_observations', $checked, true)) {
+        $payload = FactsExtractor::labObservations($facts, $type);
+        $summary->record('lab_observations', $service->writeLabObservations(
+            $pid,
+            $payload['panel_name'],
+            $payload['panel_loinc'],
+            $payload['report_date'],
+            $payload['observations'],
+        ));
+    }
+    return $summary;
+};
+
+/**
+ * Build a save_success.php redirect URL with the per-section counts
+ * encoded as ``count_<section>=N``. The success page picks them back up
+ * to render the "wrote N rows to chart" confirmation.
+ */
+$successUrl = static function (
+    string $webroot,
+    int $pid,
+    bool $created,
+    ChartWriteSummary $summary,
+    string $documentType,
+    string $documentId,
+): string {
+    $params = [
+        'pid' => $pid,
+        'created' => $created ? '1' : '0',
+        'document_type' => $documentType,
+        'document_id' => $documentId,
+    ];
+    foreach ($summary->counts() as $section => $count) {
+        $params['count_' . $section] = (string) $count;
+    }
+    return $webroot . '/interface/copilot/save_success.php?' . http_build_query($params);
+};
+
 // Step 3: route based on the patient choice.
 //   - numeric pid → flip documents.foreign_id from "00" to that pid,
-//     redirect to the chart.
-//   - "new" → forward to new_patient_with_ai.php which reuses the
-//     facts to pre-populate the new-patient form.
-//   - "unassigned" → keep documents.foreign_id at "00", redirect
-//     back to the upload page.
+//     run chart-write, show success.
+//   - "new"       → create a fresh chart from the extracted demographics,
+//     update foreign_id, run chart-write, show success.
+//   - "unassigned"→ keep documents.foreign_id at "00", redirect back to
+//     the upload page (no patient context to show).
+
 if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
     $targetPid = (int) $patientChoice;
-    // ``document_id`` from the agent service is "openemr:doc:<id>" —
-    // strip the prefix to get the bare documents.id we need for the
-    // SQL update.
-    $bareDocId = str_starts_with($documentId, 'openemr:doc:')
-        ? substr($documentId, strlen('openemr:doc:'))
-        : $documentId;
     if (!ctype_digit($bareDocId)) {
         http_response_code(400);
         exit('document_id is not a numeric documents.id (got '
@@ -201,75 +294,406 @@ if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
         [$targetPid, (int) $bareDocId],
     );
 
-    // Write each checked extracted-facts section into the patient's
-    // chart tables. Sections the clinician unchecked (or that this
-    // document type doesn't carry) are skipped silently.
-    $authUserIdRaw = $session->get('authUserID');
-    $authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
-        : (is_numeric($authUserIdRaw) ? (int) $authUserIdRaw : 0);
-    $writeService = new ChartWriteService($authUserId);
-    $writeSummary = new ChartWriteSummary();
+    $writeSummary = $runChartWrites($targetPid, $checkedSections, $mergedFacts, $documentType, $authUserId);
 
-    if (in_array('allergies', $checkedSections, true)) {
-        $rows = FactsExtractor::allergies($mergedFacts, $documentType);
-        $writeSummary->record('allergies', $writeService->writeAllergies($targetPid, $rows));
-    }
-    if (in_array('medications', $checkedSections, true)) {
-        $rows = FactsExtractor::medications($mergedFacts, $documentType);
-        $writeSummary->record('medications', $writeService->writeMedications($targetPid, $rows));
-    }
-    if (in_array('active_problems', $checkedSections, true)) {
-        $rows = FactsExtractor::activeProblems($mergedFacts, $documentType);
-        $writeSummary->record('active_problems', $writeService->writeActiveProblems($targetPid, $rows));
-    }
-    if (in_array('care_gaps', $checkedSections, true)) {
-        $rows = FactsExtractor::careGaps($mergedFacts, $documentType);
-        $writeSummary->record('care_gaps', $writeService->writeReminders($targetPid, $rows));
-    }
-    if (in_array('lab_observations', $checkedSections, true)) {
-        $payload = FactsExtractor::labObservations($mergedFacts, $documentType);
-        $writeSummary->record('lab_observations', $writeService->writeLabObservations(
-            $targetPid,
-            $payload['panel_name'],
-            $payload['panel_loinc'],
-            $payload['report_date'],
-            $payload['observations'],
-        ));
-    }
-
-    // Surface the write summary on the chart redirect via a flash
-    // query param so the user knows what landed.
-    $flash = $writeSummary->isEmpty()
-        ? ''
-        : http_build_query([
-            'copilot_flash' => sprintf(
-                'Wrote %d row(s) to chart from %s: %s',
-                $writeSummary->totalRowsWritten(),
-                $documentType,
-                implode(', ', array_map(
-                    static fn (string $section, int $count) => sprintf('%s=%d', $section, $count),
-                    array_keys($writeSummary->counts()),
-                    array_values($writeSummary->counts()),
-                )),
-            ),
-        ]);
-    // Send the clinician to the patient's demographics page — same
-    // canonical "show me this patient's chart" URL the existing
-    // ``new_patient_save_ai.php`` uses. ``main_screen.php`` is the
-    // tabs-shell entry point and fails with "Site ID is missing
-    // from session data" when loaded outside the shell context.
-    header('Location: ' . $webroot . '/interface/patient_file/summary/demographics.php?'
-        . http_build_query(['set_pid' => $targetPid])
-        . ($flash !== '' ? '&' . $flash : ''));
+    header('Location: ' . $successUrl($webroot, $targetPid, false, $writeSummary, $documentType, $documentId));
     exit;
 }
 
 if ($patientChoice === 'new') {
-    // Hand off to the existing new-patient form. It already knows how
-    // to read the facts via document_id and pre-populate the create
-    // form.
-    header('Location: ' . $webroot . '/interface/copilot/new_patient_with_ai.php?'
-        . http_build_query(['document_id' => $documentId]));
+    // Pull demographics out of the extracted facts. Each document type
+    // has a different schema layout (workbook nests under ``patient.*``,
+    // referrals expose ``patient_name``/``patient_dob`` flat at the top,
+    // HL7 / fax follow the referral shape). Mirror the ``$extractDemographics``
+    // closure in document_review.php so the matcher and the create path
+    // see the same bytes.
+    $valueOf = static fn (mixed $field): ?string =>
+        is_array($field)
+            && isset($field['value'])
+            && is_string($field['value'])
+            && $field['value'] !== ''
+                ? $field['value']
+                : null;
+    $splitName = static function (?string $full): array {
+        if ($full === null) {
+            return [null, null];
+        }
+        $parts = preg_split('/\s+/', trim($full)) ?: [];
+        if (count($parts) === 1) {
+            return [null, $parts[0]];
+        }
+        return [$parts[0], end($parts) ?: null];
+    };
+
+    $demoFirst = null;
+    $demoLast = null;
+    $demoDob = null;
+    $demoSex = null;
+    $demoMrn = null;
+    $demoPhone = null;
+    // The five fields below are best-effort: they come from the
+    // workbook's wide Patient sheet and the referral's letter header.
+    // For document types that don't carry them they stay null and the
+    // INSERT lets the column default handle it.
+    $demoPcp = null;       // free-text printed name, e.g. "Dr. Daniel Ortega, DO"
+    $demoPcpNpi = null;    // 10-digit NPI when carried
+    $demoAddress = null;   // free-text one-line address
+    $demoInsurance = null; // free-text plan name(s)
+    $demoMemberId = null;  // member id / policy number when carried
+
+    if ($documentType === DocumentClassifier::TYPE_WORKBOOK_XLSX) {
+        $patientBlock = $mergedFacts['patient'] ?? null;
+        if (is_array($patientBlock)) {
+            [$demoFirst, $demoLast] = $splitName($valueOf($patientBlock['name'] ?? null));
+            $demoDob = $valueOf($patientBlock['dob'] ?? null);
+            $demoSex = $valueOf($patientBlock['sex'] ?? null);
+            $demoMrn = $valueOf($patientBlock['mrn'] ?? null);
+            $demoPhone = $valueOf($patientBlock['phone'] ?? null);
+            $demoPcp = $valueOf($patientBlock['pcp'] ?? null);
+            $demoPcpNpi = $valueOf($patientBlock['pcp_npi'] ?? null);
+            $demoAddress = $valueOf($patientBlock['address'] ?? null);
+            $demoInsurance = $valueOf($patientBlock['insurance'] ?? null);
+            // member_id isn't in the agent's schema today — keep the
+            // null so a future schema bump can drop the value in here
+            // without touching the INSERT shape.
+        }
+    } elseif ($documentType === DocumentClassifier::TYPE_REFERRAL_DOCX) {
+        [$demoFirst, $demoLast] = $splitName($valueOf($mergedFacts['patient_name'] ?? null));
+        $demoDob = $valueOf($mergedFacts['patient_dob'] ?? null);
+        $demoMrn = $valueOf($mergedFacts['patient_mrn'] ?? null);
+        // For a referral letter the "PCP" is whoever wrote the letter —
+        // i.e., the referring provider, who is by convention the
+        // patient's current attending. Use that to back-fill providerID
+        // / referrer on the new chart; recipient_provider is the
+        // destination specialist, not a PCP.
+        $demoPcp = $valueOf($mergedFacts['referring_provider'] ?? null);
+        $demoPcpNpi = $valueOf($mergedFacts['referring_provider_npi'] ?? null);
+    } elseif ($documentType === DocumentClassifier::TYPE_FAX_TIFF) {
+        [$demoFirst, $demoLast] = $splitName($valueOf($mergedFacts['patient_name'] ?? null));
+        $demoDob = $valueOf($mergedFacts['patient_dob'] ?? null);
+    } elseif (
+        $documentType === DocumentClassifier::TYPE_HL7_ORU
+        || $documentType === DocumentClassifier::TYPE_HL7_ADT
+    ) {
+        [$demoFirst, $demoLast] = $splitName($valueOf($mergedFacts['patient_name'] ?? null));
+        $demoDob = $valueOf($mergedFacts['patient_dob'] ?? null);
+        $demoMrn = $valueOf($mergedFacts['patient_mrn'] ?? null);
+    } elseif ($documentType === DocumentClassifier::TYPE_INTAKE_FORM) {
+        // Intake forms have their own polished review surface
+        // (``intake_review.php`` → ``new_patient_save_ai.php``) which
+        // collects extra fields (chief complaint, family history, etc.)
+        // that don't have a generic equivalent. Defer to it.
+        header('Location: ' . $webroot . '/interface/copilot/intake_review.php?'
+            . http_build_query(['document_id' => $documentId]));
+        exit;
+    }
+
+    if (
+        !is_string($demoFirst)
+        || !is_string($demoLast)
+        || !is_string($demoDob)
+    ) {
+        http_response_code(400);
+        exit(htmlspecialchars(sprintf(
+            'Cannot create a new patient from this %s — the extractor did not '
+                . 'find first name, last name, and date of birth. Edit the demographics '
+                . 'above and resubmit, or pick an existing patient match instead.',
+            $documentType,
+        ), ENT_QUOTES, 'UTF-8'));
+    }
+
+    $sexNormalized = match (strtolower($demoSex ?? '')) {
+        'm', 'male' => 'Male',
+        'f', 'female' => 'Female',
+        'o', 'other' => 'Other',
+        '' => 'Unknown',
+        default => ucfirst(strtolower($demoSex ?? '')),
+    };
+
+    // Duplicate-patient guard. Re-run the same matcher document_review.php
+    // uses for radio preselect, but enforce server-side: if the demographics
+    // we're about to INSERT cross PRESELECT_THRESHOLD against an existing
+    // chart, refuse to create unless the clinician has ticked the
+    // ``force_create_duplicate`` confirmation. This catches the
+    // "uploaded a PDF intake yesterday, uploading the workbook today,
+    // misclicked Create new patient" duplicate without blocking the
+    // legitimate twins case (same name + DOB but really two people)
+    // where the clinician resubmits with the override.
+    $forceCreateDupRaw = $request->request->get('force_create_duplicate', '');
+    $forceCreateDup = is_string($forceCreateDupRaw) && $forceCreateDupRaw === '1';
+    if (!$forceCreateDup) {
+        $matchService = new PatientMatchService();
+        $existingMatches = $matchService->match(
+            $demoFirst,
+            $demoLast,
+            $demoDob,
+            $demoMrn,
+        );
+        $blockingMatches = array_values(array_filter(
+            $existingMatches,
+            static fn ($candidate): bool => PatientMatchScorer::shouldPreselect($candidate->score),
+        ));
+        if ($blockingMatches !== []) {
+            $session = SessionWrapperFactory::getInstance()->getActiveSession();
+            $csrfTokenForRetry = CsrfUtils::collectCsrfToken(session: $session);
+            ?><!DOCTYPE html>
+<html>
+<head>
+    <title>Possible duplicate patient</title>
+    <style>
+        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 760px; }
+        h1 { margin-top: 0; }
+        .alert-warn {
+            background: #fff8e6; border: 1px solid #e6c46a; padding: 1rem 1.25rem;
+            border-radius: 4px; margin: 1rem 0; color: #5a4400;
+        }
+        .alert-warn strong { font-size: 1.05em; }
+        ul.match-list { list-style: none; padding: 0; margin: 0.6rem 0; }
+        ul.match-list li {
+            padding: 0.55rem 0.75rem; border: 1px solid #e0e0e0;
+            border-radius: 3px; background: #fafafa; margin-bottom: 0.4rem;
+            display: flex; align-items: center; gap: 1rem;
+        }
+        ul.match-list .who { flex: 1; }
+        ul.match-list .who strong { color: #154f9c; }
+        ul.match-list code { background: #f4ecd0; padding: 0.05em 0.3em; border-radius: 2px; }
+        button {
+            padding: 0.45rem 1rem; border: 1px solid #2057a8; background: #2057a8;
+            color: white; border-radius: 3px; font-size: 0.95em; cursor: pointer;
+        }
+        .force-create {
+            margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee;
+            font-size: 0.95em;
+        }
+        .force-create button { background: #e0e0e0; color: #333; border-color: #999; }
+        .force-create label { display: block; margin: 0.5rem 0; }
+    </style>
+</head>
+<body>
+<div class="alert-warn">
+    <strong>This patient may already exist.</strong>
+    <p style="margin: 0.5rem 0;">
+        Demographics extracted from this <?php echo htmlspecialchars($documentType, ENT_QUOTES, 'UTF-8'); ?>
+        — <strong><?php echo htmlspecialchars($demoFirst . ' ' . $demoLast, ENT_QUOTES, 'UTF-8'); ?></strong>,
+        DOB <?php echo htmlspecialchars($demoDob, ENT_QUOTES, 'UTF-8'); ?> —
+        match <?php echo count($blockingMatches) === 1 ? 'an existing chart' : count($blockingMatches) . ' existing charts'; ?>
+        at high confidence. Creating a new chart now would duplicate the patient. Pick what to do:
+    </p>
+</div>
+
+<h2>Existing charts that match</h2>
+            <?php foreach ($blockingMatches as $candidate): ?>
+    <ul class="match-list">
+        <li>
+            <span class="who">
+                <strong><?php echo htmlspecialchars($candidate->firstName . ' ' . $candidate->lastName, ENT_QUOTES, 'UTF-8'); ?></strong>
+                — pid <code><?php echo $candidate->pid; ?></code>
+                | DOB <?php echo htmlspecialchars($candidate->dob, ENT_QUOTES, 'UTF-8'); ?>
+                <?php if ($candidate->mrn !== null && $candidate->mrn !== ''): ?>
+                    | MRN <code><?php echo htmlspecialchars((string) $candidate->mrn, ENT_QUOTES, 'UTF-8'); ?></code>
+                <?php endif; ?>
+                <span style="color:#666; font-size:0.85em;">
+                    — <?php echo number_format($candidate->score * 100, 0); ?>%
+                    (<?php echo htmlspecialchars($candidate->matchReason, ENT_QUOTES, 'UTF-8'); ?>)
+                </span>
+            </span>
+            <form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/api/save_document.php', ENT_QUOTES, 'UTF-8'); ?>" style="margin: 0;">
+                <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfTokenForRetry, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="document_id" value="<?php echo htmlspecialchars($documentId, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="document_type" value="<?php echo htmlspecialchars($documentType, ENT_QUOTES, 'UTF-8'); ?>">
+                <input type="hidden" name="patient_choice" value="<?php echo $candidate->pid; ?>">
+                <?php foreach ($checkedSections as $section): ?>
+                    <input type="hidden" name="write_sections[]" value="<?php echo htmlspecialchars($section, ENT_QUOTES, 'UTF-8'); ?>">
+                <?php endforeach; ?>
+                <button type="submit">Attach to this chart</button>
+            </form>
+        </li>
+    </ul>
+            <?php endforeach; ?>
+
+<div class="force-create">
+    <p>
+        Different person who happens to have the same name and date of birth
+        (twins, etc.)? Force-create a separate chart:
+    </p>
+    <form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/api/save_document.php', ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfTokenForRetry, ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="document_id" value="<?php echo htmlspecialchars($documentId, ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="document_type" value="<?php echo htmlspecialchars($documentType, ENT_QUOTES, 'UTF-8'); ?>">
+        <input type="hidden" name="patient_choice" value="new">
+        <input type="hidden" name="force_create_duplicate" value="1">
+            <?php foreach ($checkedSections as $section): ?>
+            <input type="hidden" name="write_sections[]" value="<?php echo htmlspecialchars($section, ENT_QUOTES, 'UTF-8'); ?>">
+        <?php endforeach; ?>
+        <button type="submit">Create as a separate chart anyway</button>
+    </form>
+</div>
+</body>
+</html>
+            <?php
+            exit;
+        }
+    }
+
+    // Patient-row insert mirrors ``new_patient_save_ai.php`` — see the
+    // commentary there for why we INSERT directly instead of calling
+    // ``newPatientData()`` (the helper trips STRICT_TRANS_TABLES on
+    // first insert because it tries to UPDATE columns that don't yet
+    // have a row).
+    $srcdirRaw = $globals->get('srcdir', '');
+    $srcdir = is_string($srcdirRaw) ? $srcdirRaw : '';
+    require_once($srcdir . '/pid.inc.php');
+    require_once($srcdir . '/patient.inc.php');
+
+    $now = date('Y-m-d H:i:s');
+    $today = date('Y-m-d');
+
+    $pidRow = QueryUtils::querySingleRow('SELECT MAX(pid) + 1 AS pid FROM patient_data');
+    $pidVal = is_array($pidRow) ? ($pidRow['pid'] ?? null) : null;
+    $newpid = is_int($pidVal) ? $pidVal : (is_numeric($pidVal) ? (int) $pidVal : 1);
+    if ($newpid <= 0) {
+        $newpid = 1;
+    }
+
+    $pubpid = $demoMrn ?? (string) $newpid;
+    $patientUuid = (new UuidRegistry(['table_name' => 'patient_data']))->createUuid();
+
+    // Parse the workbook's one-line address into the four columns
+    // ``patient_data`` carries. Address strings come in as
+    // "<street>, <city>, <STATE> <ZIP>" — we split on the last comma
+    // for the city/state-zip pair, then on the trailing whitespace for
+    // state vs zip. Anything that doesn't match the regex falls through
+    // with the entire string parked in ``street`` so no data is lost.
+    $addrStreet = '';
+    $addrCity = '';
+    $addrState = '';
+    $addrPostal = '';
+    if (is_string($demoAddress) && trim($demoAddress) !== '') {
+        $matches = [];
+        // (street ...), (city), (STATE) (ZIP)
+        if (preg_match(
+            '/^\s*(.+?),\s*([^,]+?),\s*([A-Za-z]{2})\s+([\w\-]+)\s*$/u',
+            $demoAddress,
+            $matches,
+        ) === 1) {
+            $addrStreet = trim($matches[1]);
+            $addrCity = trim($matches[2]);
+            $addrState = strtoupper(trim($matches[3]));
+            $addrPostal = trim($matches[4]);
+        } else {
+            $addrStreet = trim($demoAddress);
+        }
+    }
+
+    // Resolve the PCP printed name → ``users.id`` so the chart's
+    // primary-provider link is real (drives provider-aware sidebars,
+    // billing dropdowns, etc.). NPI is the strong key — exact match
+    // wins immediately. Fall back to (fname, lname) extracted from
+    // the printed string with credentials stripped. Either way the
+    // raw printed string lands in ``patient_data.referrer`` so a
+    // miss doesn't lose the agent's attribution.
+    $resolvedProviderId = null;
+    $referrerText = is_string($demoPcp) ? trim($demoPcp) : '';
+    if (is_string($demoPcpNpi) && preg_match('/^\d{10}$/', trim($demoPcpNpi)) === 1) {
+        $row = QueryUtils::querySingleRow(
+            'SELECT id FROM users WHERE npi = ? AND active = 1 LIMIT 1',
+            [trim($demoPcpNpi)],
+        );
+        if (is_array($row) && isset($row['id']) && is_numeric($row['id'])) {
+            $resolvedProviderId = (int) $row['id'];
+        }
+    }
+    if ($resolvedProviderId === null && $referrerText !== '') {
+        // Strip "Dr.", trailing ", MD" / ", DO" / etc., and take the
+        // remaining tokens as fname + lname. "Dr. Daniel Ortega, DO" →
+        // "Daniel Ortega" → fname="Daniel", lname="Ortega".
+        $bare = preg_replace('/^\s*(?:Dr\.?|Prof\.?|Mr\.?|Mrs\.?|Ms\.?)\s+/iu', '', $referrerText) ?? $referrerText;
+        $bare = preg_replace('/\s*,\s*(?:M\.?D\.?|D\.?O\.?|N\.?P\.?|P\.?A\.?|R\.?N\.?|F\.?N\.?P\.?|D\.?N\.?P\.?|Ph\.?D\.?).*$/iu', '', $bare) ?? $bare;
+        $parts = preg_split('/\s+/', trim($bare)) ?: [];
+        if (count($parts) >= 2) {
+            $candidateFname = $parts[0];
+            $candidateLname = end($parts);
+            $row = QueryUtils::querySingleRow(
+                'SELECT id FROM users WHERE fname = ? AND lname = ? AND active = 1 LIMIT 1',
+                [$candidateFname, $candidateLname],
+            );
+            if (is_array($row) && isset($row['id']) && is_numeric($row['id'])) {
+                $resolvedProviderId = (int) $row['id'];
+            }
+        }
+    }
+
+    QueryUtils::sqlStatementThrowException('START TRANSACTION');
+    try {
+        QueryUtils::sqlInsert(
+            <<<'SQL'
+            INSERT INTO patient_data SET
+                pid = ?, uuid = ?, fname = ?, lname = ?, sex = ?, DOB = ?,
+                phone_home = ?, pubpid = ?,
+                street = ?, city = ?, state = ?, postal_code = ?,
+                providerID = ?, referrer = ?,
+                regdate = ?, date = ?, created_by = ?, updated_by = ?
+            SQL,
+            [
+                $newpid, $patientUuid, $demoFirst, $demoLast, $sexNormalized, $demoDob,
+                $demoPhone ?? '', $pubpid,
+                $addrStreet, $addrCity, $addrState, $addrPostal,
+                $resolvedProviderId, $referrerText,
+                $today, $now, $authUserId, $authUserId,
+            ],
+        );
+
+        setpid($newpid);
+        if (function_exists('newEmployerData')) {
+            newEmployerData((string) $newpid);
+        }
+        if (function_exists('newHistoryData')) {
+            newHistoryData((string) $newpid);
+        }
+
+        // Insurance row. ``insurance_data`` accepts a thin record —
+        // type+plan_name+pid is enough for the chart's insurance card
+        // to surface "Medicare Part B + Aetna Medigap Plan G" against
+        // the new pid. Policy/group numbers stay null for now (the
+        // workbook schema doesn't extract member_id today; once it
+        // does the value will land in ``policy_number``).
+        if (is_string($demoInsurance) && trim($demoInsurance) !== '') {
+            $insuranceUuid = (new UuidRegistry(['table_name' => 'insurance_data']))->createUuid();
+            QueryUtils::sqlInsert(
+                <<<'SQL'
+                INSERT INTO insurance_data SET
+                    uuid = ?, type = 'primary', plan_name = ?,
+                    policy_number = ?, pid = ?, date = ?
+                SQL,
+                [
+                    $insuranceUuid,
+                    trim($demoInsurance),
+                    // policy_number stays empty until the workbook schema
+                    // adds member_id; ``$demoMemberId`` is always null
+                    // today, so write '' rather than a dead branch.
+                    '',
+                    $newpid,
+                    $today,
+                ],
+            );
+        }
+
+        if (ctype_digit($bareDocId)) {
+            QueryUtils::sqlStatementThrowException(
+                'UPDATE documents SET foreign_id = ? WHERE id = ?',
+                [$newpid, (int) $bareDocId],
+            );
+        }
+
+        QueryUtils::sqlStatementThrowException('COMMIT');
+    } catch (\Throwable $exc) {
+        QueryUtils::sqlStatementThrowException('ROLLBACK');
+        throw $exc;
+    }
+
+    $writeSummary = $runChartWrites($newpid, $checkedSections, $mergedFacts, $documentType, $authUserId);
+
+    header('Location: ' . $successUrl($webroot, $newpid, true, $writeSummary, $documentType, $documentId));
     exit;
 }
 

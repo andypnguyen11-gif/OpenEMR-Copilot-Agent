@@ -40,6 +40,7 @@
 
 declare(strict_types=1);
 
+require_once(__DIR__ . "/_site_recovery.php");
 require_once(__DIR__ . "/../globals.php");
 
 use GuzzleHttp\Client as GuzzleClient;
@@ -283,7 +284,7 @@ Header::setupHeader();
 <head>
     <title>Review extracted document</title>
     <style>
-        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 1100px; }
+        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 1400px; }
         h1 { margin-top: 0; }
         h2 { margin-top: 2rem; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }
         .meta { color: #555; font-size: 0.95em; margin-bottom: 1rem; }
@@ -299,10 +300,26 @@ Header::setupHeader();
         .match-table th { background: #f4f4f4; }
         .match-table tr.preselected { background: #f0f8ff; }
         .match-table tr.preselected td:nth-child(2) { color: #154f9c; font-weight: 600; }
-        .field-row { display: flex; align-items: flex-start; gap: 1rem; margin: 0.4rem 0; padding: 0.3rem 0; }
+        /* flex-wrap lets the citation drop to a new row below the input
+           when there isn't enough horizontal space. We DON'T break inside
+           words — HL7 OBX|...|... segments stay legible — so we cap the
+           citation at one line with ellipsis when it would still overflow
+           and rely on the title-attribute tooltip to show the full text. */
+        .field-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem; margin: 0.4rem 0; padding: 0.3rem 0; }
         .field-label { flex: 0 0 220px; font-weight: 600; font-size: 0.9em; padding-top: 0.4rem; color: #444; word-break: break-word; }
-        .field-input { flex: 1; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 3px; font-family: inherit; font-size: 0.95em; }
-        .citation-hint { flex: 0 0 100%; margin-left: 220px; padding-left: 1rem; color: #777; font-size: 0.8em; }
+        .field-input { flex: 1 1 320px; min-width: 0; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 3px; font-family: inherit; font-size: 0.95em; }
+        .citation-hint {
+            flex: 1 1 100%;
+            margin-left: 220px;
+            padding-left: 1rem;
+            color: #777;
+            font-size: 0.8em;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: help;
+        }
         .abstain-badge { background: #ffe9c4; color: #8a5a00; padding: 0.15rem 0.4rem; font-size: 0.75em; border-radius: 3px; margin-left: 0.5rem; }
         .empty-hint { color: #999; font-style: italic; padding-top: 0.4rem; }
         fieldset.list-group, fieldset.object-group { margin: 1rem 0; padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }

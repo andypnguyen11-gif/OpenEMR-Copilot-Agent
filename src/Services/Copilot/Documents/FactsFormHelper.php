@@ -172,9 +172,18 @@ final class FactsFormHelper
             $abstainBadge = sprintf('<span class="abstain-badge" title="%s">%s</span>', $escaped, $escaped);
         }
 
+        // The CSS visually truncates with ellipsis when there isn't room
+        // for the full citation, so we hand the complete text to the
+        // ``title`` attribute — hovering surfaces the full HL7 segment /
+        // sheet-cell quote without expanding the row. We still strim the
+        // visible text at 200 chars as a guard against pathologically
+        // long citations forcing the row taller than necessary on very
+        // wide screens.
+        $citationHintFull = htmlspecialchars($citationText, ENT_QUOTES, 'UTF-8');
         $citationHint = $citationText !== ''
             ? sprintf(
-                '<div class="citation-hint">📎 %s</div>',
+                '<div class="citation-hint" title="%s">📎 %s</div>',
+                $citationHintFull,
                 htmlspecialchars(mb_strimwidth($citationText, 0, 200, '…'), ENT_QUOTES, 'UTF-8'),
             )
             : '';

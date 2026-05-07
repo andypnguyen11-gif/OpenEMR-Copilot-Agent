@@ -41,6 +41,7 @@
 
 declare(strict_types=1);
 
+require_once(__DIR__ . "/../_site_recovery.php");
 require_once(__DIR__ . "/../../globals.php");
 
 use OpenEMR\Common\Acl\AclMain;
