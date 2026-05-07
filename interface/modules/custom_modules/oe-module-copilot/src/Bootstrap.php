@@ -21,6 +21,7 @@ namespace OpenEMR\Modules\Copilot;
 use OpenEMR\Core\Kernel;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Modules\Copilot\EventSubscriber\SidePanelSubscriber;
+use OpenEMR\Modules\Copilot\EventSubscriber\UploadMimeWhitelistSubscriber;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 final readonly class Bootstrap
@@ -47,5 +48,10 @@ final readonly class Bootstrap
                 webroot: is_string($webroot) ? $webroot : '',
             ),
         );
+        // Augments the documents-upload MIME whitelist so the universal
+        // upload page can accept TIFF / DOCX / XLSX / generic-octet-
+        // stream files. See ``UploadMimeWhitelistSubscriber`` for the
+        // full list and rationale.
+        $this->eventDispatcher->addSubscriber(new UploadMimeWhitelistSubscriber());
     }
 }
