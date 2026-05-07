@@ -1,316 +1,206 @@
-# Wire Supervisor + Hybrid Retriever into `/api/agent/query` and Demo End-to-End
+# Validate Shipped Supervisor + Hybrid Retriever and Submit Demo
 
 ## Context
 
-**Why this work, now.** The grader's W2 feedback explicitly calls out five items: supervisor/orchestrator routing observable, hybrid retrieval truly sparse + dense + rerank, citations reliable and visible, eval gate meaningful with 50+ grounded cases, and the physician workflow visible end-to-end "without needing to infer behavior from the repo."
+**This plan was originally written before the wiring work landed.** The
+wiring is now merged and live:
 
-The user's own `TASKS2.md:188-199` and `plans/week2-early-submission.md` flag the largest open item: **wire the shipped Supervisor + 2 workers + hybrid retriever into the live `/api/agent/query` path**. Code is committed (commit `39f487aaf` for supervisor + workers; `corpus/retriever.py`/`corpus/rerank.py` for hybrid stack), exercised by tests, but never on the production chat route — `main.py:283` still calls `Orchestrator.run()` (v1 single-loop, FHIR tools only). `data/corpus/dense.pkl` doesn't exist, so even the corpus retriever degrades to BM25-only on prod.
+- Supervisor branch on `/api/agent/query` slow lane —
+  `agent-service/src/clinical_copilot/main.py:396-430` (commit
+  `649cf9dd8`, "feat(copilot): route slow-lane /api/agent/query through
+  Supervisor (W2-07)").
+- Workers + Anthropic client wired into `AppState` —
+  `agent-service/src/clinical_copilot/app_state.py:154-157, 292-372`.
+- `USE_SUPERVISOR=true` default — `config.py:96, 114-120`.
+- Pre-built corpus indexes shipped (BM25 + dense) — commit `45046a040`,
+  un-ignored at `agent-service/.gitignore:34-36`. Hybrid retrieval +
+  LLM-judge rerank run on prod, not BM25-only.
+- Integration coverage — commit `771093a02`,
+  `agent-service/tests/integration/test_query_route_supervisor.py`.
 
-**Locked decisions** from `plans/week2-early-submission.md:17-30`:
-- 2 workers only (intake_extractor + evidence_retriever); no `chart_tools` worker
-- Supervisor in plain Python via Anthropic `tool_use` (no LangGraph migration)
-- Hybrid RAG: BM25 + dense + LLM-judge rerank live in production
-- Observability: structlog handoff log (LangSmith stays disabled)
-- Feature flag `USE_SUPERVISOR` defaults ON in prod; chart-data questions abstaining is acceptable
+So the W2 reviewer's biggest backend asks (supervisor routing live,
+hybrid retrieval real, eval gate enforcing) are all addressed by code
+already on `main`. What's left is **proof artifacts**, not engineering.
 
-**Outcome.** Deployed Co-Pilot chat at `openemr-production-6c31.up.railway.app` routes the full-chat-page traffic (slow lane) through the W2 Supervisor; clinician asks a question, the supervisor dispatches `evidence_retriever` (and/or `intake_extractor`) via Anthropic tool_use, evidence_retriever runs BM25 + dense + LLM-judge rerank against the curated corpus, citations render in the chat, and structlog `supervisor.handoff` rows show the routing decisions. A 3-5 min demo video walks through upload → extraction → chart write → grounded chat response with citations, linked from `README.md`.
+**Lane split (still load-bearing for the narrative).**
+- **Full chat page** (`interface/copilot/chat.php` → no `lane` param →
+  `Lane.SLOW`) → **Supervisor**.
+- **Side panel chat** (`public/copilot/side_panel.js:53,189` hardcodes
+  `lane: 'fast'`) → **v1 Orchestrator** (unchanged). Side panel keeps
+  its ≤5s p50 budget and chart-tool dispatch — supervisor has no
+  `chart_tools` worker by design (locked decision), so chart-data
+  questions only stay correct on the fast lane.
 
-**Lane split (load-bearing, not arbitrary).**
-- **Full chat page** (`interface/copilot/chat.php` → no `lane` param → `Lane.SLOW`) → **Supervisor**. Hosts the deeper guideline / evidence queries; SLOW-lane SLO accommodates the extra Anthropic round-trips (supervisor tool_use + evidence_retriever + rerank LLM-judge).
-- **Side panel chat** (`interface/copilot/side_panel.php` → explicit `lane: 'fast'`, see `public/copilot/side_panel.js:53,189`) → **v1 Orchestrator** (unchanged). Engineered for ≤5s p50 (PR 17 acceptance), Haiku-backed, dispatches FHIR chart tools. Putting supervisor there would (a) blow the latency budget by ~2-3s of LLM-judge rerank, and (b) abstain on every chart-data query because supervisor has no `chart_tools` worker per locked plan. Side panel keeps its existing v1 behavior.
-- **Demo video records using the full chat page**, not the side panel.
+**Outcome.** A live smoke test confirms the supervisor branch fires on
+the deployed slow lane with corpus-grounded citations, the README
+narrative explicitly calls out citation enforcement / GitLab CI / lane
+split, and the changes are pushed.
 
-**Budget.** ~5 hours. Sub-task estimates inside.
+**Demo video is out of scope for this plan** — user records it
+manually. This plan covers only the parts an agent can edit/verify.
 
 ---
 
-## Time budget (target ~5h)
+## Time budget (target ~1h)
 
 | Phase | Estimate |
 |---|---|
-| -1. Mirror this plan into `<repo>/plans/` | 2 min |
-| 0. Pre-flight (deploys land, env vars set) | 15 min |
-| 1. Build `dense.pkl` locally + commit | 20 min |
-| 2. Wire Supervisor into `/api/agent/query` | 2h 0m |
-| 3. Deploy + smoke-test live | 30 min |
-| 4. Multi-citation polish in adapter (optional) | 30 min |
-| 5. Record demo video | 90 min |
-| 6. README update + final push | 15 min |
-| **Total** | **~5h** |
+| A. Live smoke test (verify supervisor fires on prod) | 30 min |
+| C. README narrative (3 sentences) | 15 min |
+| D. Final commit + push (with explicit confirmation) | 15 min |
+| **Total** | **~1h** |
 
-If overrunning, cut Phase 4 first (single-anchor citation is acceptable per locked plan; adapter still surfaces one cite).
+(Phases labeled A/C/D to match the user's "worry about a c d"
+direction; B — the demo video — is intentionally omitted.)
 
 ---
 
-## Phase -1 — Mirror plan into repo (2 min)
+## Phase A — Live smoke test (30 min)
 
-Copy this file into the repo's `plans/` directory so future sessions / collaborators can resume from the repo alone:
+Purpose: prove the deployed slow-lane query actually invokes the
+supervisor and returns corpus-grounded citations, *before* trusting
+the README to make those claims.
 
-```
-cp /Users/andynguyen/.claude/plans/help-me-plan-out-abundant-emerson.md \
-   /Users/andynguyen/Desktop/OpenEMR/openemr/plans/early-submission-supervisor-wiring.md
-```
-
-No commit needed in this phase — the file lands alongside `plans/week2-early-submission.md` and gets picked up by the next commit that sweeps the working tree.
-
----
-
-## Phase 0 — Pre-flight (15 min)
-
-Verify the in-flight deploys land before starting any code work, and that prod env vars are correct.
-
-- Confirm `git rev-parse HEAD` matches the openemr Railway deployment's commit SHA.
-- Confirm agent-service Railway deployment is on the latest agent-service commit (the one with HL7/TIFF/DOCX/XLSX extractors + supervisor code).
-- On the **agent-service Railway env vars** page, confirm or set:
-  - `ANTHROPIC_API_KEY` (already required)
-  - `OPENAI_API_KEY` — **needed for the dense embedding path**. If absent, retriever silently degrades to BM25-only on prod.
-  - `USE_SUPERVISOR=true` — set explicitly so the value is visible in the dashboard (also our rollback toggle).
-- Smoke-test current deployed `/api/agent/healthz` returns 200.
-
-**Rollback for everything in this plan:** flip `USE_SUPERVISOR=false` on Railway → service restarts → `/api/agent/query` resumes v1 Orchestrator. ~30 second rollback, no redeploy needed.
-
----
-
-## Phase 1 — Build `dense.pkl` (20 min)
-
-The corpus retriever's dense path is gated on `data/corpus/dense.pkl`. Without it, we ship "BM25 only" and miss the grader's "truly sparse + dense" bar.
+Mint a chat JWT the way local dev does (or reuse an existing token
+from a recent OpenEMR login session). Then:
 
 ```bash
-cd /Users/andynguyen/Desktop/OpenEMR/openemr/agent-service
-uv run python -m clinical_copilot.corpus.index --rebuild
-```
-
-The CLI is at `agent-service/src/clinical_copilot/corpus/index.py:258-289`. It reads `OPENAI_API_KEY` from `os.environ` (loaded via `dotenv` in `config.py:38-39`), embeds 58 corpus chunks with `text-embedding-3-small` (1536 dims), and writes `data/corpus/dense.pkl` (`(list[ChunkRecord], np.ndarray(N, 1536))`, ~360 KB on disk). Cost: ~$0.0001. Time: 5-10 sec.
-
-**Ship mode:** commit `dense.pkl` to git (override `agent-service/.gitignore:25-27` for this single file). 360 KB binary in the repo is fine; the alternative — building at image-startup — adds boot-time complexity and a hard `OPENAI_API_KEY` dependency at deploy time. Edit `.gitignore` to add a negation:
-
-```gitignore
-data/corpus/
-!data/corpus/bm25.pkl
-!data/corpus/dense.pkl
-!data/corpus/manifest.json
-```
-
-`bm25.pkl` is already shipped via the same pattern. Commit message: `feat(copilot): ship dense.pkl so prod retriever runs hybrid BM25+dense+rerank`.
-
----
-
-## Phase 2 — Wire Supervisor into `/api/agent/query` (2h)
-
-Five sub-steps. All in `agent-service/`. Critical path.
-
-### 2.1 — Settings flag (10 min)
-
-Edit `agent-service/src/clinical_copilot/config.py`:
-- Add field `use_supervisor: bool` to the frozen `Settings` dataclass (after `internal_token`, ~line 89).
-- In `_load()`, parse `USE_SUPERVISOR` env var with default `"true"`:
-  ```python
-  use_supervisor = _optional("USE_SUPERVISOR", "true").lower() in ("true", "1", "yes")
-  ```
-- Pass `use_supervisor=use_supervisor` to `Settings(...)` constructor (~line 130).
-
-### 2.2 — Wire workers into `AppState` (40 min)
-
-Edit `agent-service/src/clinical_copilot/app_state.py`:
-
-- Add four `| None` fields to `AppState` (lines 109-138):
-  - `supervisor_anthropic: Anthropic | None = None`
-  - `supervisor_intake_extractor: IntakeExtractorFn | None = None`
-  - `supervisor_evidence_retriever: EvidenceRetrieverFn | None = None`
-  - `supervisor_model: str | None = None`
-- In `build_app_state()`, after the existing `client = Anthropic(...)` (line 278), construct:
-  - `CorpusRetriever()` inside `try: except FileNotFoundError:` (graceful degrade if pickle missing)
-  - `evidence_partial` lambda that calls `run_evidence_retriever(retriever=corpus_retriever, rerank_client=client, rerank_model=settings.model_fast, **kwargs).to_tool_result()`
-  - `intake_partial` lambda that calls `run_intake_extractor(client=client, model=settings.model_slow, **kwargs).to_tool_result()`
-- Pass all four through to the `AppState(...)` constructor (~line 306). Test/fixture path leaves them `None`.
-
-**Wiring complication noted:** `run_intake_extractor` requires a `document_path` from the model's tool_use input. On a chat query the model has no path to invent, so this worker will rarely fire usefully. Acceptable per locked plan ("chart-data questions abstaining is acceptable"); document with one inline comment. Bridging to `facts_store.read()` is a follow-on change.
-
-### 2.3 — Branch the route + adapter (40 min)
-
-Edit `agent-service/src/clinical_copilot/main.py`:
-
-- Add imports near existing `from clinical_copilot.orchestrator...`:
-  - `from clinical_copilot.orchestrator.supervisor import SupervisorResponse, run as supervisor_run`
-  - `from clinical_copilot.orchestrator.schemas import CitedClaim`
-  - `from clinical_copilot.verification.abstention import Abstention, AbstentionState`
-- Add adapter helper `_supervisor_to_agent_response(sup, *, session_id)`:
-  - If `sup.abstention_reason`: return `AgentResponse` with `Abstention(state=ABSTAINED, reason=...)`.
-  - Otherwise walk `handoffs` for the first available citation source_id (`handoff.output["chunks"][0]["chunk_id"]` for evidence_retriever; `["citations"][0]["source_doc_id"]` for intake).
-  - If no citation found OR no synthesized text: abstain with `NO_DATA` (cannot return prose with empty source_id — `CitedClaim.source_id` has `min_length=1`).
-  - Otherwise return `AgentResponse(prose=[CitedClaim(text=sup.synthesized_text, source_id=anchor_source_id)], cards=[], tool_results=[], session_id=session_id)`.
-  - **Note:** `AgentResponse` has `extra="forbid"` — do NOT add a top-level `handoffs` field. Handoffs stay structlog-only.
-- Branch in `query_route` (line 282-290):
-  ```python
-  if (
-      resolved_settings.use_supervisor
-      and resolved_state.supervisor_anthropic is not None
-      and resolved_state.supervisor_evidence_retriever is not None
-      and body.lane == Lane.SLOW   # fast lane stays on v1
-  ):
-      try:
-          sup = supervisor_run(
-              client=resolved_state.supervisor_anthropic,
-              model=resolved_state.supervisor_model,
-              query=body.query,
-              intake_extractor=resolved_state.supervisor_intake_extractor,
-              evidence_retriever=resolved_state.supervisor_evidence_retriever,
-              request_id=request_id,
-          )
-      except Exception as exc:
-          get_logger(__name__).warning(
-              "supervisor.fallback_to_v1", request_id=request_id,
-              error=f"{type(exc).__name__}: {exc}",
-          )
-      else:
-          return _supervisor_to_agent_response(sup, session_id=...)
-  # Fallback / use_supervisor=false / fast lane:
-  return resolved_state.orchestrator.run(...)
-  ```
-  Fast lane (≤5s p50 budget) skips supervisor — supervisor adds an extra Anthropic round-trip.
-
-### 2.4 — Tests (30 min)
-
-New file `agent-service/tests/integration/test_query_route_supervisor.py`. Five tests, pattern follows existing `tests/integration/test_supervisor.py` and `tests/unit/test_query_route.py`:
-
-1. `test_query_route_uses_supervisor_when_flagged` — flag ON, mock Anthropic to script tool_use → text turns, assert `prose[0].text` contains synthesized text and structlog records `supervisor.handoff`.
-2. `test_query_route_supervisor_off_uses_v1_orchestrator` — flag OFF, assert v1 orchestrator was called.
-3. `test_query_route_evidence_only_query` — script one `dispatch_evidence_retriever` tool_use + final text; assert `evidence_partial` was called.
-4. `test_query_route_supervisor_error_falls_back_to_v1` — supervisor raises; assert v1 orchestrator was used.
-5. `test_query_route_fast_lane_skips_supervisor` — `lane=Lane.FAST` flag ON; assert supervisor never invoked.
-
-Run locally: `cd agent-service && uv run pytest tests/integration/test_query_route_supervisor.py -v`. Must be green before deploy.
-
-### 2.5 — Commit + push (5 min)
-
-Two commits:
-- `feat(copilot): wire Supervisor into /api/agent/query (W2-07)` — Settings flag, AppState wiring, route branch, adapter
-- `test(copilot): integration coverage for supervisor on chat path` — the 5 tests
-
-Push triggers `agent-service-pytest` + `agent-service-eval-gate` + `copilot-prod-push-confirm` (already restricted to pre-push only after `03fa14c0d`). Answer `y` at the prompt. Push lands on GitLab → openemr Railway service auto-redeploys (note: agent-service does NOT auto-redeploy from this push; phase 3 handles that).
-
----
-
-## Phase 3 — Deploy + smoke-test live (30 min)
-
-```bash
-cd /Users/andynguyen/Desktop/OpenEMR/openemr/agent-service && railway up
-```
-
-Wait for `/healthz` 200. Then verify `/readyz` shows `corpus_retriever_loaded: true` (or check structlog for `corpus.retriever.dense_loaded` on startup).
-
-Smoke test from terminal (use existing internal-token + JWT mint pattern):
-
-```bash
-# Query that should fire evidence_retriever:
-curl -X POST $AGENT_URL/api/agent/query \
+curl -sS -X POST "$AGENT_URL/api/agent/query" \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
-  -d '{"query": "What screenings are recommended for a 55-year-old smoker?", "lane": "slow"}' \
-  | jq .
+  -d '{"query":"What screenings are recommended for a 55-year-old smoker?","lane":"slow"}' \
+  | jq '.prose[0]'
 ```
 
-Expected: `prose[0].text` non-empty with corpus-grounded answer; `prose[0].source_id` references a USPSTF/CDC chunk. Check Railway logs (or `railway logs --service agent-service`) for `supervisor.handoff` events with `worker=evidence_retriever`.
+Expected: `prose[0].text` non-empty, `prose[0].source_id` matches a
+real chunk_id from `agent-service/data/corpus/manifest.json`.
 
-Also test from the OpenEMR chat UI directly to confirm end-to-end. If anything breaks, flip `USE_SUPERVISOR=false` in Railway and triage offline.
+Then confirm Railway logs show `supervisor.handoff` with
+`worker=evidence_retriever` for the same `request_id`:
 
----
+```bash
+railway logs --service agent-service | grep supervisor.handoff
+```
 
-## Phase 4 — Multi-citation polish in adapter (optional, 30 min)
+If the smoke is red — supervisor not firing, citation missing, or
+exception fallback — flip `USE_SUPERVISOR=false` on Railway and
+triage offline. Rollback is ~30 sec (env var change → service
+restart).
 
-Single-citation anchor (Phase 2.3) is the minimum bar. If time permits, walk all handoff outputs and surface one `CitedClaim` per cited chunk:
-
-- For each evidence_retriever handoff, iterate `handoff.output["chunks"]` and emit one `CitedClaim(text=chunk["text"][:200], source_id=chunk["chunk_id"])`.
-- Place the synthesized `sup.synthesized_text` as a leading prose entry tied to the first citation; subsequent entries are excerpt+cite pairs.
-- Existing chat UI already renders prose with citations (`interface/copilot/chat.php` + `chat-render.js`).
-
-Cut this phase if running long; the locked plan considers single-citation acceptable for early submission.
-
----
-
-## Phase 5 — Demo video (90 min)
-
-Per `plans/week2-early-submission.md:159-167`, target 3-5 minutes. Adapt scene 6 to GitLab MR pipeline (your CI is GitLab, not GitHub Actions).
-
-**Shot list:**
-1. **Upload a lab PDF** in the chart UI (use one of the cohort-5 example PDFs); show the universal upload page → review page rendering extracted facts with citation hints (existing UI from `lab_review.php`).
-2. **Confirm and attach** to the chart; show the chart's allergies/meds/problems/labs tabs updating with the extracted rows (chart-write path from commit `3146bd42a`).
-3. **Open Co-Pilot chat**; ask: *"What does the recent lab say and what guidelines apply for a 55-year-old smoker?"*. Expected: supervisor dispatches both workers (or at minimum evidence_retriever); the response renders with corpus citations.
-4. **Side terminal pane**: tail Railway logs for `supervisor.handoff` events to show the routing decisions in real time. (`railway logs --service agent-service | grep supervisor.handoff`)
-5. **Eval gate demo**: in another terminal, `cd agent-service && make eval-extraction-gate` (cached path, fast). Show pass-rates per bucket. Optionally demonstrate regression detection by reverting one fix and re-running.
-6. **GitLab MR pipeline**: show the most recent MR's `agent-service:test` + `agent-service:eval-gate` stages green in the GitLab CI/CD page. (Substituted from the original "GitHub Actions" line in the locked plan since CI is GitLab-only.)
-
-**Recording tools:** Loom (fastest path) or QuickTime + YouTube unlisted. Loom auto-generates a sharable URL. Keep first cut tight; one retake max.
+The user provides the prod JWT directly; the agent does not handle
+credential paste. (See repo memory: "user exports credential in
+shell, I do the rest".)
 
 ---
 
-## Phase 6 — README update + final push (15 min)
+## Phase C — README narrative (15 min)
 
-Edit `README.md`:
-- Update Week 2 section with deployed app URL (already `openemr-production-6c31.up.railway.app`).
-- Add demo video link (Loom/YouTube unlisted URL from Phase 5).
-- One-line note that `USE_SUPERVISOR` controls the chat engine and defaults ON for the grading window.
+Edit `README.md` Clinical Co-Pilot section (around lines 25-76). Add
+three sentences that map directly to the W2 rubric, each linking to
+the file that proves the claim:
 
-Commit `docs(copilot): demo video link + supervisor routing note`. Push. Auto-redeploys openemr (no agent-service rebuild needed since no agent-service code changed).
+1. **Citations are schema-enforced, not best-effort.** Every extracted
+   field carries either a citation or an explicit abstain reason —
+   enforced by the `ExtractedField[T]` Pydantic XOR validator at
+   `agent-service/src/clinical_copilot/documents/schemas/citation.py:68-89`,
+   and `CitedClaim.source_id` requires `min_length=1`
+   (`agent-service/src/clinical_copilot/orchestrator/schemas.py:71`).
+
+2. **GitLab MR-blocking CI runs the 50-case eval gate.** The
+   `agent-service:test` and `agent-service:eval-gate` stages
+   (`.gitlab-ci.yml:69-109`) are required on `merge_request_event`
+   and `main`; the eval suite is 50 grounded human-reviewed cases
+   across extraction (28), citations (6), refusals (4), retrieval
+   (8), and missing-data (4) — see `agent-service/eval/manifest.yaml`.
+
+3. **Supervisor routes the slow lane; v1 keeps the fast lane.** The
+   full chat page dispatches via the W2 Supervisor + 2 workers
+   (BM25 + dense + LLM-judge rerank, indexes shipped at
+   `agent-service/data/corpus/{bm25,dense}.pkl`); the in-chart side
+   panel stays on the v1 orchestrator for ≤5s chart-tool dispatch.
+   `USE_SUPERVISOR=false` is the instant rollback toggle.
+
+Place these as a small "Verification surface" or "How the W2
+rubric is met" subsection under the existing Clinical Co-Pilot
+section so a grader scanning the README finds them without
+hunting through `ARCHITECTURE.md`.
+
+---
+
+## Phase D — Final commit + push (15 min)
+
+Two commits:
+
+1. `docs(copilot): plan refresh for early-submission proof artifacts`
+   — covers the rewrite of this very file (already mostly done by
+   the time D runs; included if the working tree shows it).
+2. `docs(copilot): README narrative for W2 rubric (citations, CI, lanes)`
+   — the README edits from Phase C.
+
+**Before pushing, ask the user explicitly.** Pushes to `main`
+auto-deploy to Railway, and the user's standing instructions
+require confirmation before any prod-facing action (see
+`feedback_no_prod_deploy.md` in agent memory).
 
 ---
 
 ## Critical files
 
 **Edit:**
-- `agent-service/src/clinical_copilot/config.py` — `Settings.use_supervisor` flag
-- `agent-service/src/clinical_copilot/app_state.py` — supervisor wiring fields + worker partials
-- `agent-service/src/clinical_copilot/main.py` — `query_route` branch + `_supervisor_to_agent_response` adapter
-- `agent-service/.gitignore` — un-ignore `data/corpus/dense.pkl`
-- `README.md` — deployed URL + video link
+- `README.md` — Phase C narrative
 
-**Create:**
-- `agent-service/data/corpus/dense.pkl` — generated by Phase 1 build (~360 KB)
-- `agent-service/tests/integration/test_query_route_supervisor.py` — 5 integration tests
+**Read (no edits, cite in README):**
+- `agent-service/src/clinical_copilot/documents/schemas/citation.py:68-89`
+- `agent-service/src/clinical_copilot/orchestrator/schemas.py:71`
+- `.gitlab-ci.yml:69-109`
+- `agent-service/eval/manifest.yaml`
+- `agent-service/data/corpus/manifest.json`
+- `agent-service/data/corpus/dense.pkl` (binary, just cite)
+- `agent-service/data/corpus/bm25.pkl` (binary, just cite)
 
-**Reuse (no edits):**
-- `agent-service/src/clinical_copilot/orchestrator/supervisor.py` — already implements `Supervisor.run()` + handoff structlog
-- `agent-service/src/clinical_copilot/orchestrator/workers/intake_extractor.py` — `run_intake_extractor()`
-- `agent-service/src/clinical_copilot/orchestrator/workers/evidence_retriever.py` — `run_evidence_retriever()` accepts `rerank_client`
-- `agent-service/src/clinical_copilot/corpus/retriever.py` — `CorpusRetriever` (BM25+dense fusion via RRF)
-- `agent-service/src/clinical_copilot/corpus/rerank.py` — `rerank_with_llm()`
-- `agent-service/src/clinical_copilot/corpus/index.py` — `--rebuild` CLI for Phase 1
-- `agent-service/src/clinical_copilot/corpus/embedder.py` — `OpenAIEmbedder` (1536-dim, reads `OPENAI_API_KEY`)
+**Rollback lever (do not touch unless smoke fails):**
+- Railway agent-service env: `USE_SUPERVISOR=true` → `false`
 
 ---
 
 ## Verification
 
-**End-to-end checklist** before recording the demo video:
+End-to-end checklist:
 
-1. `cd agent-service && uv run pytest -q` → 565+ passed (existing) + 5 new integration tests passing.
-2. Deployed `agent-service` health: `curl $AGENT_URL/healthz` → 200.
-3. Deployed query exercises supervisor:
-   ```
-   curl -X POST $AGENT_URL/api/agent/query \
-     -H "Authorization: Bearer $JWT" \
-     -d '{"query":"What screenings for a 55yo smoker?","lane":"slow"}' \
-     | jq '.prose[0]'
-   ```
-   Returns prose with non-empty `source_id` referencing a corpus chunk.
-4. Railway `agent-service` logs show `supervisor.handoff` rows with `worker=evidence_retriever` for the same request_id.
-5. Deployed openemr at `openemr-production-6c31.up.railway.app`: log in as admin, open Co-Pilot chat, ask the same question, see the answer render with citation chip.
-6. `cd agent-service && make eval-extraction-gate` → all 50 cases pass, baseline regression check green.
-7. GitLab CI/CD pipeline for the latest MR: `agent-service:test` + `agent-service:eval-gate` both green.
+1. Live smoke confirms `prose[0].source_id` matches a real chunk_id
+   from `agent-service/data/corpus/manifest.json`.
+2. Railway `agent-service` logs show `supervisor.handoff` rows with
+   `worker=evidence_retriever` for the same request_id.
+3. README edits land and the three claims are each backed by a file
+   path and line range.
+4. GitLab pipeline for the README commit is green
+   (`agent-service:test` is read-only, eval-gate runs on push to
+   main; both should pass since no agent-service code changed).
+5. Deployed app at `openemr-production-6c31.up.railway.app` still
+   responds 200 on `/api/agent/healthz` after the README push (no
+   regression).
 
-**Rubric callout coverage:**
-- Supervisor routing observable → ✅ structlog handoff log + supervisor on `/api/agent/query`
-- Hybrid retrieval truly sparse + dense + rerank → ✅ `dense.pkl` shipped, `rerank_client` wired
-- Citations reliable and visible → ✅ adapter surfaces source_id; UI already renders citations (✓ Phase 4 polish if time)
-- Eval gate 50+ grounded cases → ✅ already shipped, CI blocks on regression
-- Polish physician workflow + clearly visible without inferring from repo → ✅ deployed app + 3-5 min demo video linked from README
+**Rubric callout coverage (post-this-plan):**
+- Supervisor routing observable → ✅ live smoke + structlog handoffs
+- Hybrid retrieval truly sparse + dense + rerank → ✅ both pickles
+  shipped, rerank wired
+- Citations reliable and visible → ✅ schema-enforced + README cites
+  the validator
+- Eval gate 50+ grounded cases → ✅ manifest + GitLab gate
+- Physician workflow visible end-to-end → handled by the demo video
+  (out of scope for this plan)
 
 ---
 
 ## Risks / known gaps to call out in submission narrative
 
-- **`intake_extractor` worker rarely fires on chat queries** (no `document_path` for the model to invent). Locked plan accepts this; bridge to saved facts is full-submission work.
-- **Audit-log silent on supervisor branch** — by design (no PHI tools called). One-line comment in route.
-- **Adapter surfaces single citation** unless Phase 4 lands. Locked plan accepts; multi-citation polish is a 30-min stretch.
-- **Demo video scene 6 substitutes GitLab CI for the originally-planned GitHub Actions screenshot** — your repo's CI is GitLab-only.
-- **`USE_SUPERVISOR=false` instant rollback** if anything regresses for testers during the grading window.
+- **`intake_extractor` rarely fires on chat queries** (model has no
+  `document_path` to invent on a chat turn). Locked plan accepts
+  this; bridge to saved facts is full-submission work.
+- **Audit log silent on supervisor branch** — by design (no PHI
+  tools called). One-line comment in route already documents this
+  (`main.py:386-395`).
+- **Single citation per supervisor turn** unless the multi-citation
+  adapter is added later. Locked plan accepts; not in this scope.
+- **`USE_SUPERVISOR=false` is the instant rollback** if anything
+  regresses for testers during the grading window.
