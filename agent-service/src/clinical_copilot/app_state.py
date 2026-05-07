@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+import structlog
 from anthropic import Anthropic
 
 from clinical_copilot.audit.log import AuditLogWriter
@@ -65,6 +66,7 @@ from clinical_copilot.audit.reader import AuditLogReader
 from clinical_copilot.auth.jwt_verifier import JwtVerifier
 from clinical_copilot.auth.oauth_client import OAuthClient
 from clinical_copilot.auth.session import NonceStore
+from clinical_copilot.corpus.retriever import CorpusRetriever
 from clinical_copilot.data.fhir_client import FhirClient
 from clinical_copilot.db.engine import create_engine_from_url, create_session_factory
 from clinical_copilot.discrepancy.cache import DiscrepancyCache
@@ -79,6 +81,16 @@ from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
 from clinical_copilot.orchestrator.sessions import SessionStore
+from clinical_copilot.orchestrator.supervisor import (
+    EvidenceRetrieverFn,
+    IntakeExtractorFn,
+)
+from clinical_copilot.orchestrator.workers.evidence_retriever import (
+    run_evidence_retriever,
+)
+from clinical_copilot.orchestrator.workers.intake_extractor import (
+    run_intake_extractor,
+)
 from clinical_copilot.runtime.async_bridge import AsyncBridge
 from clinical_copilot.tools.fixtures import FixtureStore
 from clinical_copilot.tools.registry import ToolRegistry
@@ -135,6 +147,14 @@ class AppState:
     # tests that build :class:`AppState` directly don't have to wire
     # the resolver.
     patient_name_resolver: Callable[[str], str | None] = field(default=lambda _pid: None)
+    # Supervisor wiring (W2-07). ``None`` on the test/fixture path and
+    # whenever the corpus index is unavailable; ``main.py`` checks all
+    # four together before routing through Supervisor and falls back to
+    # the v1 Orchestrator otherwise.
+    supervisor_anthropic: Anthropic | None = None
+    supervisor_intake_extractor: IntakeExtractorFn | None = None
+    supervisor_evidence_retriever: EvidenceRetrieverFn | None = None
+    supervisor_model: str | None = None
 
 
 def build_app_state(
@@ -269,6 +289,7 @@ def build_app_state(
     # without touching the slow lane.
     slow_llm: LlmGateway
     fast_llm: LlmGateway
+    supervisor_anthropic: Anthropic | None = None
     if llm is not None:
         slow_llm = llm
         fast_llm = llm
@@ -276,6 +297,79 @@ def build_app_state(
         client = Anthropic(api_key=settings.llm_api_key)
         slow_llm = AnthropicLlmGateway(client=client, model=settings.model_slow)
         fast_llm = AnthropicLlmGateway(client=client, model=settings.model_fast)
+        # Reuse the same Anthropic client for the supervisor and the
+        # rerank-judge stage. Single shared client = one TLS pool, one
+        # prompt-cache scope; nothing about the supervisor's tool_use
+        # loop or rerank's classification call would benefit from a
+        # second client.
+        supervisor_anthropic = client
+
+    # Supervisor wiring (W2-07). Construct the corpus retriever once at
+    # startup and partial-apply both workers so :func:`supervisor.run`
+    # can call them with model-supplied kwargs.
+    #
+    # The retriever's BM25 index ships in the repo at
+    # ``data/corpus/bm25.pkl`` (required) and the dense index at
+    # ``data/corpus/dense.pkl`` (optional, gated on OPENAI_API_KEY at
+    # build time). When the bm25 pickle is missing we leave the
+    # supervisor wiring at ``None`` and ``main.py`` falls back to v1
+    # Orchestrator for slow-lane queries — a missing corpus index
+    # should never crash the app on startup.
+    supervisor_intake_extractor: IntakeExtractorFn | None = None
+    supervisor_evidence_retriever: EvidenceRetrieverFn | None = None
+    if supervisor_anthropic is not None:
+        try:
+            corpus_retriever = CorpusRetriever()
+        except FileNotFoundError as exc:
+            # bm25.pkl missing — log and leave supervisor disabled.
+            structlog.get_logger(__name__).warning(
+                "supervisor.corpus_index_missing",
+                error=str(exc),
+            )
+            corpus_retriever = None
+        else:
+            structlog.get_logger(__name__).info(
+                "supervisor.corpus_loaded",
+                hybrid_enabled=corpus_retriever.hybrid_enabled,
+            )
+
+        if corpus_retriever is not None:
+            # Capture into closure-friendly names so the inner lambdas
+            # don't re-bind across iterations of build_app_state. Each
+            # process boots one AppState; capture is safe.
+            _corpus = corpus_retriever
+            _client = supervisor_anthropic
+            _slow_model = settings.model_slow
+            _fast_model = settings.model_fast
+
+            def _evidence_partial(**kwargs: object) -> dict[str, object]:
+                # Always pass rerank_client + rerank_model so
+                # evidence_retriever runs the full BM25 + (dense if
+                # available) + LLM-judge rerank stack on prod queries.
+                return run_evidence_retriever(
+                    retriever=_corpus,
+                    rerank_client=_client,
+                    rerank_model=_fast_model,
+                    **kwargs,  # type: ignore[arg-type]
+                ).to_tool_result()
+
+            def _intake_partial(**kwargs: object) -> dict[str, object]:
+                # NOTE: on the chat path the model has no document_path
+                # to invent, so the supervisor rarely picks this worker
+                # in practice. Kept wired so a future chat surface that
+                # carries an upload reference can fire it without
+                # additional plumbing. Bridging to facts_store.read()
+                # for already-extracted documents is a follow-on change
+                # (out of scope for early submission per
+                # plans/week2-early-submission.md:20).
+                return run_intake_extractor(
+                    client=_client,
+                    model=_slow_model,
+                    **kwargs,  # type: ignore[arg-type]
+                ).to_tool_result()
+
+            supervisor_intake_extractor = _intake_partial
+            supervisor_evidence_retriever = _evidence_partial
 
     system_slow = _SYSTEM_SLOW_PATH.read_text(encoding="utf-8")
     system_fast = _SYSTEM_FAST_PATH.read_text(encoding="utf-8")
@@ -313,6 +407,10 @@ def build_app_state(
         audit_reader=audit_reader,
         bridge=bridge,
         patient_name_resolver=patient_name_resolver,
+        supervisor_anthropic=supervisor_anthropic,
+        supervisor_intake_extractor=supervisor_intake_extractor,
+        supervisor_evidence_retriever=supervisor_evidence_retriever,
+        supervisor_model=settings.model_slow if supervisor_anthropic is not None else None,
     )
 
 

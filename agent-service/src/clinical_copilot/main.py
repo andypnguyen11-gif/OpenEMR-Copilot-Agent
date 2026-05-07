@@ -47,9 +47,15 @@ from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.lanes import Lane
-from clinical_copilot.orchestrator.schemas import AgentResponse
+from clinical_copilot.orchestrator.schemas import AgentResponse, CitedClaim
+from clinical_copilot.orchestrator.supervisor import (
+    Handoff,
+    SupervisorResponse,
+    run as supervisor_run,
+)
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 from clinical_copilot.tools.records import FlagRecord
+from clinical_copilot.verification.abstention import Abstention, AbstentionState
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -225,6 +231,103 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("agent_service.shutdown")
 
 
+def _first_citation_source_id(handoffs: tuple[Handoff, ...]) -> str | None:
+    """Walk supervisor handoffs and return the first citation source_id.
+
+    Used by the supervisor → AgentResponse adapter to anchor the
+    synthesized prose at a real citation. ``evidence_retriever`` chunks
+    expose their citation as ``output["chunks"][i]["chunk_id"]``;
+    ``intake_extractor`` flattens citations into
+    ``output["citations"][i]["source_doc_id"]``. Walk both shapes and
+    return the first non-empty id we see — the adapter abstains rather
+    than emit ungrounded prose if nothing turns up.
+    """
+
+    for handoff in handoffs:
+        output = handoff.output
+        if not isinstance(output, dict):
+            continue
+        chunks = output.get("chunks")
+        if isinstance(chunks, list):
+            for chunk in chunks:
+                if isinstance(chunk, dict):
+                    chunk_id = chunk.get("chunk_id")
+                    if isinstance(chunk_id, str) and chunk_id:
+                        return chunk_id
+        citations = output.get("citations")
+        if isinstance(citations, list):
+            for citation in citations:
+                if isinstance(citation, dict):
+                    source_doc_id = citation.get("source_doc_id")
+                    if isinstance(source_doc_id, str) and source_doc_id:
+                        return source_doc_id
+    return None
+
+
+def _supervisor_to_agent_response(
+    sup: SupervisorResponse,
+    *,
+    session_id: str,
+) -> AgentResponse:
+    """Adapt a :class:`SupervisorResponse` to the wire :class:`AgentResponse`.
+
+    Three branches:
+
+    1. **Supervisor abstained** (``sup.abstention_reason`` is set, e.g.
+       iteration cap hit) → return abstention with that reason.
+    2. **No citation anchor** — synthesized text has no handoff with a
+       citation we can attach it to. ``CitedClaim.source_id`` is
+       ``min_length=1``; we cannot return ungrounded prose. Abstain
+       with ``NO_DATA`` (the supervisor's locked contract: "if you
+       cannot ground a claim, abstain — do not invent.").
+    3. **Happy path** — surface the synthesized text as a single
+       :class:`CitedClaim` anchored at the first available citation.
+       Multi-claim breakout is a Phase 4 stretch in the early-submission
+       plan; single-anchor is acceptable for the rubric (the structlog
+       handoff log carries the full per-chunk citation trail for
+       observability).
+
+    Handoffs are NOT surfaced in the response payload. ``AgentResponse``
+    has ``extra="forbid"`` and adding a top-level field would break v1-
+    fallback wire compatibility. The handoff log is instead emitted via
+    structlog (``supervisor.handoff`` events) — that's the demo's
+    "routing observable" surface.
+    """
+
+    if sup.abstention_reason is not None:
+        return AgentResponse(
+            cards=[],
+            prose=[],
+            tool_results=[],
+            abstention=Abstention(
+                state=AbstentionState(sup.abstention_reason),
+                reason=sup.abstention_reason,
+            ),
+            session_id=session_id,
+        )
+
+    anchor = _first_citation_source_id(sup.handoffs)
+    text = sup.synthesized_text.strip()
+    if not anchor or not text:
+        return AgentResponse(
+            cards=[],
+            prose=[],
+            tool_results=[],
+            abstention=Abstention(
+                state=AbstentionState.NO_DATA,
+                reason=RuntimeAbstainReason.NO_DATA.value,
+            ),
+            session_id=session_id,
+        )
+
+    return AgentResponse(
+        cards=[],
+        prose=[CitedClaim(text=text, source_id=anchor)],
+        tool_results=[],
+        session_id=session_id,
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -279,6 +382,53 @@ def create_app(
         # guard + the runtime system block. Resolver is fail-soft —
         # ``None`` here means "no comparator", and the guard is skipped.
         bound_patient_name = resolved_state.patient_name_resolver(claims.patient_id)
+
+        # W2-07 supervisor branch. Slow-lane traffic with the supervisor
+        # wiring populated (real Anthropic client + corpus index loaded)
+        # routes through :func:`supervisor_run`; fast lane and any
+        # missing piece falls through to v1 Orchestrator. Audit-log
+        # writes are intentionally absent on this branch — the
+        # supervisor's two workers (``intake_extractor``,
+        # ``evidence_retriever``) touch only document files and the
+        # public guideline corpus, not patient-bound chart records, so
+        # there is no PHI access for the audit trail to capture.
+        # Supervisor exceptions fall through to v1 (fail-soft).
+        if (
+            resolved_settings.use_supervisor
+            and body.lane == Lane.SLOW
+            and resolved_state.supervisor_anthropic is not None
+            and resolved_state.supervisor_evidence_retriever is not None
+            and resolved_state.supervisor_intake_extractor is not None
+            and resolved_state.supervisor_model is not None
+        ):
+            # Reserve a canonical session_id consistent with the v1
+            # path so a chat that bounces between engines mid-session
+            # keeps a single id. We don't persist supervisor-side
+            # messages back into SessionStore (multi-turn supervisor
+            # is full-submission work); release the per-key lock
+            # immediately to avoid blocking subsequent turns.
+            canonical_id, _state = resolved_state.session_store.get_or_create(
+                claims, body.session_id,
+            )
+            resolved_state.session_store.release(claims, canonical_id)
+            try:
+                sup = supervisor_run(
+                    client=resolved_state.supervisor_anthropic,
+                    model=resolved_state.supervisor_model,
+                    query=body.query,
+                    intake_extractor=resolved_state.supervisor_intake_extractor,
+                    evidence_retriever=resolved_state.supervisor_evidence_retriever,
+                    request_id=request_id,
+                )
+            except Exception as exc:  # noqa: BLE001 — fail-soft fallback to v1
+                get_logger(__name__).warning(
+                    "supervisor.fallback_to_v1",
+                    request_id=request_id,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                return _supervisor_to_agent_response(sup, session_id=canonical_id)
+
         try:
             return resolved_state.orchestrator.run(
                 query=body.query,

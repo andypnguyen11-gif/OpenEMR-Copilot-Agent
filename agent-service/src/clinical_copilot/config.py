@@ -87,6 +87,13 @@ class Settings:
     model_slow: str
     model_fast: str
     internal_token: str
+    # Default ``True`` matches the production default and keeps existing
+    # test factories that build ``Settings(...)`` directly working
+    # without the new kwarg. The route still gates on
+    # ``AppState.supervisor_anthropic is not None``, which is ``None``
+    # on every test/fixture path, so defaulting True here cannot
+    # accidentally route a test through the live supervisor.
+    use_supervisor: bool = True
 
     @property
     def is_production(self) -> bool:
@@ -103,6 +110,18 @@ def _load() -> Settings:
     # request. Eval can override either to A/B without code changes.
     model_slow = _optional("MODEL_SLOW", DEFAULT_MODEL_SLOW)
     model_fast = _optional("MODEL_FAST", DEFAULT_MODEL_FAST)
+
+    # USE_SUPERVISOR routes slow-lane /api/agent/query traffic through the
+    # W2 Supervisor (intake_extractor + evidence_retriever workers) instead
+    # of the v1 single-loop Orchestrator. Defaults ON; flip to "false" on
+    # Railway to roll back without a redeploy. Fast lane is unaffected
+    # (side-panel chat keeps its v1 path / ≤5s p50 budget).
+    use_supervisor = _optional("USE_SUPERVISOR", "true").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+        "on",
+    }
 
     if env in {"development", "test"}:
         hmac_secret = _optional("COPILOT_HMAC_SECRET", "dev-insecure-hmac-secret")
@@ -142,6 +161,7 @@ def _load() -> Settings:
         model_slow=model_slow,
         model_fast=model_fast,
         internal_token=internal_token,
+        use_supervisor=use_supervisor,
     )
 
 
