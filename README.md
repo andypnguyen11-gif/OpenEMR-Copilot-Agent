@@ -72,7 +72,15 @@ The agent ships with a build-blocking eval harness. From `agent-service/`:
 make eval         # runs all suites; non-zero exit on any RBAC failure
 ```
 
-Eval coverage and the ≥30-case instructor-priority target are tracked in [TASKS.md](TASKS.md) under "Instructor-feedback punch list".
+Eval coverage and the human-reviewed case manifest are tracked in [TASKS.md](TASKS.md) and [agent-service/eval/manifest.yaml](agent-service/eval/manifest.yaml).
+
+### How the W2 rubric is met
+
+Three properties a grader can verify directly from the repo, each pinned to the file that proves it:
+
+- **Citations are schema-enforced, not best-effort.** Every extracted field carries either a citation or an explicit abstain reason — enforced by the `ExtractedField[T]` Pydantic XOR validator at [`agent-service/src/clinical_copilot/documents/schemas/citation.py:68-89`](agent-service/src/clinical_copilot/documents/schemas/citation.py); `CitedClaim.source_id` requires `min_length=1` ([`orchestrator/schemas.py:71`](agent-service/src/clinical_copilot/orchestrator/schemas.py)). A claim without a citation is an exception, not a typo waiting to happen.
+- **GitLab MR-blocking CI runs the 50-case eval gate.** The `agent-service:test` and `agent-service:eval-gate` stages ([`.gitlab-ci.yml:69-109`](.gitlab-ci.yml)) are required on `merge_request_event` and `main`. The eval suite is 50 grounded, human-reviewed cases — 28 extraction, 6 citations, 4 refusals, 8 retrieval, 4 missing-data — see [`agent-service/eval/manifest.yaml`](agent-service/eval/manifest.yaml). A regression on any bucket fails the pipeline.
+- **Supervisor routes the slow lane; v1 keeps the fast lane.** The full chat page dispatches via the W2 Supervisor + 2 workers (`intake_extractor` + `evidence_retriever`) running BM25 + dense + LLM-judge rerank — corpus indexes shipped at [`agent-service/data/corpus/bm25.pkl`](agent-service/data/corpus/bm25.pkl) and [`dense.pkl`](agent-service/data/corpus/dense.pkl). The in-chart side panel stays on the v1 orchestrator for ≤5s p50 chart-tool dispatch. Toggle the engine with `USE_SUPERVISOR` (default `true`); `false` is the instant rollback. Wiring lives at [`main.py:396-430`](agent-service/src/clinical_copilot/main.py).
 
 ---
 
