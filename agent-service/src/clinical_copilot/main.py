@@ -24,7 +24,7 @@ from pathlib import Path as PathlibPath
 from typing import Annotated, Any, Literal
 
 from anthropic import Anthropic
-from fastapi import FastAPI, File, Form, HTTPException, Path, Query, Response, UploadFile, status
+from fastapi import Body, FastAPI, File, Form, HTTPException, Path, Query, Response, UploadFile, status
 from pydantic import BaseModel, Field
 
 from clinical_copilot import __version__
@@ -587,6 +587,37 @@ def create_app(
                 detail="document not found",
             )
         return facts.model_dump(mode="json")
+
+    @app.put(
+        "/api/agent/internal/extracted/{document_id}",
+        tags=["internal"],
+    )
+    async def extracted_update_route(
+        document_id: str = Path(min_length=1, max_length=128),
+        facts_body: dict[str, Any] = Body(...),
+        _: None = internal_dep,
+    ) -> dict[str, Any]:
+        # Editable-confirm overwrite. The PHP document-review page POSTs
+        # the clinician's edits here so the persisted facts reflect what
+        # the clinician confirmed (rather than what the VLM / parser
+        # originally produced). Validates the body against the same
+        # ``_FactsUnion`` TypeAdapter the read path uses, so a bad edit
+        # (wrong shape, abstain-without-reason, etc.) gets rejected
+        # before it lands on disk and corrupts the read path.
+        if facts_body.get("document_id") != document_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="document_id in body must match URL",
+            )
+        try:
+            validated = facts_store.validate(facts_body)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"facts validation failed: {exc}",
+            ) from exc
+        facts_store.write(validated)
+        return validated.model_dump(mode="json")
 
     return app
 

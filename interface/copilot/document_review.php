@@ -2,22 +2,34 @@
 
 /**
  * Clinical Co-Pilot — universal document review surface
- * (Week 2 multimodal expansion, Step 1; enriched in Step 4).
+ * (Week 2 multimodal expansion + editable confirm pass).
  *
- * Single review page reached by ``upload_document.php`` after a
- * successful extraction. Responsibilities by step:
+ * Reached by ``upload_document.php`` after a successful extraction.
+ * The page is one HTML form that bundles two editable surfaces into
+ * a single submit:
  *
- * **Step 1 (this version):** show extracted facts as JSON, surface the
- * abstain summary, and route the clinician to the existing
- * type-specific confirm pages for ``lab_pdf`` and ``intake_form``.
- * Newer types (referral, fax, workbook, hl7) render the facts and a
- * "patient routing not yet wired" notice.
+ *   1. **Patient routing** — radios over the resolver's top
+ *      candidates, plus a "Create new patient" choice. The
+ *      preselected radio is whichever candidate (if any) crossed
+ *      ``PatientMatchScorer::PRESELECT_THRESHOLD``.
  *
- * **Step 4 (planned):** call the patient-resolver worker to suggest
- * a matching chart from extracted demographics, render
- * ``[Confirm match] [Pick different] [Create new]`` actions, and
- * hand off to the appropriate write-back page (``lab_save_ai.php``,
- * ``new_patient_save_ai.php``, or a new document-attach handler).
+ *   2. **Editable facts** — every leaf ``ExtractedField`` becomes a
+ *      ``<input>`` (text, number, or date depending on the schema),
+ *      list-of-objects sections render as editable tables, abstaining
+ *      fields surface their reason as a label so the clinician can
+ *      fill them in. Submitting POSTs the whole form to
+ *      ``api/save_document.php`` which:
+ *        - Persists the edited facts via ``PUT /api/agent/internal/
+ *          extracted/{id}``.
+ *        - Updates ``documents.foreign_id`` to the picked patient
+ *          (or to a freshly-created chart for the new-patient path).
+ *        - Redirects to the patient's Documents view.
+ *
+ * For ``lab_pdf`` and ``intake_form`` we still link out to the
+ * existing per-row review pages (``lab_review.php`` /
+ * ``new_patient_with_ai.php``) instead of using the generic
+ * editable form — those flows already have polished type-specific
+ * UX and we want to preserve them for back-compat.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -33,12 +45,15 @@ require_once(__DIR__ . "/../globals.php");
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
 use OpenEMR\Common\Acl\AclMain;
+use OpenEMR\Common\Csrf\CsrfUtils;
+use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Core\Header;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\DocumentClassifier;
+use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
 use OpenEMR\Services\Copilot\PatientMatch\PatientMatchScorer;
 use OpenEMR\Services\Copilot\PatientMatch\PatientMatchService;
 
@@ -92,38 +107,27 @@ try {
     $loadError = 'Could not reach extractor: ' . $e->getMessage();
 }
 
-// "Continue" target by type. Existing review pages stay the canonical
-// confirm surfaces for lab/intake while Step 4 builds the resolver UI
-// for the new types in this page itself.
-$continueUrl = '';
-$continueLabel = '';
-$continueNote = '';
+// For lab_pdf / intake_form keep the existing per-row review pages —
+// they already have polished editable UX. The generic editable form
+// below is only rendered for the five new multimodal types.
+$useExistingReviewPage = false;
+$existingReviewUrl = '';
+$existingReviewLabel = '';
 switch ($documentType) {
     case DocumentClassifier::TYPE_LAB_PDF:
         if ($pid > 0) {
-            $continueUrl = $webroot . '/interface/copilot/lab_review.php?'
+            $useExistingReviewPage = true;
+            $existingReviewUrl = $webroot . '/interface/copilot/lab_review.php?'
                 . http_build_query(['pid' => $pid, 'document_id' => $documentId]);
-            $continueLabel = 'Continue to lab review';
-        } else {
-            $continueNote = 'Lab review needs a patient id; re-upload from a chart.';
+            $existingReviewLabel = 'Continue to lab review (per-row editable)';
         }
         break;
     case DocumentClassifier::TYPE_INTAKE_FORM:
-        $continueUrl = $webroot . '/interface/copilot/new_patient_with_ai.php?'
+        $useExistingReviewPage = true;
+        $existingReviewUrl = $webroot . '/interface/copilot/new_patient_with_ai.php?'
             . http_build_query(['document_id' => $documentId]);
-        $continueLabel = 'Continue to new-patient form';
+        $existingReviewLabel = 'Continue to new-patient form (per-field editable)';
         break;
-    case DocumentClassifier::TYPE_REFERRAL_DOCX:
-    case DocumentClassifier::TYPE_FAX_TIFF:
-    case DocumentClassifier::TYPE_WORKBOOK_XLSX:
-    case DocumentClassifier::TYPE_HL7_ORU:
-    case DocumentClassifier::TYPE_HL7_ADT:
-        $continueNote = 'Patient routing for "' . htmlspecialchars($documentType, ENT_QUOTES, 'UTF-8')
-            . '" lands in Week 2 Step 4 (patient resolver). The extracted facts above are the '
-            . 'agent\'s suggestion; nothing has been written to the chart.';
-        break;
-    default:
-        $continueNote = 'Unknown document type — no continue target.';
 }
 
 $abstainSummary = is_array($facts) && isset($facts['abstain_summary']) && is_array($facts['abstain_summary'])
@@ -132,13 +136,8 @@ $abstainSummary = is_array($facts) && isset($facts['abstain_summary']) && is_arr
 
 /**
  * Pull (first, last, dob, mrn) out of an extracted-fact payload by
- * document type. The shape varies per type — intake forms surface
- * legal_first_name / legal_last_name as separate fields, fax packets
- * give a single patient_name we have to split on whitespace, etc.
- *
- * Returns an array with four nullable string keys. Skipping a field
- * when the value is missing or in an abstain state is intentional —
- * the patient matcher treats null as "don't filter on this".
+ * document type. Used for both display in the patient-match panel
+ * and as the input to the matcher.
  *
  * @param array<mixed,mixed>|null $factsBody
  * @return array{first_name:?string, last_name:?string, dob:?string, mrn:?string}
@@ -184,9 +183,18 @@ $extractDemographics = static function (?array $factsBody, string $type): array 
     } elseif ($type === DocumentClassifier::TYPE_FAX_TIFF) {
         [$out['first_name'], $out['last_name']] = $splitName($valueOf($factsInner['patient_name'] ?? null));
         $out['dob'] = $valueOf($factsInner['patient_dob'] ?? null);
+    } elseif ($type === DocumentClassifier::TYPE_HL7_ORU || $type === DocumentClassifier::TYPE_HL7_ADT) {
+        [$out['first_name'], $out['last_name']] = $splitName($valueOf($factsInner['patient_name'] ?? null));
+        $out['dob'] = $valueOf($factsInner['patient_dob'] ?? null);
+        $out['mrn'] = $valueOf($factsInner['patient_mrn'] ?? null);
+    } elseif ($type === DocumentClassifier::TYPE_WORKBOOK_XLSX) {
+        $patientBlock = $factsInner['patient'] ?? null;
+        if (is_array($patientBlock)) {
+            [$out['first_name'], $out['last_name']] = $splitName($valueOf($patientBlock['name'] ?? null));
+            $out['dob'] = $valueOf($patientBlock['dob'] ?? null);
+            $out['mrn'] = $valueOf($patientBlock['mrn'] ?? null);
+        }
     }
-    // lab_pdf doesn't carry demographics; workbook/hl7 land in their
-    // own steps with their own demographics extractors.
     return $out;
 };
 
@@ -209,22 +217,24 @@ if ($matchHasDemographics) {
     );
 }
 
-/**
- * Narrowing helper for the abstain-summary counts. The facts payload is
- * a generic ``array<mixed,mixed>`` because it round-trips through JSON;
- * phpstan level 10 forbids ``(int) <mixed>`` so each count is parsed
- * through this helper which returns 0 when the field is absent or of
- * the wrong type rather than coercing silently.
- *
- * @param array<mixed,mixed>|null $summary
- */
-$abstainCount = static function (?array $summary, string $key): int {
-    if ($summary === null) {
-        return 0;
+$preselectedPid = 0;
+foreach ($matchCandidates as $c) {
+    if (PatientMatchScorer::shouldPreselect($c->score)) {
+        $preselectedPid = $c->pid;
+        break;
     }
-    $value = $summary[$key] ?? null;
-    return is_int($value) ? $value : 0;
-};
+}
+
+// The inner facts dict (without abstain_summary or document metadata)
+// is what we render as editable. The save handler reads it back from
+// the same name="facts[...]" key shape and PUTs it to the agent
+// service, where it's validated against the typed-union schema.
+$factsInner = is_array($facts) && isset($facts['facts']) && is_array($facts['facts'])
+    ? $facts['facts']
+    : [];
+
+$session = SessionWrapperFactory::getInstance()->getActiveSession();
+$csrfToken = CsrfUtils::collectCsrfToken(session: $session);
 
 Header::setupHeader();
 ?>
@@ -235,20 +245,33 @@ Header::setupHeader();
     <style>
         body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 1100px; }
         h1 { margin-top: 0; }
+        h2 { margin-top: 2rem; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }
         .meta { color: #555; font-size: 0.95em; margin-bottom: 1rem; }
         .meta code { background: #f4f4f4; padding: 0.05rem 0.25rem; border-radius: 2px; }
         .alert-error { background: #fee; border: 1px solid #faa; padding: 0.75rem 1rem; margin: 1rem 0; }
         .alert-info { background: #eef5ff; border: 1px solid #b6d2ff; padding: 0.75rem 1rem; margin: 1rem 0; color: #154f9c; }
         .summary { background: #f8f8f8; padding: 0.75rem 1rem; border-radius: 4px; margin: 1rem 0; font-size: 0.9em; }
-        pre { background: #fbfbfb; padding: 1rem; border: 1px solid #eee; overflow-x: auto; max-height: 600px; }
         .actions { margin: 1.5rem 0; }
-        .actions a { display: inline-block; padding: 0.5rem 1rem; background: #2057a8; color: white; text-decoration: none; border-radius: 3px; margin-right: 0.5rem; }
-        .actions a.secondary { background: #e0e0e0; color: #333; }
+        .actions a, .actions button { display: inline-block; padding: 0.6rem 1.2rem; background: #2057a8; color: white; text-decoration: none; border-radius: 3px; margin-right: 0.5rem; border: 0; cursor: pointer; font-size: 1em; }
+        .actions a.secondary, .actions button.secondary { background: #e0e0e0; color: #333; }
         .match-table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.95em; }
         .match-table th, .match-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
         .match-table th { background: #f4f4f4; }
         .match-table tr.preselected { background: #f0f8ff; }
-        .match-table tr.preselected td:first-child { color: #154f9c; font-weight: 600; }
+        .match-table tr.preselected td:nth-child(2) { color: #154f9c; font-weight: 600; }
+        .field-row { display: flex; align-items: flex-start; gap: 1rem; margin: 0.4rem 0; padding: 0.3rem 0; }
+        .field-label { flex: 0 0 220px; font-weight: 600; font-size: 0.9em; padding-top: 0.4rem; color: #444; word-break: break-word; }
+        .field-input { flex: 1; padding: 0.35rem 0.5rem; border: 1px solid #ccc; border-radius: 3px; font-family: inherit; font-size: 0.95em; }
+        .citation-hint { flex: 0 0 100%; margin-left: 220px; padding-left: 1rem; color: #777; font-size: 0.8em; }
+        .abstain-badge { background: #ffe9c4; color: #8a5a00; padding: 0.15rem 0.4rem; font-size: 0.75em; border-radius: 3px; margin-left: 0.5rem; }
+        .empty-hint { color: #999; font-style: italic; padding-top: 0.4rem; }
+        fieldset.list-group, fieldset.object-group { margin: 1rem 0; padding: 0.5rem 1rem; border: 1px solid #ddd; border-radius: 4px; background: #fafafa; }
+        fieldset.list-group legend, fieldset.object-group legend { font-weight: 600; padding: 0 0.5rem; color: #154f9c; }
+        .list-item { margin-bottom: 1rem; padding-left: 1rem; border-left: 2px solid #b6d2ff; }
+        .list-item-index { font-size: 0.8em; color: #888; margin-bottom: 0.2rem; }
+        details.raw-json { margin: 1rem 0; }
+        details.raw-json summary { cursor: pointer; color: #555; }
+        details.raw-json pre { background: #fbfbfb; padding: 1rem; border: 1px solid #eee; overflow-x: auto; max-height: 400px; }
     </style>
 </head>
 <body>
@@ -266,96 +289,128 @@ Header::setupHeader();
 <?php if ($abstainSummary !== null): ?>
     <div class="summary">
         Abstentions:
-        low-confidence: <?php echo $abstainCount($abstainSummary, 'low_confidence_field_count'); ?>;
-        no-data: <?php echo $abstainCount($abstainSummary, 'no_data_field_count'); ?>;
-        citation-invalid: <?php echo $abstainCount($abstainSummary, 'citation_invalid_field_count'); ?>;
-        out-of-schema: <?php echo $abstainCount($abstainSummary, 'out_of_schema_field_count'); ?>.
+        low-confidence: <?php echo $abstainCount = (function () use ($abstainSummary) {
+            $v = $abstainSummary['low_confidence_field_count'] ?? 0;
+            return is_int($v) ? $v : 0;
+                        })(); ?>;
+        no-data: <?php $v = $abstainSummary['no_data_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>;
+        citation-invalid: <?php $v = $abstainSummary['citation_invalid_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>;
+        out-of-schema: <?php $v = $abstainSummary['out_of_schema_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>.
     </div>
 <?php endif; ?>
 
-<?php if ($matchHasDemographics): ?>
-    <h2>Patient match</h2>
+<?php if ($useExistingReviewPage): ?>
+    <div class="alert-info">
+        This document type has a polished per-row editable review surface.
+        Continue to the type-specific page to edit and confirm:
+    </div>
+    <div class="actions">
+        <a href="<?php echo htmlspecialchars($existingReviewUrl, ENT_QUOTES, 'UTF-8'); ?>">
+            <?php echo htmlspecialchars($existingReviewLabel, ENT_QUOTES, 'UTF-8'); ?>
+        </a>
+        <a class="secondary" href="<?php echo htmlspecialchars($webroot . '/interface/copilot/upload_document.php', ENT_QUOTES, 'UTF-8'); ?>">
+            Upload another document
+        </a>
+    </div>
+
+    <?php if ($facts !== null): ?>
+        <details class="raw-json"><summary>View raw extracted facts (debug)</summary>
+            <pre><?php echo htmlspecialchars(
+                (string) json_encode($facts, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                ENT_QUOTES,
+                'UTF-8',
+                 ); ?></pre>
+        </details>
+    <?php endif; ?>
+<?php else: ?>
+
+<form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/api/save_document.php', ENT_QUOTES, 'UTF-8'); ?>">
+    <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
+    <input type="hidden" name="document_id" value="<?php echo htmlspecialchars($documentId, ENT_QUOTES, 'UTF-8'); ?>">
+    <input type="hidden" name="document_type" value="<?php echo htmlspecialchars($documentType, ENT_QUOTES, 'UTF-8'); ?>">
+
+    <?php if ($matchHasDemographics): ?>
+    <h2>1. Pick the patient</h2>
     <p class="meta">
         Extracted demographics:
         <strong><?php echo htmlspecialchars(trim(($demographics['first_name'] ?? '') . ' ' . ($demographics['last_name'] ?? '')) ?: '(none)', ENT_QUOTES, 'UTF-8'); ?></strong>
-        <?php if ($demographics['dob'] !== null): ?>
+            <?php if ($demographics['dob'] !== null): ?>
             | DOB <?php echo htmlspecialchars($demographics['dob'], ENT_QUOTES, 'UTF-8'); ?>
         <?php endif; ?>
-        <?php if ($demographics['mrn'] !== null): ?>
+            <?php if ($demographics['mrn'] !== null): ?>
             | MRN <?php echo htmlspecialchars($demographics['mrn'], ENT_QUOTES, 'UTF-8'); ?>
         <?php endif; ?>
     </p>
-    <?php if (count($matchCandidates) === 0): ?>
-        <div class="alert-info">
-            No existing patient matched these demographics above the
-            review threshold (<?php echo PatientMatchScorer::REVIEW_THRESHOLD * 100; ?>%).
-            Default action: <strong>create new patient</strong>.
-        </div>
-    <?php else: ?>
-        <table class="match-table">
-            <thead>
-                <tr>
-                    <th>Confidence</th>
-                    <th>Patient</th>
-                    <th>DOB</th>
-                    <th>MRN</th>
-                    <th>Why</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
+    <table class="match-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Patient</th>
+                <th>DOB</th>
+                <th>MRN</th>
+                <th>Confidence</th>
+                <th>Why</th>
+            </tr>
+        </thead>
+        <tbody>
                 <?php foreach ($matchCandidates as $c): ?>
-                    <tr<?php echo PatientMatchScorer::shouldPreselect($c->score) ? ' class="preselected"' : ''; ?>>
-                        <td><?php echo number_format($c->score * 100, 0); ?>%</td>
-                        <td><?php echo htmlspecialchars($c->firstName . ' ' . $c->lastName, ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($c->dob, ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($c->mrn ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($c->matchReason, ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td>
-                            <a href="<?php echo htmlspecialchars(
-                                $webroot . '/interface/patient_file/summary/demographics.php?set_pid=' . $c->pid,
-                                ENT_QUOTES,
-                                'UTF-8',
-                                     ); ?>">Open chart</a>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-        <p class="meta">
-            Preselect threshold: <?php echo PatientMatchScorer::PRESELECT_THRESHOLD * 100; ?>%.
-            Above that, the row is auto-suggested as the match. Below, the
-            clinician picks. The chart-side document attach (rewriting
-            <code>documents.foreign_id</code> from the placeholder pid 0
-            to the matched pid) lands in a follow-up; for now the doc
-            stays in the unassigned-uploads bucket until the clinician
-            opens the chart and confirms.
-        </p>
+                <tr<?php echo $c->pid === $preselectedPid ? ' class="preselected"' : ''; ?>>
+                    <td>
+                        <input type="radio" name="patient_choice" value="<?php echo (int) $c->pid; ?>"
+                            <?php echo $c->pid === $preselectedPid ? 'checked' : ''; ?>>
+                    </td>
+                    <td><?php echo htmlspecialchars($c->firstName . ' ' . $c->lastName, ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo htmlspecialchars($c->dob, ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo htmlspecialchars($c->mrn ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo number_format($c->score * 100, 0); ?>%</td>
+                    <td><?php echo htmlspecialchars($c->matchReason, ENT_QUOTES, 'UTF-8'); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <tr>
+                <td>
+                    <input type="radio" name="patient_choice" value="new"
+                        <?php echo $preselectedPid === 0 ? 'checked' : ''; ?>>
+                </td>
+                <td colspan="5"><strong>Create new patient</strong> using the extracted demographics</td>
+            </tr>
+        </tbody>
+    </table>
+    <?php else: ?>
+    <h2>1. Pick the patient</h2>
+    <div class="alert-info">
+        No demographics were extracted from this document, so no patient match was attempted.
+        The document will stay in the unassigned-uploads bucket until you attach it manually.
+    </div>
+    <input type="hidden" name="patient_choice" value="unassigned">
     <?php endif; ?>
-<?php endif; ?>
 
-<?php if ($continueNote !== ''): ?>
-    <div class="alert-info"><?php echo $continueNote; /* already escaped or trusted at site */ ?></div>
-<?php endif; ?>
+    <h2>2. Review &amp; edit extracted facts</h2>
+    <p class="meta">
+        Edit any field that the extractor got wrong. The 📎 icon shows
+        the source citation the value was pulled from. Yellow badges
+        mark fields the extractor abstained on — fill them in if you
+        have the answer; leave them blank to keep the abstention.
+    </p>
+    <?php echo FactsFormHelper::renderFacts($factsInner, '', ''); ?>
 
-<?php if ($facts !== null): ?>
-    <h2>Extracted facts</h2>
-    <pre><?php echo htmlspecialchars(
-        (string) json_encode($facts, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        ENT_QUOTES,
-        'UTF-8',
-         ); ?></pre>
-<?php endif; ?>
-
-<div class="actions">
-    <?php if ($continueUrl !== ''): ?>
-        <a href="<?php echo htmlspecialchars($continueUrl, ENT_QUOTES, 'UTF-8'); ?>">
-            <?php echo htmlspecialchars($continueLabel, ENT_QUOTES, 'UTF-8'); ?>
+    <div class="actions">
+        <button type="submit">Save edits &amp; attach to patient</button>
+        <a class="secondary" href="<?php echo htmlspecialchars($webroot . '/interface/copilot/upload_document.php', ENT_QUOTES, 'UTF-8'); ?>">
+            Upload another document
         </a>
+    </div>
+
+    <?php if ($facts !== null): ?>
+        <details class="raw-json"><summary>View raw extracted facts (debug)</summary>
+            <pre><?php echo htmlspecialchars(
+                (string) json_encode($facts, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                ENT_QUOTES,
+                'UTF-8',
+                 ); ?></pre>
+        </details>
     <?php endif; ?>
-    <a class="secondary" href="<?php echo htmlspecialchars($webroot . '/interface/copilot/upload_document.php', ENT_QUOTES, 'UTF-8'); ?>">
-        Upload another document
-    </a>
-</div>
+</form>
+<?php endif; ?>
+
 </body>
 </html>

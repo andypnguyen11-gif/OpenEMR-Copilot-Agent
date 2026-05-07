@@ -67,3 +67,13 @@ def read(document_id: str, *, root: Path | None = None) -> _FactsUnion | None:
         return None
     raw = json.loads(path.read_text(encoding="utf-8"))
     return _ADAPTER.validate_python(raw)
+
+
+def validate(raw: object) -> _FactsUnion:
+    """Validate an arbitrary JSON-shaped object against the union of
+    all supported facts schemas. Used by the editable-confirm PUT
+    route so the clinician's edits get the same shape check as a
+    fresh extraction; a bad shape (wrong field names, abstain-without-
+    reason, etc.) raises before it lands on disk."""
+
+    return _ADAPTER.validate_python(raw)

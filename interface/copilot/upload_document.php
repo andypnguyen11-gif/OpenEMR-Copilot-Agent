@@ -33,6 +33,7 @@ require_once(__DIR__ . "/../../library/documents.php");
 
 use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Psr7\HttpFactory;
+use OpenEMR\BC\ServiceContainer;
 use OpenEMR\Common\Acl\AclMain;
 use OpenEMR\Common\Csrf\CsrfUtils;
 use OpenEMR\Common\Session\SessionWrapperFactory;
@@ -124,7 +125,28 @@ if ($request->isMethod('POST')) {
             );
 
             if (!is_array($stored)) {
-                $errorMessage = 'Failed to save document into OpenEMR.';
+                // Surface whatever addNewDocument actually returned so a
+                // failure isn't a black box. Common cause: foreign_id
+                // refers to a row that doesn't exist (the documents
+                // subsystem reserves "00" for unassigned uploads, but
+                // any other "no patient" placeholder fails).
+                $rendered = is_scalar($stored) ? (string) $stored : gettype($stored);
+                $errorMessage = sprintf(
+                    'Failed to save document into OpenEMR. addNewDocument returned %s '
+                        . '(foreign_id=%s, category_id=%d). Check apache error log for details.',
+                    $rendered === '' ? '<empty string>' : $rendered,
+                    $foreignId,
+                    DocumentClassifier::categoryFor($documentType),
+                );
+                ServiceContainer::getLogger()->error('copilot.upload_document.addNewDocument_failed', [
+                    'origName' => $origName,
+                    'mime' => $mimeType,
+                    'docType' => $documentType,
+                    'foreignId' => $foreignId,
+                    'catId' => DocumentClassifier::categoryFor($documentType),
+                    'size' => $size,
+                    'returned' => $rendered,
+                ]);
             } else {
                 $docIdRaw = $stored['doc_id'] ?? '';
                 $documentId = 'openemr:doc:' . (is_scalar($docIdRaw) ? (string) $docIdRaw : '');

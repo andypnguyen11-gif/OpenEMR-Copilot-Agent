@@ -166,11 +166,38 @@ readonly class AgentHttpClient
      */
     public function postInternal(string $path, array $body, string $internalToken): AgentResponse
     {
+        return $this->jsonInternal('POST', $path, $body, $internalToken);
+    }
+
+    /**
+     * PUT ``$path`` on the agent service with a JSON body and an
+     * ``X-Internal-Token`` header. Used by the editable-confirm save
+     * handler to overwrite a previously-extracted facts record after
+     * the clinician has reviewed and edited it. Same transport /
+     * encoding contract as :meth:`postInternal`.
+     *
+     * @param array<mixed,mixed> $body
+     * @throws AgentServiceException
+     */
+    public function putInternalJson(string $path, array $body, string $internalToken): AgentResponse
+    {
+        return $this->jsonInternal('PUT', $path, $body, $internalToken);
+    }
+
+    /**
+     * Shared body of postInternal / putInternalJson — the only thing
+     * that differs is the HTTP verb.
+     *
+     * @param array<mixed,mixed> $body
+     * @throws AgentServiceException
+     */
+    private function jsonInternal(string $method, string $path, array $body, string $internalToken): AgentResponse
+    {
         if (!str_starts_with($path, '/')) {
             throw new AgentServiceException('agent path must start with /');
         }
         if ($internalToken === '') {
-            throw new AgentServiceException('agent postInternal called without an internal token');
+            throw new AgentServiceException('agent ' . strtolower($method) . ' called without an internal token');
         }
 
         try {
@@ -180,7 +207,7 @@ readonly class AgentHttpClient
         }
 
         $url = $this->config->getAgentBaseUrl() . $path;
-        $request = $this->requestFactory->createRequest('POST', $url)
+        $request = $this->requestFactory->createRequest($method, $url)
             ->withHeader('Accept', 'application/json')
             ->withHeader('Content-Type', 'application/json')
             ->withHeader('X-Internal-Token', $internalToken)
