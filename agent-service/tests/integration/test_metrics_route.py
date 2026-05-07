@@ -92,7 +92,17 @@ def _settings() -> Settings:
     )
 
 
-def _mint_jwt(*, patient_id: str = "101") -> str:
+_DEFAULT_SCOPES: tuple[str, ...] = (
+    "system/Condition.read",
+    "system/MedicationRequest.read",
+    "system/AllergyIntolerance.read",
+    "system/Observation.read",
+    "system/Encounter.read",
+    "system/DocumentReference.read",
+)
+
+
+def _mint_jwt(*, patient_id: str = "101", scopes: Sequence[str] | None = None) -> str:
     now = int(time.time())
     payload = {
         "iss": ISSUER,
@@ -103,14 +113,7 @@ def _mint_jwt(*, patient_id: str = "101") -> str:
         "user_id": "dr-patel",
         "role": "physician",
         "patient_id": patient_id,
-        "scopes": [
-            "system/Condition.read",
-            "system/MedicationRequest.read",
-            "system/AllergyIntolerance.read",
-            "system/Observation.read",
-            "system/Encounter.read",
-            "system/DocumentReference.read",
-        ],
+        "scopes": list(scopes) if scopes is not None else list(_DEFAULT_SCOPES),
         "nonce": uuid.uuid4().hex,
     }
     return pyjwt.encode(payload, HMAC_SECRET, algorithm=ALGORITHM)
@@ -255,22 +258,34 @@ def test_metrics_endpoint_records_unauthorized_outcome(
     """An RBAC denial inside a query must show up as a ``failed`` bucket
     on the verification rate AND as an ``UNAUTHORIZED`` audit row, so the
     operator can correlate "failed answer" with "denial event."
+
+    Trigger the denial via a missing scope rather than a mismatched
+    ``patient_id`` in the model's ``tool_use.input`` —
+    :class:`PatientScopedToolRegistry` binds ``patient_id`` from claims
+    at session entry and ignores the model's value (defense-in-depth,
+    ARCHITECTURE §4), so a model-supplied foreign id can no longer
+    reach the RBAC layer. Stripping ``system/Condition.read`` from the
+    JWT makes ``Tool._enforce_rbac`` fail on the ``get_problems`` call
+    and write the UNAUTHORIZED audit row this test needs to observe.
     """
 
     gateway = _ScriptedGateway(
         [
             _tool_use_turn(
-                ToolUse(id="tu-1", name="get_problems", input={"patient_id": "999"}),
+                ToolUse(id="tu-1", name="get_problems", input={}),
             ),
         ]
     )
     client = _build_client(session_factory, gateway)
-    token = _mint_jwt(patient_id="101")
+    token = _mint_jwt(
+        patient_id="101",
+        scopes=[s for s in _DEFAULT_SCOPES if s != "system/Condition.read"],
+    )
 
     query_response = client.post(
         "/api/agent/query",
         headers={"Authorization": f"Bearer {token}"},
-        json={"query": "Show me a different patient's chart"},
+        json={"query": "Show me this patient's problem list"},
     )
     assert query_response.status_code == 200
     assert query_response.json()["abstention"]["state"] == "UNAUTHORIZED"
