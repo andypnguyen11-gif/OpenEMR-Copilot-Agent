@@ -85,6 +85,39 @@ final readonly class IngestClient
     }
 
     /**
+     * Submit any document with a caller-specified extractor type.
+     *
+     * Used by the universal upload page (``upload_document.php``) when
+     * the file format already implies the extractor (.docx → referral,
+     * .tiff → fax packet, .hl7 → ADT/ORU, .xlsx → workbook). The
+     * caller is responsible for classification; this method does no
+     * sniffing of its own.
+     *
+     * Patient-id is optional — the new types route through the patient
+     * resolver, which may either match an existing chart or trigger
+     * the new-patient workflow on the review page.
+     */
+    public function ingestTyped(
+        string $documentId,
+        string $documentType,
+        ?int $patientId,
+        int $uploaderUserId,
+        string $fileContents,
+        string $fileName,
+        string $fileMimeType,
+    ): AgentResponse {
+        return $this->ingest(
+            $documentId,
+            $documentType,
+            $patientId,
+            $uploaderUserId,
+            $fileContents,
+            $fileName,
+            $fileMimeType,
+        );
+    }
+
+    /**
      * @throws AgentServiceException When the agent service is
      *                               misconfigured (no internal token)
      *                               or the transport / response shape

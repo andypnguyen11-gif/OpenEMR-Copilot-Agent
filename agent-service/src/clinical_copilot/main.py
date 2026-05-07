@@ -495,7 +495,7 @@ def create_app(
     )
     async def ingest_route(
         document_id: Annotated[str, Form(min_length=1, max_length=128)],
-        document_type: Annotated[Literal["lab_pdf", "intake_form"], Form()],
+        document_type: Annotated[DocumentType, Form()],
         uploader_user_id: Annotated[int, Form()],
         file: Annotated[UploadFile, File()],
         patient_id: Annotated[int | None, Form()] = None,
