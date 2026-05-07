@@ -31,6 +31,10 @@ delta against this document's own §1–§16.
 | Chart-side AI entry points (PHP) | `interface/copilot/{upload_lab,lab_review,lab_save_ai,new_patient_with_ai,intake_review,new_patient_save_ai}.php`; menu items in `interface/main/tabs/menu/menus/{standard,front_office}.json`; chart Labs button in `interface/patient_file/summary/labdata_fragment.php` |
 | Ingest gateway (PHP) | `src/Services/Copilot/IngestClient.php` (calls the agent-service multipart route) |
 | Fast-lane `get_labs` | `clinical_copilot/app_state.py` lane subset now includes `get_labs` |
+| Multimodal-expansion extractors (5 new types) | `clinical_copilot/documents/extractors/{referral_docx,workbook_xlsx,hl7_oru,hl7_adt}.py` + shared `_hl7_common.py`; schemas under `documents/schemas/{referral_docx,fax_tiff,workbook_xlsx,hl7_oru,hl7_adt}.py`. Registry-based dispatch in `documents/extractor.py`. |
+| Universal upload UI + format classifier (PHP) | `interface/copilot/upload_document.php` + `interface/copilot/document_review.php`; `src/Services/Copilot/{DocumentClassifier,ClassifierException}.php`; `IngestClient::ingestTyped()` |
+| Patient resolver (PHP) | `src/Services/Copilot/PatientMatch/{PatientMatchService,PatientMatchScorer,PatientMatchCandidate}.php`; `interface/copilot/api/patient_match.php` |
+| Multimodal eval cases (35 new) | `tests/eval/w2_cases/extraction-{fax,referral,workbook,hl7-oru,hl7-adt}/p01..p07.json` (7 per bucket), 346+ rubrics total across all 7 buckets |
 
 **Deferred (design captured in §1–§16 below; MR not yet landed):**
 

@@ -1155,15 +1155,22 @@
   Carries forward all v3 non-goals (§11) except where Week 2 explicitly
   promotes them. Lifted from v3 non-goals:
 
-  - "Document and imaging integration" — **lifted** for two document types
-    (lab PDF, intake form). All other document types remain out of scope.
+  - "Document and imaging integration" — **lifted** for seven document types
+    (lab PDF, intake form, referral .docx, fax-packet .tiff, patient
+    workbook .xlsx, HL7 v2 ORU-R01, HL7 v2 ADT-A08). The two text-based
+    HL7 messages and the two Office formats are deterministic / no-VLM
+    extractors; the lab PDF, intake form, and fax-packet TIFF use the
+    Anthropic vision API. See W2_ARCHITECTURE.md "Multimodal-expansion
+    extractors" for the file-type → extractor map.
   - "Multi-agent / specialist routing" — **partially lifted** to four nodes
     (supervisor + two workers + critic). No further decomposition.
 
   Newly explicit Week 2 non-goals:
 
-  - More than two document schemas in MVP. Referral fax, medication list,
-    imaging are stretch only.
+  - ~~More than two document schemas in MVP. Referral fax, medication list,
+    imaging are stretch only.~~ **Lifted** in the multimodal expansion
+    (W2-MM in TASKS2.md). Imaging extraction (radiology reports +
+    DICOM) remains out of scope.
   - Per-document fine-tuning. The VLM is used as-is; no domain adaptation.
   - User-facing eval dashboard. Eval results are pre-push hook run
     artifacts (committed Markdown summaries + JSON results); viewer is

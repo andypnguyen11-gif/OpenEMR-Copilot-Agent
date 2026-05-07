@@ -30,6 +30,7 @@ status header on each block before recommending it as "next up."
 | W2-10 — Abstention rendering + chart summary card | **DEFERRED** | No Documents-view side panel and no chart summary card. Clinician review happens on `lab_review.php` / `intake_review.php`. |
 | W2-11 — Pre-push eval hook + Makefile + flake policy | **PARTIAL (DEMO-CUT)** | Boolean-rubric extraction runner shipped (`tests/eval/extraction_runner.py`, 10 cases). No judge wrapper, no budget pre-flight, no quarantine ceiling, no `make copilot-eval` pre-push hook. Pre-push hook today is `agent-service-pytest`. |
 | W2-12 — PHI redaction in LangSmith spans | **DEFERRED** | Demo runs with `LANGSMITH_TRACING=false`. Re-enabling tracing requires this MR. |
+| W2-MM — Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 45 eval cases / 7 buckets / 346+ rubrics, all green. See plans/week2-multimodal-expansion.md for the per-step breakdown. |
 
 Cross-cutting infrastructure that landed alongside the Week 2 demo (not
 attributed to a specific W2-XX block):
