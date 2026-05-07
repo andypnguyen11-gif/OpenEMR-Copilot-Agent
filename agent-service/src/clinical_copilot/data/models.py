@@ -218,8 +218,10 @@ class MedicationRequest(_FhirModel):
         # prescriptions with no dosage detail (Synthea-imported records hit
         # this on nearly every med). Treat non-dict entries as absent rather
         # than raising — the alternative is a TOOL_FAILURE on every meds call.
+        # Already-typed ``Dosage`` instances pass through unchanged so direct
+        # construction (tests, in-process callers) works the same as JSON parsing.
         if isinstance(value, list):
-            return [item for item in value if isinstance(item, dict)]
+            return [item for item in value if isinstance(item, (dict, Dosage))]
         return value
 
 
