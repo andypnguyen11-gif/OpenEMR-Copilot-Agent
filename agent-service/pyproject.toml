@@ -99,4 +99,12 @@ markers = [
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:fastapi.*",
+    # ssl.SSLSocket teardown from a long-lived httpx pool (the
+    # Anthropic SDK constructs one per ``Anthropic(...)`` instance and
+    # holds it for the process lifetime) surfaces as
+    # ``PytestUnraisableExceptionWarning`` at end-of-session in some
+    # test orderings — the connection close runs after the test it
+    # gets attributed to has already passed. Not a test failure;
+    # ignore so ``filterwarnings = error`` doesn't promote it.
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]
