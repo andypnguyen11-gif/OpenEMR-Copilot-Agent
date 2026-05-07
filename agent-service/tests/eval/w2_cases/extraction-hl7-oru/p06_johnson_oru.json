@@ -1,0 +1,20 @@
+{
+  "case_id": "extraction-hl7-oru/p06_johnson_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p06-johnson-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Johnson ORU \u2014 basic metabolic panel, 10 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 10
+    },
+    "field_equals": {
+      "patient_name.value": "Marcus Johnson",
+      "patient_dob.value": "1954-02-08",
+      "patient_mrn.value": "HFH-8866213"
+    },
+    "field_present": [
+      "order_panel"
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "case_id": "extraction-hl7-oru/p04_kowalski_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p04-kowalski-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Kowalski ORU \u2014 comprehensive metabolic panel, 14 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 14
+    },
+    "field_equals": {
+      "patient_name.value": "Robert Kowalski",
+      "patient_dob.value": "1971-09-30",
+      "patient_mrn.value": "NWM-7724501"
+    },
+    "field_present": [
+      "order_panel"
+    ]
+  }
+}

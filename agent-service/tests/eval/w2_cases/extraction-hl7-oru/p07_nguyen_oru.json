@@ -1,0 +1,20 @@
+{
+  "case_id": "extraction-hl7-oru/p07_nguyen_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p07-nguyen-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Nguyen ORU \u2014 thyroid panel, 4 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 4
+    },
+    "field_equals": {
+      "patient_name.value": "Olivia Nguyen",
+      "patient_dob.value": "1997-10-19",
+      "patient_mrn.value": "UWM-3320175"
+    },
+    "field_present": [
+      "order_panel"
+    ]
+  }
+}

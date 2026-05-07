@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import TypeAdapter
 
 from clinical_copilot.documents.schemas.fax_tiff import FaxTiffFacts
+from clinical_copilot.documents.schemas.hl7_oru import Hl7OruFacts
 from clinical_copilot.documents.schemas.intake_form import IntakeFormFacts
 from clinical_copilot.documents.schemas.lab_pdf import LabPdfFacts
 from clinical_copilot.documents.schemas.referral_docx import ReferralDocxFacts
@@ -31,7 +32,12 @@ _DEFAULT_STORE_ROOT = Path(__file__).resolve().parents[3] / "data" / "extracted"
 # wrong model — preventing a fax-packet write from being read back as
 # an empty LabPdfFacts.
 _FactsUnion = (
-    LabPdfFacts | IntakeFormFacts | FaxTiffFacts | ReferralDocxFacts | WorkbookXlsxFacts
+    LabPdfFacts
+    | IntakeFormFacts
+    | FaxTiffFacts
+    | ReferralDocxFacts
+    | WorkbookXlsxFacts
+    | Hl7OruFacts
 )
 _ADAPTER: TypeAdapter[_FactsUnion] = TypeAdapter(_FactsUnion)
 

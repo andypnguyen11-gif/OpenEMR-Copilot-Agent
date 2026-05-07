@@ -1,0 +1,20 @@
+{
+  "case_id": "extraction-hl7-oru/p03_reyes_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p03-reyes-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Reyes ORU \u2014 A1c result, 2 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 2
+    },
+    "field_equals": {
+      "patient_name.value": "Sofia Reyes",
+      "patient_dob.value": "1983-07-04",
+      "patient_mrn.value": "ATX-5503291"
+    },
+    "field_present": [
+      "order_panel"
+    ]
+  }
+}

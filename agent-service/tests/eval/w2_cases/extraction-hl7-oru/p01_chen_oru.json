@@ -1,0 +1,24 @@
+{
+  "case_id": "extraction-hl7-oru/p01_chen_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p01-chen-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Chen ORU \u2014 lipid panel result, 4 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 4
+    },
+    "field_equals": {
+      "patient_name.value": "Margaret Chen",
+      "patient_dob.value": "1968-03-12",
+      "patient_mrn.value": "BHS-2847163",
+      "patient_sex.value": "F",
+      "order_panel.value": "Lipid panel with direct LDL - Serum or Plasma",
+      "order_loinc.value": "57698-3"
+    },
+    "field_present": [
+      "specimen_collected_at",
+      "ordering_provider"
+    ]
+  }
+}

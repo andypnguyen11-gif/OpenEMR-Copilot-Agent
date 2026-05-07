@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-oru/p02_whitaker_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p02-whitaker-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Whitaker ORU \u2014 CBC panel, 6 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 6
+    },
+    "field_equals": {
+      "patient_name.value": "James Whitaker",
+      "patient_dob.value": "1958-11-22",
+      "patient_mrn.value": "NMM-9912448"
+    },
+    "field_present": [
+      "order_panel",
+      "specimen_collected_at"
+    ]
+  }
+}

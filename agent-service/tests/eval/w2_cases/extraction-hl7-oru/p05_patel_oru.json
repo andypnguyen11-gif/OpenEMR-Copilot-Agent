@@ -1,0 +1,20 @@
+{
+  "case_id": "extraction-hl7-oru/p05_patel_oru",
+  "bucket": "extraction-hl7-oru",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p05-patel-oru-r01.hl7",
+  "document_type": "hl7_oru",
+  "description": "Patel ORU \u2014 vitamin D level, 2 OBX rows.",
+  "expectations": {
+    "list_min": {
+      "observations": 2
+    },
+    "field_equals": {
+      "patient_name.value": "Aisha Patel",
+      "patient_dob.value": "1991-06-15",
+      "patient_mrn.value": "EMR-4413089"
+    },
+    "field_present": [
+      "order_panel"
+    ]
+  }
+}
