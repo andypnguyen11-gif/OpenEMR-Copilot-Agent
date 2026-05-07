@@ -105,10 +105,13 @@ if ($request->isMethod('POST')) {
 
         if ($documentType !== '') {
             // Patient-id is required by addNewDocument's foreign_id; for
-            // chart-less uploads we use 0 as a placeholder. The patient
-            // resolver (Step 4) will rewrite the foreign_id once the
-            // clinician confirms a match on the review page.
-            $foreignId = $pid > 0 ? (string) $pid : '0';
+            // chart-less uploads we use the synthetic placeholder ``00``
+            // — the directory the documents subsystem reserves for
+            // unassigned uploads (same convention the existing
+            // ``new_patient_with_ai.php`` uses). The patient-resolver
+            // attach step rewrites foreign_id from "00" to the matched
+            // pid when the clinician confirms.
+            $foreignId = $pid > 0 ? (string) $pid : '00';
             $stored = addNewDocument(
                 $origName,
                 $mimeType,
@@ -117,7 +120,7 @@ if ($request->isMethod('POST')) {
                 (string) $size,
                 $authUserId,
                 $foreignId,
-                1,
+                DocumentClassifier::categoryFor($documentType),
             );
 
             if (!is_array($stored)) {

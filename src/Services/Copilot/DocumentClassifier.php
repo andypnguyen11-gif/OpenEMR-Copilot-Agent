@@ -43,6 +43,16 @@ final class DocumentClassifier
     public const HINT_INTAKE = 'intake';
     public const HINT_AUTO = 'auto';
 
+    // Stock OpenEMR document-category IDs. Sourced from the seed data
+    // in ``sql/database.sql`` — the dev DB exposes them via
+    // ``SELECT id, name FROM categories``. Hard-coded here rather than
+    // looked up at runtime because (a) these IDs are seed-stable across
+    // every install and (b) the lookup function below stays a pure /
+    // testable method instead of a DB query.
+    public const CATEGORY_LAB_REPORT = 2;
+    public const CATEGORY_MEDICAL_RECORD = 3;
+    public const CATEGORY_PATIENT_INFORMATION = 4;
+
     /**
      * Classify a file by extension + MIME + first bytes.
      *
@@ -119,6 +129,32 @@ final class DocumentClassifier
             $mime,
             substr(bin2hex(substr($headBytes, 0, 8)), 0, 16),
         ));
+    }
+
+    /**
+     * Map a classified ``document_type`` to the OpenEMR documents-table
+     * category id the upload should be filed under. Routing today (per
+     * the discussion in the multimodal-expansion design):
+     *
+     *   * lab_pdf  + hl7_oru        → Lab Report (#2)
+     *   * intake_form               → Patient Information (#4)
+     *   * referral_docx + fax_tiff
+     *   + workbook_xlsx + hl7_adt   → Medical Record (#3) — the
+     *     stock catch-all. (HL7 ADT is demographics-only so the
+     *     attached file is mostly an audit-trail artefact, but it
+     *     still gets filed under Medical Record for consistency.)
+     */
+    public static function categoryFor(string $documentType): int
+    {
+        return match ($documentType) {
+            self::TYPE_LAB_PDF, self::TYPE_HL7_ORU => self::CATEGORY_LAB_REPORT,
+            self::TYPE_INTAKE_FORM => self::CATEGORY_PATIENT_INFORMATION,
+            self::TYPE_REFERRAL_DOCX,
+            self::TYPE_FAX_TIFF,
+            self::TYPE_WORKBOOK_XLSX,
+            self::TYPE_HL7_ADT => self::CATEGORY_MEDICAL_RECORD,
+            default => self::CATEGORY_MEDICAL_RECORD,
+        };
     }
 
     /**

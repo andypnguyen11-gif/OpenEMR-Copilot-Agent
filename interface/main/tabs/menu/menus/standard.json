@@ -125,10 +125,10 @@
         "global_req": "full_new_patient_form"
       },
       {
-        "label": "Add Patient (with AI)",
+        "label": "Upload Patient Doc (with AI)",
         "menu_id": "newai",
         "target": "pat",
-        "url": "/interface/copilot/new_patient_with_ai.php",
+        "url": "/interface/copilot/upload_document.php",
         "children": [],
         "requirement": 0,
         "acl_req": [

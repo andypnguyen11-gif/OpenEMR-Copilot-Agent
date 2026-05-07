@@ -91,4 +91,29 @@ final class DocumentClassifierTest extends TestCase
             "MSH|^~\\&|LIS|HOSP|EMR|HOSP|20260501||ORM^O01|111|P|2.5\r",
         );
     }
+
+    /**
+     * @return array<string, array{string, int}>
+     *
+     * @codeCoverageIgnore Data providers run before coverage instrumentation starts.
+     */
+    public static function categoryProvider(): array
+    {
+        return [
+            'lab pdf → Lab Report' => [DocumentClassifier::TYPE_LAB_PDF, DocumentClassifier::CATEGORY_LAB_REPORT],
+            'hl7 oru → Lab Report' => [DocumentClassifier::TYPE_HL7_ORU, DocumentClassifier::CATEGORY_LAB_REPORT],
+            'intake form → Patient Information' => [DocumentClassifier::TYPE_INTAKE_FORM, DocumentClassifier::CATEGORY_PATIENT_INFORMATION],
+            'referral docx → Medical Record' => [DocumentClassifier::TYPE_REFERRAL_DOCX, DocumentClassifier::CATEGORY_MEDICAL_RECORD],
+            'fax tiff → Medical Record' => [DocumentClassifier::TYPE_FAX_TIFF, DocumentClassifier::CATEGORY_MEDICAL_RECORD],
+            'workbook xlsx → Medical Record' => [DocumentClassifier::TYPE_WORKBOOK_XLSX, DocumentClassifier::CATEGORY_MEDICAL_RECORD],
+            'hl7 adt → Medical Record' => [DocumentClassifier::TYPE_HL7_ADT, DocumentClassifier::CATEGORY_MEDICAL_RECORD],
+            'unknown type falls back to Medical Record' => ['mystery_xyz', DocumentClassifier::CATEGORY_MEDICAL_RECORD],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('categoryProvider')]
+    public function testCategoryFor(string $documentType, int $expectedCategory): void
+    {
+        self::assertSame($expectedCategory, DocumentClassifier::categoryFor($documentType));
+    }
 }
