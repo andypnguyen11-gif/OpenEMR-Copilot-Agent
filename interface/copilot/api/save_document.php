@@ -253,7 +253,12 @@ if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
                 )),
             ),
         ]);
-    header('Location: ' . $webroot . '/interface/main/main_screen.php?'
+    // Send the clinician to the patient's demographics page — same
+    // canonical "show me this patient's chart" URL the existing
+    // ``new_patient_save_ai.php`` uses. ``main_screen.php`` is the
+    // tabs-shell entry point and fails with "Site ID is missing
+    // from session data" when loaded outside the shell context.
+    header('Location: ' . $webroot . '/interface/patient_file/summary/demographics.php?'
         . http_build_query(['set_pid' => $targetPid])
         . ($flash !== '' ? '&' . $flash : ''));
     exit;

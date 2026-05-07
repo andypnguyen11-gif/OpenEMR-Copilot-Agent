@@ -317,8 +317,6 @@ final readonly class ChartWriteService
             $low = $obs['reference_low'] ?? null;
             $high = $obs['reference_high'] ?? null;
             $flag = $this->normalizeAbnormalFlag(self::s($obs['flag'] ?? null));
-            $effective = self::s($obs['effective_date'] ?? null);
-            $effectiveDateTime = $effective !== '' ? $effective . ' 00:00:00' : $reportDateTime;
 
             $rangeParts = [];
             if (is_numeric($low)) {
@@ -329,14 +327,20 @@ final readonly class ChartWriteService
             }
             $rangeText = $rangeParts === [] ? '' : implode('-', $rangeParts);
 
+            // ``result`` and ``range`` are MariaDB reserved words — must
+            // be backtick-quoted. Column order matches the existing
+            // ``lab_save_ai.php`` exactly so Co-Pilot import rows look
+            // identical to manually-confirmed lab uploads. The per-
+            // observation date isn't a column on ``procedure_result``;
+            // the parent ``procedure_report.date_report`` carries it.
             QueryUtils::sqlInsert(
                 <<<'SQL'
                 INSERT INTO procedure_result
                     (procedure_report_id, result_data_type, result_code, result_text,
-                     result, units, range, abnormal, result_status, date)
-                VALUES (?, 'N', ?, ?, ?, ?, ?, ?, 'final', ?)
+                     units, `result`, `range`, abnormal, result_status)
+                VALUES (?, 'N', ?, ?, ?, ?, ?, ?, 'final')
                 SQL,
-                [$reportId, $code, $display, $value, $unit, $rangeText, $flag, $effectiveDateTime],
+                [$reportId, $code, $display, $unit, $value, $rangeText, $flag],
             );
             $written++;
         }
