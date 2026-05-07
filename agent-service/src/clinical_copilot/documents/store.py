@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import TypeAdapter
 
 from clinical_copilot.documents.schemas.fax_tiff import FaxTiffFacts
+from clinical_copilot.documents.schemas.hl7_adt import Hl7AdtFacts
 from clinical_copilot.documents.schemas.hl7_oru import Hl7OruFacts
 from clinical_copilot.documents.schemas.intake_form import IntakeFormFacts
 from clinical_copilot.documents.schemas.lab_pdf import LabPdfFacts
@@ -38,6 +39,7 @@ _FactsUnion = (
     | ReferralDocxFacts
     | WorkbookXlsxFacts
     | Hl7OruFacts
+    | Hl7AdtFacts
 )
 _ADAPTER: TypeAdapter[_FactsUnion] = TypeAdapter(_FactsUnion)
 

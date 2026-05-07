@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-adt/p06_johnson_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p06-johnson-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Johnson ADT-A08 \u2014 medication reconciliation discrepancy + ACE-I allergy.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Marcus Johnson",
+      "patient_dob.value": "1954-02-08",
+      "patient_mrn.value": "HFH-8866213",
+      "primary_care_provider.value": "Olivia Bennett",
+      "insurance_member_id.value": "H7322-9914"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address"
+    ]
+  }
+}

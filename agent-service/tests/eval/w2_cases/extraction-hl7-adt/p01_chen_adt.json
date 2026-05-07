@@ -1,0 +1,25 @@
+{
+  "case_id": "extraction-hl7-adt/p01_chen_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p01-chen-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Chen ADT-A08 \u2014 medication change update.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Margaret Chen",
+      "patient_dob.value": "1968-03-12",
+      "patient_mrn.value": "BHS-2847163",
+      "patient_sex.value": "F",
+      "primary_care_provider.value": "Helen Park",
+      "primary_care_provider_npi.value": "1618829315",
+      "insurance_member_id.value": "XEH123456789",
+      "insurance_carrier.value": "BLUE SHIELD OF CALIFORNIA PPO"
+    },
+    "field_present": [
+      "update_reason",
+      "patient_address",
+      "patient_phone",
+      "next_of_kin_name"
+    ]
+  }
+}

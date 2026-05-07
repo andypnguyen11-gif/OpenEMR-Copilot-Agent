@@ -1,0 +1,22 @@
+{
+  "case_id": "extraction-hl7-adt/p02_whitaker_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p02-whitaker-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Whitaker ADT-A08 \u2014 GI consult + insurance + PCP refresh.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "James Whitaker",
+      "patient_dob.value": "1958-11-22",
+      "patient_mrn.value": "NMM-9912448",
+      "primary_care_provider.value": "Daniel Ortega",
+      "insurance_member_id.value": "1AB-2C3-D4E5"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address",
+      "next_of_kin_name"
+    ]
+  }
+}

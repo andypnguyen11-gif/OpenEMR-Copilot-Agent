@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-adt/p07_nguyen_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p07-nguyen-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Nguyen ADT-A08 \u2014 levothyroxine titration + endocrinology referral.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Olivia Nguyen",
+      "patient_dob.value": "1997-10-19",
+      "patient_mrn.value": "UWM-3320175",
+      "primary_care_provider.value": "Stephen Walsh",
+      "insurance_member_id.value": "PRA445120938"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address"
+    ]
+  }
+}

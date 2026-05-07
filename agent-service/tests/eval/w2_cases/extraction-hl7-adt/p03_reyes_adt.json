@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-adt/p03_reyes_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p03-reyes-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Reyes ADT-A08 \u2014 endocrinology referral with address confirmation.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Sofia Reyes",
+      "patient_dob.value": "1983-07-04",
+      "patient_mrn.value": "ATX-5503291",
+      "primary_care_provider.value": "Marisol Vega",
+      "insurance_member_id.value": "YPT987654321"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address"
+    ]
+  }
+}

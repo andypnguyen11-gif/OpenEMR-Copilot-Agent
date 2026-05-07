@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-adt/p04_kowalski_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p04-kowalski-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Kowalski ADT-A08 \u2014 ED disposition update.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Robert Kowalski",
+      "patient_dob.value": "1971-09-30",
+      "patient_mrn.value": "NWM-7724501",
+      "primary_care_provider.value": "Anjali Mehta",
+      "insurance_member_id.value": "939-447-8821-00"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address"
+    ]
+  }
+}

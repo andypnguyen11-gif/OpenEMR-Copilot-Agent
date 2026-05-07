@@ -1,0 +1,21 @@
+{
+  "case_id": "extraction-hl7-adt/p05_patel_adt",
+  "bucket": "extraction-hl7-adt",
+  "document_path": "../../../../cohort-5-week-2-assets-v2/hl7v2/p05-patel-adt-a08.hl7",
+  "document_type": "hl7_adt",
+  "description": "Patel ADT-A08 \u2014 pre-conception planning + pulmonology referral.",
+  "expectations": {
+    "field_equals": {
+      "patient_name.value": "Aisha Patel",
+      "patient_dob.value": "1991-06-15",
+      "patient_mrn.value": "EMR-4413089",
+      "primary_care_provider.value": "Renee Caldwell",
+      "insurance_member_id.value": "U33149087"
+    },
+    "field_present": [
+      "update_reason",
+      "insurance_carrier",
+      "patient_address"
+    ]
+  }
+}

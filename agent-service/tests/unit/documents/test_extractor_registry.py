@@ -42,11 +42,12 @@ def test_every_document_type_has_a_registry_entry() -> None:
 
 @pytest.mark.parametrize(
     "document_type",
-    # Each Week 2 step removes its type from this list as the real
-    # extractor lands. fax_tiff Step 2, referral_docx Step 3,
-    # workbook_xlsx Step 5, hl7_oru Step 6. ``hl7_adt`` is the
-    # last stubbed type and lands in Step 7.
-    ["hl7_adt"],
+    # Every Week 2 doc type is now implemented — no stubs remain.
+    # If a future expansion adds a new ``DocumentType`` Literal value,
+    # add it here as a stub until its extractor lands so this test
+    # keeps the "unimplemented type → UnsupportedDocumentTypeError"
+    # contract honest.
+    [],
 )
 def test_stub_extractors_raise_unsupported(document_type: str) -> None:
     with pytest.raises(UnsupportedDocumentTypeError) as exc_info:
