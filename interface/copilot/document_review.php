@@ -130,9 +130,12 @@ switch ($documentType) {
         break;
 }
 
-$abstainSummary = is_array($facts) && isset($facts['abstain_summary']) && is_array($facts['abstain_summary'])
-    ? $facts['abstain_summary']
-    : null;
+// The GET ``/extracted/{id}`` route returns the raw facts dump (NOT
+// the wrapped IngestResponse shape POST returns) — same convention
+// the existing lab_review.php / intake_review.php follow. So the
+// inner facts dict IS the response body, and there's no separate
+// ``abstain_summary`` block on a read-back (that's only computed on
+// fresh extractions and lives on the IngestResponse, not the model).
 
 /**
  * Pull (first, last, dob, mrn) out of an extracted-fact payload by
@@ -147,10 +150,8 @@ $extractDemographics = static function (?array $factsBody, string $type): array 
     if ($factsBody === null) {
         return $out;
     }
-    $factsInner = $factsBody['facts'] ?? null;
-    if (!is_array($factsInner)) {
-        return $out;
-    }
+    // The GET response body IS the facts dump — no outer "facts" wrapper.
+    $factsInner = $factsBody;
 
     $valueOf = static function (mixed $field): ?string {
         if (!is_array($field)) {
@@ -225,13 +226,12 @@ foreach ($matchCandidates as $c) {
     }
 }
 
-// The inner facts dict (without abstain_summary or document metadata)
-// is what we render as editable. The save handler reads it back from
-// the same name="facts[...]" key shape and PUTs it to the agent
-// service, where it's validated against the typed-union schema.
-$factsInner = is_array($facts) && isset($facts['facts']) && is_array($facts['facts'])
-    ? $facts['facts']
-    : [];
+// The inner facts dict (the agent-service GET returns the raw dump
+// directly, no IngestResponse wrapper) is what we render as editable.
+// The save handler reads it back from the same name="facts[...]"
+// key shape and PUTs it to the agent service, where it's validated
+// against the typed-union schema.
+$factsInner = is_array($facts) ? $facts : [];
 
 $session = SessionWrapperFactory::getInstance()->getActiveSession();
 $csrfToken = CsrfUtils::collectCsrfToken(session: $session);
@@ -286,18 +286,6 @@ Header::setupHeader();
     <div class="alert-error"><?php echo htmlspecialchars($loadError, ENT_QUOTES, 'UTF-8'); ?></div>
 <?php endif; ?>
 
-<?php if ($abstainSummary !== null): ?>
-    <div class="summary">
-        Abstentions:
-        low-confidence: <?php echo $abstainCount = (function () use ($abstainSummary) {
-            $v = $abstainSummary['low_confidence_field_count'] ?? 0;
-            return is_int($v) ? $v : 0;
-                        })(); ?>;
-        no-data: <?php $v = $abstainSummary['no_data_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>;
-        citation-invalid: <?php $v = $abstainSummary['citation_invalid_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>;
-        out-of-schema: <?php $v = $abstainSummary['out_of_schema_field_count'] ?? 0; echo is_int($v) ? $v : 0; ?>.
-    </div>
-<?php endif; ?>
 
 <?php if ($useExistingReviewPage): ?>
     <div class="alert-info">

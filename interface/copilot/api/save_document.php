@@ -106,20 +106,28 @@ if ($readResponse === null || $readResponse->statusCode !== 200) {
     $statusForMessage = $readResponse !== null ? $readResponse->statusCode : 0;
     exit('Could not load original facts (status ' . $statusForMessage . ')');
 }
-$originalBody = $readResponse->body;
-$originalFacts = is_array($originalBody['facts'] ?? null) ? $originalBody['facts'] : [];
+// The GET ``/extracted/{id}`` route returns the raw Pydantic dump
+// directly (no IngestResponse wrapper) — same convention the
+// existing lab_review / intake_review pages follow. So the response
+// body IS the facts dict, and the per-type Pydantic model layout is
+// already at top level.
+// AgentResponse->body is typed array<string, mixed>, but the per-doc
+// facts dump may also be an empty array on a corrupted record;
+// either way we just hand it to the overlay.
+$originalFacts = $readResponse->body;
 
 $mergedFacts = FactsFormHelper::overlayEdits($originalFacts, $editedFactsForm);
 
-// Reconstruct the per-type Facts shape: top-level is what the validator
-// expects (document_id + the type's own fields). The inner facts dict
-// already mirrors the per-type Pydantic model layout, so merge
-// document_id at the top.
 if (!is_array($mergedFacts)) {
     http_response_code(500);
     exit('overlayEdits returned a non-array root — refusing to write');
 }
-$validatorBody = array_merge(['document_id' => $documentId], $mergedFacts);
+// The validator body is the merged dict itself — it already has
+// document_id at the top from the original. Force-overwrite the
+// document_id slot with the URL value so a stale or tampered body
+// can't mismatch the path.
+$validatorBody = $mergedFacts;
+$validatorBody['document_id'] = $documentId;
 
 // Step 2: PUT the merged facts back. Validation runs on the agent
 // service; on a 422 we surface the message verbatim so the clinician
