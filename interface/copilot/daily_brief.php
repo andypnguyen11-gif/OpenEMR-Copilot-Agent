@@ -255,13 +255,33 @@ $asString = static function (mixed $value): string {
 $hasText = static fn(mixed $value): bool =>
     (is_string($value) && $value !== '') || is_int($value) || is_float($value);
 
+// Re-shape a procedure_result.date into ``yyyy/mm/dd`` for the labs
+// list. The DB column is ``DATETIME`` so the raw value comes back as
+// ``2026-04-05 14:23:00``; chop the time portion and swap separators
+// so the brief reads consistently with the chat side panel's date
+// helper. Anything that doesn't parse cleanly passes through
+// unchanged so the caller can decide what to render.
+$formatLabDate = static function (mixed $value): string {
+    if (!is_string($value) || $value === '') {
+        return is_string($value) ? $value : '';
+    }
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $value, $m) === 1) {
+        return $m[1] . '/' . $m[2] . '/' . $m[3];
+    }
+    return $value;
+};
+
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <title><?php echo xlt('Co-Pilot Daily Brief'); ?></title>
     <?php Header::setupHeader(); ?>
-    <link rel="stylesheet" href="<?php echo attr($webroot); ?>/public/copilot/copilot.css">
+<?php
+$copilotCssSrc = $webroot . '/public/copilot/copilot.css';
+$copilotCssVer = (int) @filemtime(__DIR__ . '/../../public/copilot/copilot.css');
+?>
+    <link rel="stylesheet" href="<?php echo attr($copilotCssSrc); ?>?v=<?php echo $copilotCssVer; ?>">
 </head>
 <body class="bg-light">
     <div class="container-fluid copilot-shell" data-copilot-shell>
@@ -396,7 +416,7 @@ $hasText = static fn(mixed $value): bool =>
                                                 <span class="copilot-brief-card-range"><?php echo xlt('ref'); ?> <?php echo $cell($row['range']); ?></span>
                                             <?php endif; ?>
                                             <?php if ($hasText($row['date'] ?? null)) : ?>
-                                                <span class="copilot-brief-card-date"><?php echo $cell($row['date']); ?></span>
+                                                <span class="copilot-brief-card-date"><?php echo text($formatLabDate($row['date'])); ?></span>
                                             <?php endif; ?>
                                         </li>
                                     <?php endforeach; ?>

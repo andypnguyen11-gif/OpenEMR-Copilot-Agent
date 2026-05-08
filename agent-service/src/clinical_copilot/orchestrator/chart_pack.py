@@ -55,8 +55,9 @@ errors, which propagate.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -119,6 +120,29 @@ DEFAULT_TOPICS: Final[tuple[ChartTopic, ...]] = (
 )
 
 DEFAULT_PER_TOPIC_CAP: Final[int] = 5
+
+# Per-topic record caps. Labs are intentionally roomier: a thyroid
+# panel + iron studies + a CBC easily exceeds 5 observations on one
+# visit, and the chat saw "no TSH on file" because 3 ferritin and
+# 2 TPO antibody rows already filled the cap before the chart-pack
+# reached the TSH rows. Other topics rarely need more than 5 to
+# ground a clinical answer (active meds, problems, allergies are
+# short lists).
+_PER_TOPIC_CAPS: Final[Mapping[ChartTopic, int]] = {
+    "labs": 10,
+    "meds": DEFAULT_PER_TOPIC_CAP,
+    "problems": DEFAULT_PER_TOPIC_CAP,
+    "allergies": DEFAULT_PER_TOPIC_CAP,
+    "visits": DEFAULT_PER_TOPIC_CAP,
+    "notes": DEFAULT_PER_TOPIC_CAP,
+}
+
+# Lab observations are also date-filtered: anything older than this
+# window is pruned even if it would fit under the cap. Six months
+# captures a complete trend (e.g. quarterly A1c, monthly TSH on a
+# titration patient) without dragging in stale values that confuse
+# the synthesizer's "most recent X" answers.
+_LABS_RECENT_WINDOW: Final[timedelta] = timedelta(days=180)
 
 # Note bodies in the chart pack are clipped to keep the supervisor
 # prompt token-bounded. ``_NOTE_PREVIEW_BODY_CAP`` is the inclusive
@@ -221,7 +245,7 @@ async def build_chart_pack(
     claims: ClinicianClaims,
     request_id: str,
     topics: Sequence[ChartTopic] = DEFAULT_TOPICS,
-    per_topic_cap: int = DEFAULT_PER_TOPIC_CAP,
+    per_topic_cap: int | Mapping[ChartTopic, int] | None = None,
 ) -> ChartPack:
     """Fan-out fetch the bound patient's recent chart records.
 
@@ -304,7 +328,7 @@ async def build_chart_pack(
         topic_records = _project_tool_result(
             result=outcome,
             topic=topic,
-            cap=per_topic_cap,
+            cap=_resolve_cap(per_topic_cap, topic),
         )
         if not topic_records:
             # No records is still a successful fetch. Treat empty as
@@ -332,6 +356,26 @@ async def build_chart_pack(
     )
 
 
+def _resolve_cap(
+    override: int | Mapping[ChartTopic, int] | None,
+    topic: ChartTopic,
+) -> int:
+    """Resolve the per-topic record cap.
+
+    ``None`` (the production default) reads :data:`_PER_TOPIC_CAPS`
+    so labs get 10 and everything else gets 5. A bare ``int`` is the
+    legacy contract — apply uniformly to every topic; useful in tests
+    that want a deterministic cap regardless of topic. A mapping
+    overrides the defaults per topic.
+    """
+
+    if override is None:
+        return _PER_TOPIC_CAPS[topic]
+    if isinstance(override, int):
+        return override
+    return override.get(topic, _PER_TOPIC_CAPS[topic])
+
+
 def _project_tool_result(
     *,
     result: ToolResult,
@@ -344,14 +388,24 @@ def _project_tool_result(
     each tool already orders its records most-recent-last (visits
     sort by visited_on, labs by observed_on, etc.). Reverse so the
     prompt shows newest first.
+
+    Labs additionally get a recency window applied before the cap —
+    a six-month sliding window per :data:`_LABS_RECENT_WINDOW`. This
+    keeps lab trend questions ("what's her TSH been doing?") well-fed
+    while preventing a high-volume patient's older observations from
+    crowding out the recent panel members.
     """
 
     if cap <= 0:
         return []
 
+    candidates = list(result.records)
+    if topic == "labs":
+        candidates = _filter_labs_to_window(candidates)
+
     # ``ToolResult.records`` is a Pydantic list; slicing produces a
     # fresh list, so reversing in place is safe.
-    tail = list(result.records[-cap:])
+    tail = candidates[-cap:]
     tail.reverse()
 
     projected: list[ChartPackRecord] = []
@@ -371,6 +425,55 @@ def _project_tool_result(
             )
         )
     return projected
+
+
+def _filter_labs_to_window(records: list[AnyRecord]) -> list[AnyRecord]:
+    """Drop lab observations older than :data:`_LABS_RECENT_WINDOW`.
+
+    Records with an unparseable ``observed_on`` pass through — better
+    to surface a record we can't date than silently drop it. Non-lab
+    records (defensive: this projector only sees labs when called for
+    the labs topic) also pass through unchanged.
+    """
+
+    cutoff = datetime.now(UTC) - _LABS_RECENT_WINDOW
+    kept: list[AnyRecord] = []
+    for record in records:
+        if not isinstance(record, LabRecord):
+            kept.append(record)
+            continue
+        observed = _parse_observed_on(record.observed_on)
+        if observed is None or observed >= cutoff:
+            kept.append(record)
+    return kept
+
+
+def _parse_observed_on(value: str) -> datetime | None:
+    """Best-effort ISO-8601 parse for ``LabRecord.observed_on``.
+
+    FHIR Observation.effectiveDateTime can be ``YYYY-MM-DD`` (date
+    only), ``YYYY-MM-DDTHH:MM:SS`` (no tz), or with a timezone offset.
+    ``datetime.fromisoformat`` handles all three on Python ≥ 3.11
+    but rejects a trailing ``Z``; normalise that first. Returns
+    ``None`` on any other shape so the caller can decide to keep the
+    record rather than drop it.
+    """
+
+    text = value.strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    # Naive datetimes (no tz) — assume UTC so the cutoff comparison
+    # is well-defined; FHIR observations from this stack are stored
+    # as UTC anyway.
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _summarize(*, record: AnyRecord, topic: ChartTopic) -> str:
