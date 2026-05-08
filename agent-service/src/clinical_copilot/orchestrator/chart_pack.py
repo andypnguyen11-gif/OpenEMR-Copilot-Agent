@@ -430,7 +430,7 @@ def _project_tool_result(
 def _filter_labs_to_window(records: list[AnyRecord]) -> list[AnyRecord]:
     """Drop lab observations older than :data:`_LABS_RECENT_WINDOW`.
 
-    Records with an unparseable ``observed_on`` pass through — better
+    Records with an unparsable ``observed_on`` pass through — better
     to surface a record we can't date than silently drop it. Non-lab
     records (defensive: this projector only sees labs when called for
     the labs topic) also pass through unchanged.
