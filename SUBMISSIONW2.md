@@ -118,6 +118,30 @@ Calling these out so the grader doesn't have to dig for the gap.
 | Eval buckets beyond extraction + retrieval | 65 cases live across 5 buckets. The originally-planned `reconciliation` / `citation-separation` / `rbac` / `abstention` buckets remain at zero. | TASKS2.md "Eval-suite bucket inventory"; W2_ARCHITECTURE §9 |
 | Dense embedding artifact on Railway | Demo runs BM25-only (deployed env doesn't have `OPENAI_API_KEY` for the rebuild). Falls back cleanly per `corpus/retriever.py`. | W2_ARCHITECTURE §6; PRD2 §7 |
 
+**Chart-write idempotency.** The current implementation does not
+dedupe writes against existing chart rows. This is intentional for
+the clinician-confirmed flow: the review surface is the right place
+for the clinician to decide whether a duplicate medication or allergy
+represents real new information vs. a re-import of an existing
+record (see the rationale at `ChartWriteService.php:17–21`). However,
+accidental double-submit (clinician double-clicks Save, or a network
+blip causes the form to resubmit) *will* duplicate rows under the
+current code — `tests/Tests/Services/Copilot/ChartWrite/ChartWriteServiceTest::testWriteAllergiesDoesNotDedupeOnRepeatCall`
+locks this behaviour so any future fix is a deliberate change, not a
+regression. Production hardening would add a per-`document_id`
+idempotency marker on the `documents` row (or a dedicated
+`chart_write_audit` table) so a repeat POST with the same
+`document_id` becomes a no-op. Tracked as a post-Sunday item; out of
+scope for the submission MR.
+
+FHIR Bundle export of the just-written facts is also out of scope for
+Sunday submission. The chart-write path lands the structured rows
+into `lists` / `dated_reminders` / `procedure_*` directly; OpenEMR's
+existing FHIR API exposes those rows on read, so the round-trip works
+end-to-end. A dedicated "POST FHIR Bundle on save" pathway would
+duplicate the persistence layer — it adds value only when the bundle
+is the durable record of truth, which it is not in this deployment.
+
 ## 4. Five-minute reading tour
 
 Open these files in order to walk the request path:
@@ -147,10 +171,16 @@ For the chart-side (PHP) read path:
    entry point.
 7. `interface/copilot/document_review.php` — review UI with
    citations + abstention badges.
-8. `interface/copilot/api/save_document.php:199–238` →
+8. `interface/copilot/api/save_document.php` →
+   `src/Services/Copilot/ChartWrite/ChartWriteOrchestrator.php` →
    `src/Services/Copilot/ChartWrite/ChartWriteService.php` — the
    chart-write path that lands accepted facts into OpenEMR's
-   `lists` / `dated_reminders` / `procedure_*` tables.
+   `lists` / `dated_reminders` / `procedure_*` tables. The
+   orchestrator dispatches one writer per ticked review-page section;
+   the service holds the SQL contracts. Both layers have tests:
+   `tests/Tests/Isolated/Services/Copilot/ChartWrite/ChartWriteOrchestratorTest.php`
+   for the dispatch logic, `tests/Tests/Services/Copilot/ChartWrite/ChartWriteServiceTest.php`
+   for the SQL contracts.
 
 ## 5. Common-pitfalls cross-reference
 

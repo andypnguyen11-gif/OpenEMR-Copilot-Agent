@@ -46,9 +46,9 @@ use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\ChartWrite\ChartWriteOrchestrator;
 use OpenEMR\Services\Copilot\ChartWrite\ChartWriteService;
 use OpenEMR\Services\Copilot\ChartWrite\ChartWriteSummary;
-use OpenEMR\Services\Copilot\ChartWrite\FactsExtractor;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\DocumentClassifier;
 use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
@@ -192,62 +192,11 @@ $authUserIdRaw = $session->get('authUserID');
 $authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
     : (is_numeric($authUserIdRaw) ? (int) $authUserIdRaw : 0);
 
-/**
- * Run the chart-write block for whichever sections the clinician ticked
- * on the review page. Returns a summary the success page can render.
- *
- * Shared between the existing-patient and create-new-patient branches —
- * both write into the same lists/reminders/procedure tables, only the
- * pid differs.
- *
- * @param list<non-empty-string> $checked
- * @param array<mixed,mixed>     $facts    Merged extracted facts.
- */
-$runChartWrites = static function (
-    int $pid,
-    array $checked,
-    array $facts,
-    string $type,
-    int $userId,
-): ChartWriteSummary {
-    $service = new ChartWriteService($userId);
-    $summary = new ChartWriteSummary();
-    if (in_array('allergies', $checked, true)) {
-        $summary->record('allergies', $service->writeAllergies(
-            $pid,
-            FactsExtractor::allergies($facts, $type),
-        ));
-    }
-    if (in_array('medications', $checked, true)) {
-        $summary->record('medications', $service->writeMedications(
-            $pid,
-            FactsExtractor::medications($facts, $type),
-        ));
-    }
-    if (in_array('active_problems', $checked, true)) {
-        $summary->record('active_problems', $service->writeActiveProblems(
-            $pid,
-            FactsExtractor::activeProblems($facts, $type),
-        ));
-    }
-    if (in_array('care_gaps', $checked, true)) {
-        $summary->record('care_gaps', $service->writeReminders(
-            $pid,
-            FactsExtractor::careGaps($facts, $type),
-        ));
-    }
-    if (in_array('lab_observations', $checked, true)) {
-        $payload = FactsExtractor::labObservations($facts, $type);
-        $summary->record('lab_observations', $service->writeLabObservations(
-            $pid,
-            $payload['panel_name'],
-            $payload['panel_loinc'],
-            $payload['report_date'],
-            $payload['observations'],
-        ));
-    }
-    return $summary;
-};
+// The chart-write dispatcher is shared between the existing-patient
+// and create-new-patient branches below — both write into the same
+// lists/reminders/procedure tables, only the pid differs. Lifted into
+// ChartWriteOrchestrator so the dispatch logic is unit-testable.
+$chartWriteOrchestrator = new ChartWriteOrchestrator(new ChartWriteService($authUserId));
 
 /**
  * Build a save_success.php redirect URL with the per-section counts
@@ -294,7 +243,7 @@ if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
         [$targetPid, (int) $bareDocId],
     );
 
-    $writeSummary = $runChartWrites($targetPid, $checkedSections, $mergedFacts, $documentType, $authUserId);
+    $writeSummary = $chartWriteOrchestrator->run($targetPid, $checkedSections, $mergedFacts, $documentType);
 
     header('Location: ' . $successUrl($webroot, $targetPid, false, $writeSummary, $documentType, $documentId));
     exit;
@@ -691,7 +640,7 @@ if ($patientChoice === 'new') {
         throw $exc;
     }
 
-    $writeSummary = $runChartWrites($newpid, $checkedSections, $mergedFacts, $documentType, $authUserId);
+    $writeSummary = $chartWriteOrchestrator->run($newpid, $checkedSections, $mergedFacts, $documentType);
 
     header('Location: ' . $successUrl($webroot, $newpid, true, $writeSummary, $documentType, $documentId));
     exit;

@@ -38,7 +38,7 @@ namespace OpenEMR\Services\Copilot\ChartWrite;
 
 use OpenEMR\Common\Database\QueryUtils;
 
-final readonly class ChartWriteService
+readonly class ChartWriteService
 {
     /**
      * @param int $authorUserId The ``users.id`` of the clinician
