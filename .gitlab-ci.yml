@@ -32,13 +32,9 @@ default:
   - cd agent-service
   - uv sync --all-extras --dev
 
-cache:
-  key:
-    files:
-    - agent-service/uv.lock
-  paths:
-  - agent-service/.venv/
-  - $HOME/.cache/uv/
+# Cache disabled: gitlab-runner v18.x removed the unconfigured "local"
+# cache adapter, and our self-hosted runner has no S3/GCS backend wired
+# up. Re-enable once a cache backend is configured in config.toml.
 
 # --------------------------------------------------------------- test
 
