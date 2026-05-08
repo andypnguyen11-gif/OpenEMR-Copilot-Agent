@@ -142,6 +142,24 @@ end-to-end. A dedicated "POST FHIR Bundle on save" pathway would
 duplicate the persistence layer — it adds value only when the bundle
 is the durable record of truth, which it is not in this deployment.
 
+**Extracted-facts durability.** The VLM extractor persists each
+document's parse result as a JSON sidecar at
+`agent-service/data/extracted/<document-id>.json` on the agent-service
+container's local disk — non-durable across Railway container
+restarts. The sidecar is a temp buffer between the synchronous
+extract step and the clinician review surface
+(`interface/copilot/document_review.php`); once the clinician hits
+Save, the chart-write path lands accepted facts into OpenEMR's
+`lists` / `dated_reminders` / `procedure_*` tables, which are the
+durable record of truth. If the container restarts before review,
+the user re-uploads — the source document, not the JSON, is the
+authoritative input. Production hardening would ship the planned
+`extracted_facts` Postgres table with a `document_id`-keyed lookup
+so an in-flight review survives a restart and resumes without
+re-upload. Tracked as a post-Sunday item (TASKS2.md "Open recovery
+items" → `[decide] Extracted-facts durability`); out of scope for
+the submission MR.
+
 ## 4. Five-minute reading tour
 
 Open these files in order to walk the request path:

@@ -200,16 +200,17 @@ clarity:
   orchestration. Per CLAUDE.md test policy, these ship in the same MR
   as the confirmation-surface change above.
 
-- [ ] **[decide] Extracted-facts durability (W2-03).** Today: facts
+- [x] **[decide] Extracted-facts durability (W2-03).** Today: facts
   persist as `data/extracted/<document-id>.json` on the agent service's
   local disk — non-durable across container restarts on Railway.
-  Decision pending: ship the planned `extracted_facts` Postgres table
-  in Sunday submission, or document JSON-on-disk as demo-only
-  persistence with a clear "production storage = chart tables, not
-  the JSON sidecar" framing in the submission narrative. The
-  chart-write path already lands the accepted facts into OpenEMR
-  durably, so the JSON sidecar is effectively a temp buffer between
-  extract and review.
+  Decision: document JSON-on-disk as demo-only persistence with a
+  clear "production storage = chart tables, not the JSON sidecar"
+  framing in the submission narrative. The chart-write path already
+  lands the accepted facts into OpenEMR durably, so the JSON sidecar
+  is effectively a temp buffer between extract and review. The
+  planned `extracted_facts` Postgres table is post-Sunday work.
+  Write-up landed in `SUBMISSIONW2.md` §3 ("Extracted-facts
+  durability" paragraph).
 
 
 - [ ] **[write up] Demo video (3-5 min).** Required Sunday
