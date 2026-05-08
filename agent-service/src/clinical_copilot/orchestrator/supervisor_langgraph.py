@@ -69,10 +69,8 @@ from clinical_copilot.orchestrator.chart_pack import ChartPack
 from clinical_copilot.orchestrator.critic import make_node as make_critic_node
 from clinical_copilot.orchestrator.edges import (
     ROUTE_RETRY,
-    ROUTE_V1_SINGLE,
     ROUTE_VERIFICATION,
     route_after_critic,
-    route_after_planner,
 )
 from clinical_copilot.orchestrator.lanes import Lane
 from clinical_copilot.orchestrator.nodes.evidence_retriever import (
@@ -198,10 +196,23 @@ def _make_synthesizer_node(
         usable = [d for d in drafts if d.abstain_reason is None]
         session = state.get("session", {})
         request_id = session.get("request_id")
-        log = logger.bind(request_id=request_id, drafts=len(drafts), usable=len(usable))
+        has_chart_pack = chart_pack is not None and not chart_pack.is_empty()
+        log = logger.bind(
+            request_id=request_id,
+            drafts=len(drafts),
+            usable=len(usable),
+            has_chart_pack=has_chart_pack,
+        )
         log.info("synthesizer.invoke")
 
-        if not usable:
+        # Only abstain early when there's NOTHING to ground a synthesis on:
+        # no usable worker drafts AND no chart pack records. A chart-only
+        # question (e.g. "what was Olivia's most recent TSH?") legitimately
+        # produces zero drafts (no GUIDELINE / DOC_FACT sub-queries) but
+        # the chart pack carries the answer; let the LLM combine the
+        # planner's sub-queries against chart records and emit a cited
+        # response.
+        if not usable and not has_chart_pack:
             return {
                 "final_response": {
                     "synthesized_text": "",
@@ -316,18 +327,28 @@ def _make_verification_node() -> Any:
 
 
 def _planner_router(state: TurnState) -> str | list[Send]:
-    """Map planner output to either v1_single or a fan-out via Send.
+    """Map planner output into a parallel fan-out via Send.
 
     Returning a list of :class:`Send` is LangGraph 0.2's parallel
     fan-out idiom: each Send schedules an independent invocation of
     the named node with the given (or shared) state. We pass the full
     state because each worker filters by ``target_worker`` internally.
+
+    **§4.5 short-circuit deferred.** The :func:`route_after_planner`
+    predicate (and its unit tests) remain accurate — a single
+    CHART_FACT sub-query *would* route to ``v1_single`` if we used
+    the predicate's verdict. We don't, because the v1 Orchestrator
+    returns an :class:`AgentResponse`-shaped result that the
+    verification node was misreading as "no synthesized text" and
+    overwriting with NO_DATA on the prod smoke. The proper fix is to
+    have v1_single bypass verification entirely (the v1 verification
+    middleware already ran inside ``Orchestrator.run``); until that
+    refactor lands, route every turn through the fan-out so chart-fact
+    questions reach the synthesizer with the chart pack in context.
+    The synthesizer's chart-pack-aware path (see
+    :func:`_make_synthesizer_node`) handles chart-only turns cleanly.
     """
 
-    decision = route_after_planner(state)
-    if decision == ROUTE_V1_SINGLE:
-        return NODE_V1_SINGLE
-    # ROUTE_FAN_OUT
     return [
         Send(NODE_INTAKE_EXTRACTOR, state),
         Send(NODE_EVIDENCE_RETRIEVER, state),

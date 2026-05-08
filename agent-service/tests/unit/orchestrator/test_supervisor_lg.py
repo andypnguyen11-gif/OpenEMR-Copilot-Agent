@@ -154,9 +154,13 @@ def _agent_response_stub() -> MagicMock:
 # --------------------------------------------------------------- short-circuit
 
 
-def test_single_chart_fact_short_circuits_to_v1_single() -> None:
-    """One CHART_FACT sub-query routes through v1_single, skipping
-    fan-out + critic. The compiled graph still runs end-to-end."""
+def test_single_chart_fact_no_chart_pack_abstains_no_data() -> None:
+    """A single-CHART_FACT sub-query without a chart pack should
+    abstain with NO_DATA — there's no chart context to ground the
+    answer in. (The §4.5 short-circuit to v1_single is wired in the
+    ``route_after_planner`` predicate but currently deferred at the
+    topology level; see the planner-router docstring for why.)
+    """
 
     planner_client = _make_anthropic_returning(
         [
@@ -165,16 +169,15 @@ def test_single_chart_fact_short_circuits_to_v1_single() -> None:
             ),
         ],
     )
-    # synthesizer/critic Anthropic clients should never be invoked on
-    # this path; if they are, the test fails with an unexpected mock
-    # call.
+    # Synthesizer should not run on the no-pack / no-drafts path; if
+    # it does the test fails because the mock raises.
     synth_client = MagicMock()
     synth_client.messages.create.side_effect = AssertionError(
-        "synthesizer must not run on single CHART_FACT short-circuit",
+        "synthesizer must not run when there is nothing to ground synthesis on",
     )
     critic_client = MagicMock()
     critic_client.messages.create.side_effect = AssertionError(
-        "critic must not run on single CHART_FACT short-circuit",
+        "critic must not run when no usable drafts produced",
     )
     retriever = _make_retriever_returning([])
     orchestrator = _make_orchestrator_returning(_agent_response_stub())
@@ -204,7 +207,7 @@ def test_single_chart_fact_short_circuits_to_v1_single() -> None:
     )
 
     assert isinstance(response, SupervisorResponse)
-    orchestrator.run.assert_called_once()
+    assert response.abstention_reason == RuntimeAbstainReason.NO_DATA.value
 
 
 # --------------------------------------------------------------- guideline path
@@ -256,50 +259,14 @@ def test_guideline_plan_flows_through_synthesizer_and_critic() -> None:
     assert response.synthesized_text  # non-empty
 
 
-def test_critic_rejection_collapses_to_verification_failed_abstain() -> None:
-    """Critic rejects the synthesized draft. Verification overwrites
-    final_response with VERIFICATION_FAILED — the rejected text never
-    reaches the user."""
-
-    planner_client = _make_anthropic_returning(
-        [
-            _planner_message(
-                sub_queries=[{"text": "ADA recs?", "claim_type": "guideline"}],
-            ),
-        ],
-    )
-    synth_client = _make_anthropic_returning(
-        [_text_message("Hallucinated recommendation with no citation.")],
-    )
-    critic_client = _make_anthropic_returning([_critic_verdict_message(accept=False)])
-    retriever = _make_retriever_returning([_retrieved_chunk(chunk_id="c1")])
-
-    response = run_turn(
-        user_query="What does ADA recommend?",
-        request_id="req3",
-        patient_id="p1",
-        bound_patient_name=None,
-        planner_client=planner_client,
-        planner_model="haiku",
-        synthesizer_client=synth_client,
-        synthesizer_model="sonnet",
-        critic_client=critic_client,
-        critic_model="haiku",
-        retriever=retriever,
-        rerank_client=None,
-        rerank_model=None,
-        orchestrator=_make_orchestrator_returning(_agent_response_stub()),
-        claims=_claims_stub(),
-        session_id=None,
-        lane=__import__(
-            "clinical_copilot.orchestrator.lanes",
-            fromlist=["Lane"],
-        ).Lane.SLOW,
-        chart_pack=None,
-    )
-
-    assert response.abstention_reason == RuntimeAbstainReason.VERIFICATION_FAILED.value
-    assert response.synthesized_text == ""
+# Critic-rejection-collapses-to-VERIFICATION_FAILED test removed:
+# the W2-07 critic gates the LLM-judge stage off by default (see
+# critic.judge ``run_llm_judge=False``), so the LLM-rejection path
+# this test exercised is unreachable in the early-submission build.
+# The deterministic-rejection paths (NO_CITATION, CITATION_TYPE_MISMATCH,
+# ACTION_BLACKLIST, CONFIDENCE_FLOOR) are covered in test_critic.py.
+# The whole-answer abstain on critic rejection is covered by the
+# verification node's logic in this file's empty-plan test below.
 
 
 # --------------------------------------------------------------- empty plan

@@ -55,10 +55,11 @@ def _draft(
     text: str = "prose",
     citations: tuple[Citation, ...] = (Citation(corpus_id="c1"),),
     abstain_reason: str | None = None,
+    worker: Worker = Worker.EVIDENCE_RETRIEVER,
 ) -> Draft:
     return Draft(
         sub_query_id="sq1",
-        worker=Worker.EVIDENCE_RETRIEVER,
+        worker=worker,
         text=text,
         citations=citations,
         abstain_reason=abstain_reason,
@@ -147,10 +148,16 @@ def test_citation_type_mismatch_guideline_claim_with_chart_citation() -> None:
     ],
 )
 def test_action_blacklist_fires_on_each_listed_verb(phrase: str) -> None:
-    sub_query = _sub_query()
+    """Action verbs in non-retrieval drafts (e.g. a chart_tools draft
+    that re-states a chart row) must trip the blacklist. Retrieval
+    drafts intentionally skip this check (see the regression test
+    below) — guidelines literally contain these verbs."""
+
+    sub_query = _sub_query(claim_type=ClaimType.CHART_FACT)
     draft = _draft(
         text=phrase,
-        citations=(Citation(corpus_id="c1"),),
+        citations=(Citation(source_id="Observation/1"),),
+        worker=Worker.CHART_TOOLS,
     )
 
     verdict = deterministic_check(draft=draft, sub_query=sub_query)
@@ -158,6 +165,35 @@ def test_action_blacklist_fires_on_each_listed_verb(phrase: str) -> None:
     assert verdict is not None
     assert verdict.verdict is CriticVerdict.REJECT
     assert verdict.rejection_reason is RejectionReason.ACTION_BLACKLIST
+
+
+def test_action_blacklist_skips_evidence_retriever_drafts() -> None:
+    """Regression for the W2-07 prod smoke: guidelines naturally
+    contain "recommends screening", "increase to target", etc., and
+    rejecting a retrieval draft just because it contains those words
+    surfaces VERIFICATION_FAILED on every guideline question. The
+    action_blacklist is meant to gate the synthesizer's output, not
+    raw retrieval text. Until the critic restructure to judge
+    synthesized prose lands, the deterministic check skips
+    action_blacklist on EVIDENCE_RETRIEVER drafts.
+    """
+
+    sub_query = _sub_query(claim_type=ClaimType.GUIDELINE)
+    draft = _draft(
+        text="USPSTF recommends screening adults 35-70 for type 2 diabetes; "
+        "increase the screening interval if BMI is normal.",
+        citations=(Citation(corpus_id="c1", confidence=0.9),),
+        worker=Worker.EVIDENCE_RETRIEVER,
+    )
+
+    verdict = deterministic_check(draft=draft, sub_query=sub_query)
+
+    # Either deterministic accepted or returned None to defer to the
+    # LLM judge. Crucially: NOT a REJECT/ACTION_BLACKLIST.
+    if verdict is not None:
+        assert verdict.verdict is CriticVerdict.ACCEPT, (
+            f"got reject {verdict.rejection_reason}"
+        )
 
 
 def test_action_blacklist_does_not_fire_on_word_substring() -> None:
@@ -264,6 +300,7 @@ def test_judge_timeout_cap_forces_abstain_with_judge_timeout() -> None:
         draft=draft,
         sub_query=sub_query,
         timeout_seconds=0.05,
+        run_llm_judge=True,
     )
 
     assert verdict.verdict is CriticVerdict.REJECT
