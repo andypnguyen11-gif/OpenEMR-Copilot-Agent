@@ -1,17 +1,78 @@
 {
   "version": 1,
-  "doc_count": 15,
-  "chunk_count": 90,
+  "doc_count": 30,
+  "chunk_count": 262,
   "permitted_sources": [
     "AHA",
     "CDC",
     "NIH/NHLBI",
+    "NIH/NIAAA",
     "NIH/NIDDK",
     "USPSTF"
   ],
-  "dense_built": true,
-  "embedding_dim": 1536,
+  "dense_built": false,
+  "embedding_dim": null,
   "documents": [
+    {
+      "doc_id": "aha/acei_monitoring",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065",
+      "date": "2017-11-13",
+      "topics": [
+        "ACE inhibitor",
+        "lisinopril",
+        "ARB",
+        "losartan",
+        "potassium",
+        "creatinine",
+        "hyperkalemia",
+        "cough",
+        "angioedema",
+        "monitoring"
+      ],
+      "sha256": "586ece6ea9e69c66"
+    },
+    {
+      "doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193",
+      "date": "2023-11-30",
+      "topics": [
+        "atrial fibrillation",
+        "AFib",
+        "apixaban",
+        "rivaroxaban",
+        "dabigatran",
+        "warfarin",
+        "CHA2DS2-VASc",
+        "HAS-BLED",
+        "stroke prevention",
+        "GI bleed",
+        "anticoagulation",
+        "DOAC"
+      ],
+      "sha256": "ed4bc74065d79434"
+    },
+    {
+      "doc_id": "aha/cad_secondary_prevention",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029",
+      "date": "2023-08-01",
+      "topics": [
+        "coronary artery disease",
+        "myocardial infarction",
+        "secondary prevention",
+        "aspirin",
+        "beta blocker",
+        "atorvastatin",
+        "lisinopril",
+        "DAPT"
+      ],
+      "sha256": "1ea1174517ea7c0a"
+    },
     {
       "doc_id": "aha/chest_pain_evaluation",
       "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
@@ -26,6 +87,85 @@
         "cardiac"
       ],
       "sha256": "45ec7f37c728ba06"
+    },
+    {
+      "doc_id": "aha/cholesterol_management",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625",
+      "date": "2018-11-10",
+      "topics": [
+        "cholesterol",
+        "LDL",
+        "statin",
+        "atorvastatin",
+        "rosuvastatin",
+        "ASCVD",
+        "secondary prevention",
+        "primary prevention"
+      ],
+      "sha256": "73a8ff519fef574a"
+    },
+    {
+      "doc_id": "aha/heart_failure_reduced_ef",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063",
+      "date": "2022-04-01",
+      "topics": [
+        "heart failure",
+        "HFrEF",
+        "ejection fraction",
+        "BNP",
+        "ARNI",
+        "ARB",
+        "sacubitril valsartan",
+        "losartan",
+        "carvedilol",
+        "metoprolol succinate",
+        "spironolactone",
+        "empagliflozin",
+        "dapagliflozin",
+        "MRA",
+        "SGLT2",
+        "GDMT"
+      ],
+      "sha256": "5332c3b80b1411ec"
+    },
+    {
+      "doc_id": "aha/hypertension_management",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065",
+      "date": "2017-11-13",
+      "topics": [
+        "hypertension",
+        "blood pressure",
+        "lisinopril",
+        "amlodipine",
+        "ACE inhibitor",
+        "ARB",
+        "calcium channel blocker",
+        "thiazide"
+      ],
+      "sha256": "805d8930aebdadba"
+    },
+    {
+      "doc_id": "cdc/acute_otitis_media",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html",
+      "date": "2023-10-01",
+      "topics": [
+        "acute otitis media",
+        "otitis media",
+        "amoxicillin",
+        "antibiotics",
+        "ear infection",
+        "observation",
+        "pediatric"
+      ],
+      "sha256": "78ad396a019c2e3b"
     },
     {
       "doc_id": "cdc/adult_immunization_schedule",
@@ -77,6 +217,70 @@
       "sha256": "bc514899c62704ba"
     },
     {
+      "doc_id": "nih/alcohol_use_disorder",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol",
+      "date": "2023-09-01",
+      "topics": [
+        "alcohol use disorder",
+        "AUD",
+        "AUDIT-C",
+        "naltrexone",
+        "acamprosate",
+        "disulfiram",
+        "alcohol-related hepatitis",
+        "AST",
+        "ALT",
+        "transaminitis",
+        "brief intervention"
+      ],
+      "sha256": "b02e9a86b3de2c93"
+    },
+    {
+      "doc_id": "nih/asthma_management_and_pregnancy",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan",
+      "date": "2020-12-01",
+      "topics": [
+        "asthma",
+        "persistent asthma",
+        "ICS",
+        "LABA",
+        "fluticasone salmeterol",
+        "albuterol",
+        "spirometry",
+        "FEV1",
+        "pregnancy",
+        "pre-conception",
+        "asthma action plan",
+        "GINA",
+        "NAEPP"
+      ],
+      "sha256": "7e59137c1235a49e"
+    },
+    {
+      "doc_id": "nih/cbc_interpretation",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia",
+      "date": "2024-03-01",
+      "topics": [
+        "CBC",
+        "hemoglobin",
+        "hematocrit",
+        "WBC",
+        "platelets",
+        "MCV",
+        "anemia",
+        "leukocytosis",
+        "thrombocytopenia",
+        "neutrophils"
+      ],
+      "sha256": "c919e3eebe9a0630"
+    },
+    {
       "doc_id": "nih/cholesterol_thresholds",
       "title": "Cholesterol thresholds and management overview (NHLBI)",
       "source": "NIH/NHLBI",
@@ -90,6 +294,64 @@
         "lipid panel"
       ],
       "sha256": "5d9da1226fec2b6c"
+    },
+    {
+      "doc_id": "nih/ckd_staging_management",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd",
+      "date": "2024-05-01",
+      "topics": [
+        "chronic kidney disease",
+        "CKD",
+        "eGFR",
+        "creatinine",
+        "BUN",
+        "albuminuria",
+        "ACE inhibitor",
+        "lisinopril"
+      ],
+      "sha256": "65e737edf222c7e3"
+    },
+    {
+      "doc_id": "nih/cmp_interpretation",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests",
+      "date": "2024-05-01",
+      "topics": [
+        "CMP",
+        "sodium",
+        "potassium",
+        "chloride",
+        "creatinine",
+        "BUN",
+        "glucose",
+        "AST",
+        "ALT",
+        "eGFR",
+        "hyperkalemia",
+        "AKI"
+      ],
+      "sha256": "cecd2fe02cef4fdd"
+    },
+    {
+      "doc_id": "nih/diabetes_management",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes",
+      "date": "2024-05-01",
+      "topics": [
+        "diabetes",
+        "type 2 diabetes",
+        "hemoglobin A1c",
+        "metformin",
+        "glucose",
+        "glycemic target",
+        "SGLT2",
+        "GLP-1"
+      ],
+      "sha256": "05608a03c85d7e0a"
     },
     {
       "doc_id": "nih/hashimotos_thyroiditis",
@@ -122,6 +384,44 @@
         "fatigue"
       ],
       "sha256": "aa1213a228e9adfe"
+    },
+    {
+      "doc_id": "nih/insulin_initiation_t2dm",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments",
+      "date": "2024-05-01",
+      "topics": [
+        "type 2 diabetes",
+        "insulin",
+        "basal insulin",
+        "glargine",
+        "degludec",
+        "A1c",
+        "fasting glucose",
+        "semaglutide",
+        "GLP-1",
+        "metformin",
+        "titration"
+      ],
+      "sha256": "236dbb958e19ff55"
+    },
+    {
+      "doc_id": "nih/metformin_monitoring",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments",
+      "date": "2024-05-01",
+      "topics": [
+        "metformin",
+        "diabetes",
+        "eGFR",
+        "vitamin B12",
+        "creatinine",
+        "lactic acidosis",
+        "kidney"
+      ],
+      "sha256": "50465ab233b69ad5"
     },
     {
       "doc_id": "uspstf/aspirin_primary_prevention",
@@ -240,6 +540,238 @@
   ],
   "chunks": [
     {
+      "chunk_id": "aha/acei_monitoring#0",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "After starting or up-titrating an ACE inhibitor (lisinopril, enalapril, ramipril) or angiotensin receptor blocker (losartan, valsartan, candesartan), recheck serum potassium and creatinine within 1 to 2 weeks. Reasonable laboratory tolerances are a serum creatinine rise of up to about 30 percent above baseline and a serum potassium up to 5.5 mEq/L; values within these bounds typically reflect expected hemodynamic effects on the renal efferent arteriole rather than intrinsic injury. A creatinine increase greater than 30 percent above baseline, or a potassium of 5.5 mEq/L or higher, warrants holding the agent and investigating volume status, concurrent NSAID or potassium-sparing diuretic use, dietary potassium load, and the possibility of bilateral renal artery stenosis.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#1",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "Reasonable laboratory tolerances are a serum creatinine rise of up to about 30 percent above baseline and a serum potassium up to 5.5 mEq/L; values within these bounds typically reflect expected hemodynamic effects on the renal efferent arteriole rather than intrinsic injury. A creatinine increase greater than 30 percent above baseline, or a potassium of 5.5 mEq/L or higher, warrants holding the agent and investigating volume status, concurrent NSAID or potassium-sparing diuretic use, dietary potassium load, and the possibility of bilateral renal artery stenosis. After resolution, restart at a lower dose with closer monitoring; do not co-prescribe an ACE inhibitor with an ARB, and avoid combining either with direct renin inhibitors.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#2",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "A creatinine increase greater than 30 percent above baseline, or a potassium of 5.5 mEq/L or higher, warrants holding the agent and investigating volume status, concurrent NSAID or potassium-sparing diuretic use, dietary potassium load, and the possibility of bilateral renal artery stenosis. After resolution, restart at a lower dose with closer monitoring; do not co-prescribe an ACE inhibitor with an ARB, and avoid combining either with direct renin inhibitors. A persistent dry cough develops in roughly 5 to 20 percent of patients on an ACE inhibitor and is a class effect mediated by bradykinin accumulation.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#3",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "After resolution, restart at a lower dose with closer monitoring; do not co-prescribe an ACE inhibitor with an ARB, and avoid combining either with direct renin inhibitors. A persistent dry cough develops in roughly 5 to 20 percent of patients on an ACE inhibitor and is a class effect mediated by bradykinin accumulation. The cough resolves after discontinuation, typically within 1 to 4 weeks; transition to an ARB if the indication for renin-angiotensin blockade remains.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#4",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "A persistent dry cough develops in roughly 5 to 20 percent of patients on an ACE inhibitor and is a class effect mediated by bradykinin accumulation. The cough resolves after discontinuation, typically within 1 to 4 weeks; transition to an ARB if the indication for renin-angiotensin blockade remains. Angioedema is a rare but life-threatening adverse effect.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#5",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "The cough resolves after discontinuation, typically within 1 to 4 weeks; transition to an ARB if the indication for renin-angiotensin blockade remains. Angioedema is a rare but life-threatening adverse effect. It can occur months or years after therapy initiation and is more common in Black patients.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#6",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "Angioedema is a rare but life-threatening adverse effect. It can occur months or years after therapy initiation and is more common in Black patients. Suspect angioedema with any acute facial, lip, tongue, or glottic swelling: discontinue the agent permanently, avoid all angiotensin-converting enzyme inhibitors, and use ARBs only with caution given a small cross-reactivity rate.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/acei_monitoring#7",
+      "source_doc_id": "aha/acei_monitoring",
+      "text": "It can occur months or years after therapy initiation and is more common in Black patients. Suspect angioedema with any acute facial, lip, tongue, or glottic swelling: discontinue the agent permanently, avoid all angiotensin-converting enzyme inhibitors, and use ARBs only with caution given a small cross-reactivity rate. Once stable on therapy, recheck potassium and creatinine annually, or sooner with intercurrent illness, dehydration, dose changes, or the addition of an interacting agent.",
+      "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#0",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Atrial fibrillation is the most common sustained arrhythmia in adults and roughly quintuples stroke risk when untreated. The 2023 ACC/AHA/ ACCP/HRS atrial-fibrillation guideline recommends estimating stroke risk with the CHA\u2082DS\u2082-VASc score and offering oral anticoagulation for any score of 2 or higher in men and 3 or higher in women. A score of 1 in men and 2 in women is a shared-decision indication; patient-level bleeding risk and preferences determine whether anticoagulation is started.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#1",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "The 2023 ACC/AHA/ ACCP/HRS atrial-fibrillation guideline recommends estimating stroke risk with the CHA\u2082DS\u2082-VASc score and offering oral anticoagulation for any score of 2 or higher in men and 3 or higher in women. A score of 1 in men and 2 in women is a shared-decision indication; patient-level bleeding risk and preferences determine whether anticoagulation is started. CHA\u2082DS\u2082-VASc components are congestive heart failure, hypertension, age 75 or older (2 points), diabetes, stroke or TIA (2 points), vascular disease, age 65 to 74, and female sex.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#2",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "A score of 1 in men and 2 in women is a shared-decision indication; patient-level bleeding risk and preferences determine whether anticoagulation is started. CHA\u2082DS\u2082-VASc components are congestive heart failure, hypertension, age 75 or older (2 points), diabetes, stroke or TIA (2 points), vascular disease, age 65 to 74, and female sex. Direct oral anticoagulants (DOACs) \u2014 apixaban, rivaroxaban, edoxaban, and dabigatran \u2014 are first-line for non-valvular atrial fibrillation in most patients.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#3",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "CHA\u2082DS\u2082-VASc components are congestive heart failure, hypertension, age 75 or older (2 points), diabetes, stroke or TIA (2 points), vascular disease, age 65 to 74, and female sex. Direct oral anticoagulants (DOACs) \u2014 apixaban, rivaroxaban, edoxaban, and dabigatran \u2014 are first-line for non-valvular atrial fibrillation in most patients. Apixaban 5 mg twice daily is the typical dose, with dose reduction to 2.5 mg twice daily when two of three criteria are met: age 80 or older, weight 60 kg or less, or serum creatinine 1.5 mg/dL or higher.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#4",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Direct oral anticoagulants (DOACs) \u2014 apixaban, rivaroxaban, edoxaban, and dabigatran \u2014 are first-line for non-valvular atrial fibrillation in most patients. Apixaban 5 mg twice daily is the typical dose, with dose reduction to 2.5 mg twice daily when two of three criteria are met: age 80 or older, weight 60 kg or less, or serum creatinine 1.5 mg/dL or higher. Warfarin is preferred for moderate-to-severe mitral stenosis or mechanical heart valves; INR target is 2 to 3 for most indications.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#5",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Apixaban 5 mg twice daily is the typical dose, with dose reduction to 2.5 mg twice daily when two of three criteria are met: age 80 or older, weight 60 kg or less, or serum creatinine 1.5 mg/dL or higher. Warfarin is preferred for moderate-to-severe mitral stenosis or mechanical heart valves; INR target is 2 to 3 for most indications. Bleeding-risk stratification with HAS-BLED supports clinician judgment but does not by itself contraindicate anticoagulation: hypertension, abnormal renal or hepatic function, prior stroke, prior bleeding, labile INR, age above 65, antiplatelet/NSAID use, and alcohol excess.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#6",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Warfarin is preferred for moderate-to-severe mitral stenosis or mechanical heart valves; INR target is 2 to 3 for most indications. Bleeding-risk stratification with HAS-BLED supports clinician judgment but does not by itself contraindicate anticoagulation: hypertension, abnormal renal or hepatic function, prior stroke, prior bleeding, labile INR, age above 65, antiplatelet/NSAID use, and alcohol excess. A high HAS-BLED score should prompt modification of addressable risk factors (uncontrolled blood pressure, NSAIDs, excessive alcohol) rather than simple anticoagulant withdrawal.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#7",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Bleeding-risk stratification with HAS-BLED supports clinician judgment but does not by itself contraindicate anticoagulation: hypertension, abnormal renal or hepatic function, prior stroke, prior bleeding, labile INR, age above 65, antiplatelet/NSAID use, and alcohol excess. A high HAS-BLED score should prompt modification of addressable risk factors (uncontrolled blood pressure, NSAIDs, excessive alcohol) rather than simple anticoagulant withdrawal. A patient on a DOAC who develops new microcytic anemia or otherwise unexplained hemoglobin drop warrants an evaluation for occult gastrointestinal bleeding.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#8",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "A high HAS-BLED score should prompt modification of addressable risk factors (uncontrolled blood pressure, NSAIDs, excessive alcohol) rather than simple anticoagulant withdrawal. A patient on a DOAC who develops new microcytic anemia or otherwise unexplained hemoglobin drop warrants an evaluation for occult gastrointestinal bleeding. Initial work-up includes an upper and lower endoscopic evaluation (EGD plus colonoscopy) when no obvious bleeding source is identified externally, especially when prior colorectal screening is overdue.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#9",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "A patient on a DOAC who develops new microcytic anemia or otherwise unexplained hemoglobin drop warrants an evaluation for occult gastrointestinal bleeding. Initial work-up includes an upper and lower endoscopic evaluation (EGD plus colonoscopy) when no obvious bleeding source is identified externally, especially when prior colorectal screening is overdue. Hold the DOAC for procedures per agent-specific timing (apixaban: hold 24 to 48 hours pre-procedure for high-bleeding-risk endoscopy depending on renal function), resume post-procedure once hemostasis is confirmed and the bleeding source is identified or excluded.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#10",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Initial work-up includes an upper and lower endoscopic evaluation (EGD plus colonoscopy) when no obvious bleeding source is identified externally, especially when prior colorectal screening is overdue. Hold the DOAC for procedures per agent-specific timing (apixaban: hold 24 to 48 hours pre-procedure for high-bleeding-risk endoscopy depending on renal function), resume post-procedure once hemostasis is confirmed and the bleeding source is identified or excluded. Combined antiplatelet plus anticoagulant therapy (for example, aspirin plus apixaban) carries a higher bleeding risk and is reserved for a specific indication (recent acute coronary syndrome, recent stenting) with the shortest acceptable duration.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/atrial_fibrillation_anticoagulation#11",
+      "source_doc_id": "aha/atrial_fibrillation_anticoagulation",
+      "text": "Hold the DOAC for procedures per agent-specific timing (apixaban: hold 24 to 48 hours pre-procedure for high-bleeding-risk endoscopy depending on renal function), resume post-procedure once hemostasis is confirmed and the bleeding source is identified or excluded. Combined antiplatelet plus anticoagulant therapy (for example, aspirin plus apixaban) carries a higher bleeding risk and is reserved for a specific indication (recent acute coronary syndrome, recent stenting) with the shortest acceptable duration. Long-term aspirin is not indicated solely as stroke prophylaxis when oral anticoagulation is in place.",
+      "title": "Atrial fibrillation \u2014 anticoagulation, stroke risk, and bleeding (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001193"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#0",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "After acute coronary syndrome, the foundation of secondary prevention is dual antiplatelet therapy, a beta blocker, a high-intensity statin, and \u2014 when indicated \u2014 an ACE inhibitor or angiotensin receptor blocker. Dual antiplatelet therapy combines aspirin 81 mg daily with a P2Y12 inhibitor (clopidogrel, ticagrelor, or prasugrel). The standard duration after acute coronary syndrome or coronary stenting is 12 months, with shorter regimens (1 to 6 months) considered in patients at high bleeding risk and longer courses considered in patients at high ischemic risk and acceptable bleeding risk.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#1",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "Dual antiplatelet therapy combines aspirin 81 mg daily with a P2Y12 inhibitor (clopidogrel, ticagrelor, or prasugrel). The standard duration after acute coronary syndrome or coronary stenting is 12 months, with shorter regimens (1 to 6 months) considered in patients at high bleeding risk and longer courses considered in patients at high ischemic risk and acceptable bleeding risk. After the dual antiplatelet course completes, aspirin 81 mg daily continues indefinitely.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#2",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "The standard duration after acute coronary syndrome or coronary stenting is 12 months, with shorter regimens (1 to 6 months) considered in patients at high bleeding risk and longer courses considered in patients at high ischemic risk and acceptable bleeding risk. After the dual antiplatelet course completes, aspirin 81 mg daily continues indefinitely. Beta blockade with a cardioselective agent (metoprolol succinate, bisoprolol, carvedilol) is initiated early after myocardial infarction and continued for at least 12 months.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#3",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "After the dual antiplatelet course completes, aspirin 81 mg daily continues indefinitely. Beta blockade with a cardioselective agent (metoprolol succinate, bisoprolol, carvedilol) is initiated early after myocardial infarction and continued for at least 12 months. In patients with reduced left ventricular ejection fraction, beta blockade continues indefinitely.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#4",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "Beta blockade with a cardioselective agent (metoprolol succinate, bisoprolol, carvedilol) is initiated early after myocardial infarction and continued for at least 12 months. In patients with reduced left ventricular ejection fraction, beta blockade continues indefinitely. Choose metoprolol succinate (extended-release) over metoprolol tartrate when long-term once-daily dosing and ejection-fraction protection are the goals.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#5",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "In patients with reduced left ventricular ejection fraction, beta blockade continues indefinitely. Choose metoprolol succinate (extended-release) over metoprolol tartrate when long-term once-daily dosing and ejection-fraction protection are the goals. High-intensity statin therapy (atorvastatin 40 to 80 mg or rosuvastatin 20 to 40 mg) is started in-hospital or at discharge and continued indefinitely, targeting an LDL reduction of 50 percent or greater and an LDL below 70 mg/dL.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#6",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "Choose metoprolol succinate (extended-release) over metoprolol tartrate when long-term once-daily dosing and ejection-fraction protection are the goals. High-intensity statin therapy (atorvastatin 40 to 80 mg or rosuvastatin 20 to 40 mg) is started in-hospital or at discharge and continued indefinitely, targeting an LDL reduction of 50 percent or greater and an LDL below 70 mg/dL. Add ezetimibe and consider PCSK9 inhibitor when LDL remains above goal.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#7",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "High-intensity statin therapy (atorvastatin 40 to 80 mg or rosuvastatin 20 to 40 mg) is started in-hospital or at discharge and continued indefinitely, targeting an LDL reduction of 50 percent or greater and an LDL below 70 mg/dL. Add ezetimibe and consider PCSK9 inhibitor when LDL remains above goal. ACE inhibitors (lisinopril) or ARBs are indicated for patients with left ventricular dysfunction, heart failure, hypertension, diabetes, or chronic kidney disease, and reasonable for all patients with stable coronary artery disease.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cad_secondary_prevention#8",
+      "source_doc_id": "aha/cad_secondary_prevention",
+      "text": "Add ezetimibe and consider PCSK9 inhibitor when LDL remains above goal. ACE inhibitors (lisinopril) or ARBs are indicated for patients with left ventricular dysfunction, heart failure, hypertension, diabetes, or chronic kidney disease, and reasonable for all patients with stable coronary artery disease. Aldosterone-receptor antagonists are added in post-MI patients with ejection fraction below 40 percent and either heart failure symptoms or diabetes, provided potassium and renal function permit.",
+      "title": "Coronary artery disease \u2014 secondary prevention pharmacotherapy after MI (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
       "chunk_id": "aha/chest_pain_evaluation#0",
       "source_doc_id": "aha/chest_pain_evaluation",
       "text": "Patients who present with new-onset chest pain that is suggestive of an acute coronary syndrome should be evaluated promptly. Initial evaluation includes a focused history and physical, a 12-lead ECG within 10 minutes of presentation, and high-sensitivity cardiac troponin measurement. Pretest likelihood of obstructive coronary artery disease can be estimated using validated risk scores (e.g.",
@@ -286,6 +818,342 @@
       "title": "Initial evaluation of acute chest pain in the outpatient setting (adapted from AHA/ACC 2021)",
       "source": "AHA",
       "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#0",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "The 2018 ACC/AHA cholesterol guideline groups patients into four statin-benefit categories. Patients with clinical atherosclerotic cardiovascular disease (ASCVD) \u2014 prior myocardial infarction, ischemic stroke, transient ischemic attack of atherosclerotic origin, peripheral arterial disease, or coronary or other arterial revascularization \u2014 are candidates for high-intensity statin therapy regardless of baseline LDL cholesterol. High-intensity statins lower LDL by approximately 50 percent or more and include atorvastatin 40 or 80 mg daily and rosuvastatin 20 or 40 mg daily.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#1",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "Patients with clinical atherosclerotic cardiovascular disease (ASCVD) \u2014 prior myocardial infarction, ischemic stroke, transient ischemic attack of atherosclerotic origin, peripheral arterial disease, or coronary or other arterial revascularization \u2014 are candidates for high-intensity statin therapy regardless of baseline LDL cholesterol. High-intensity statins lower LDL by approximately 50 percent or more and include atorvastatin 40 or 80 mg daily and rosuvastatin 20 or 40 mg daily. For primary prevention, an LDL cholesterol of 190 mg/dL or higher is itself an indication for high-intensity statin therapy without formal risk calculation.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#2",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "High-intensity statins lower LDL by approximately 50 percent or more and include atorvastatin 40 or 80 mg daily and rosuvastatin 20 or 40 mg daily. For primary prevention, an LDL cholesterol of 190 mg/dL or higher is itself an indication for high-intensity statin therapy without formal risk calculation. Adults aged 40 to 75 with diabetes are candidates for at least moderate-intensity statin therapy regardless of estimated risk; high-intensity statin is reasonable when ASCVD risk is elevated or the patient has multiple cardiovascular risk factors.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#3",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "For primary prevention, an LDL cholesterol of 190 mg/dL or higher is itself an indication for high-intensity statin therapy without formal risk calculation. Adults aged 40 to 75 with diabetes are candidates for at least moderate-intensity statin therapy regardless of estimated risk; high-intensity statin is reasonable when ASCVD risk is elevated or the patient has multiple cardiovascular risk factors. For other adults aged 40 to 75 without diabetes and with LDL between 70 and 189 mg/dL, the 10-year ASCVD risk score (Pooled Cohort Equations) drives the decision: borderline risk (5 to 7.5 percent) favors lifestyle plus consideration of moderate-intensity statin if risk-enhancing factors are present (family history of premature ASCVD, chronic kidney disease, metabolic syndrome, persistent inflammatory disease, or non-traditional lipid markers); intermediate risk (7.5 to 20 percent) favors moderate-intensity statin therapy; high risk (20 percent or higher) favors high-intensity statin.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#4",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "Adults aged 40 to 75 with diabetes are candidates for at least moderate-intensity statin therapy regardless of estimated risk; high-intensity statin is reasonable when ASCVD risk is elevated or the patient has multiple cardiovascular risk factors. For other adults aged 40 to 75 without diabetes and with LDL between 70 and 189 mg/dL, the 10-year ASCVD risk score (Pooled Cohort Equations) drives the decision: borderline risk (5 to 7.5 percent) favors lifestyle plus consideration of moderate-intensity statin if risk-enhancing factors are present (family history of premature ASCVD, chronic kidney disease, metabolic syndrome, persistent inflammatory disease, or non-traditional lipid markers); intermediate risk (7.5 to 20 percent) favors moderate-intensity statin therapy; high risk (20 percent or higher) favors high-intensity statin. LDL response is reassessed 4 to 12 weeks after initiation and after dose changes, then every 3 to 12 months at steady state.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/cholesterol_management#5",
+      "source_doc_id": "aha/cholesterol_management",
+      "text": "For other adults aged 40 to 75 without diabetes and with LDL between 70 and 189 mg/dL, the 10-year ASCVD risk score (Pooled Cohort Equations) drives the decision: borderline risk (5 to 7.5 percent) favors lifestyle plus consideration of moderate-intensity statin if risk-enhancing factors are present (family history of premature ASCVD, chronic kidney disease, metabolic syndrome, persistent inflammatory disease, or non-traditional lipid markers); intermediate risk (7.5 to 20 percent) favors moderate-intensity statin therapy; high risk (20 percent or higher) favors high-intensity statin. LDL response is reassessed 4 to 12 weeks after initiation and after dose changes, then every 3 to 12 months at steady state. In patients on high-intensity statin therapy who do not achieve at least a 50 percent LDL reduction or whose LDL remains above 70 mg/dL with very high ASCVD risk, ezetimibe is added; PCSK9 inhibitors may be considered when LDL remains above goal on maximally-tolerated statin plus ezetimibe.",
+      "title": "Cholesterol management \u2014 statin intensity by ASCVD risk (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000000625"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#0",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Heart failure with reduced ejection fraction is defined by a left ventricular ejection fraction of 40 percent or below with symptoms or signs of heart failure. The 2022 ACC/AHA/HFSA heart-failure guideline identifies four foundational drug classes \u2014 collectively guideline- directed medical therapy, or GDMT \u2014 that are initiated and up-titrated to target dose in every HFrEF patient who tolerates them. The four classes are renin-angiotensin system inhibition (preferably an angiotensin receptor-neprilysin inhibitor such as sacubitril-valsartan, otherwise an ACE inhibitor or angiotensin receptor blocker), an evidence-based beta blocker, a mineralocorticoid receptor antagonist, and an SGLT2 inhibitor.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#1",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "The 2022 ACC/AHA/HFSA heart-failure guideline identifies four foundational drug classes \u2014 collectively guideline- directed medical therapy, or GDMT \u2014 that are initiated and up-titrated to target dose in every HFrEF patient who tolerates them. The four classes are renin-angiotensin system inhibition (preferably an angiotensin receptor-neprilysin inhibitor such as sacubitril-valsartan, otherwise an ACE inhibitor or angiotensin receptor blocker), an evidence-based beta blocker, a mineralocorticoid receptor antagonist, and an SGLT2 inhibitor. Renin-angiotensin therapy: an ARNI (sacubitril-valsartan) is preferred over an ACE inhibitor or ARB when feasible and tolerable; switch from ACEi to ARNI requires a 36-hour washout to avoid angioedema.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#2",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "The four classes are renin-angiotensin system inhibition (preferably an angiotensin receptor-neprilysin inhibitor such as sacubitril-valsartan, otherwise an ACE inhibitor or angiotensin receptor blocker), an evidence-based beta blocker, a mineralocorticoid receptor antagonist, and an SGLT2 inhibitor. Renin-angiotensin therapy: an ARNI (sacubitril-valsartan) is preferred over an ACE inhibitor or ARB when feasible and tolerable; switch from ACEi to ARNI requires a 36-hour washout to avoid angioedema. In patients with documented ACE-inhibitor angioedema, do not re-challenge with another ACEi; an ARB (losartan, valsartan) can be substituted with caution because cross-reactivity is small but non-zero.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#3",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Renin-angiotensin therapy: an ARNI (sacubitril-valsartan) is preferred over an ACE inhibitor or ARB when feasible and tolerable; switch from ACEi to ARNI requires a 36-hour washout to avoid angioedema. In patients with documented ACE-inhibitor angioedema, do not re-challenge with another ACEi; an ARB (losartan, valsartan) can be substituted with caution because cross-reactivity is small but non-zero. ARNI is generally avoided after ACEi-angioedema as well.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#4",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "In patients with documented ACE-inhibitor angioedema, do not re-challenge with another ACEi; an ARB (losartan, valsartan) can be substituted with caution because cross-reactivity is small but non-zero. ARNI is generally avoided after ACEi-angioedema as well. Beta blockade in HFrEF is restricted to one of the three agents proven to lower mortality: carvedilol, metoprolol succinate (extended release), or bisoprolol.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#5",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "ARNI is generally avoided after ACEi-angioedema as well. Beta blockade in HFrEF is restricted to one of the three agents proven to lower mortality: carvedilol, metoprolol succinate (extended release), or bisoprolol. Metoprolol tartrate (immediate release) is not interchangeable.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#6",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Beta blockade in HFrEF is restricted to one of the three agents proven to lower mortality: carvedilol, metoprolol succinate (extended release), or bisoprolol. Metoprolol tartrate (immediate release) is not interchangeable. Up-titrate every two weeks to the target dose as heart rate and blood pressure permit, holding at the highest tolerated dose if target is not reached.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#7",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Metoprolol tartrate (immediate release) is not interchangeable. Up-titrate every two weeks to the target dose as heart rate and blood pressure permit, holding at the highest tolerated dose if target is not reached. Mineralocorticoid receptor antagonists (spironolactone, eplerenone) are added in patients with NYHA class II to IV symptoms, ejection fraction at or below 35 percent, and adequate renal function and potassium.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#8",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Up-titrate every two weeks to the target dose as heart rate and blood pressure permit, holding at the highest tolerated dose if target is not reached. Mineralocorticoid receptor antagonists (spironolactone, eplerenone) are added in patients with NYHA class II to IV symptoms, ejection fraction at or below 35 percent, and adequate renal function and potassium. Initiation requires an eGFR above 30 mL/min/1.73 m\u00b2 and a serum potassium below 5.0 mEq/L.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#9",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Mineralocorticoid receptor antagonists (spironolactone, eplerenone) are added in patients with NYHA class II to IV symptoms, ejection fraction at or below 35 percent, and adequate renal function and potassium. Initiation requires an eGFR above 30 mL/min/1.73 m\u00b2 and a serum potassium below 5.0 mEq/L. Recheck potassium and creatinine at 2 to 4 weeks after start or dose change, then every 3 to 6 months.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#10",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Initiation requires an eGFR above 30 mL/min/1.73 m\u00b2 and a serum potassium below 5.0 mEq/L. Recheck potassium and creatinine at 2 to 4 weeks after start or dose change, then every 3 to 6 months. SGLT2 inhibitors (dapagliflozin, empagliflozin) reduce heart-failure hospitalization and cardiovascular death across the ejection-fraction spectrum, including HFrEF, with or without diabetes.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#11",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Recheck potassium and creatinine at 2 to 4 weeks after start or dose change, then every 3 to 6 months. SGLT2 inhibitors (dapagliflozin, empagliflozin) reduce heart-failure hospitalization and cardiovascular death across the ejection-fraction spectrum, including HFrEF, with or without diabetes. They are continued at eGFR as low as 20 to 25 mL/min/1.73 m\u00b2 in heart failure; hold around volume depletion or sustained hypotension.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#12",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "SGLT2 inhibitors (dapagliflozin, empagliflozin) reduce heart-failure hospitalization and cardiovascular death across the ejection-fraction spectrum, including HFrEF, with or without diabetes. They are continued at eGFR as low as 20 to 25 mL/min/1.73 m\u00b2 in heart failure; hold around volume depletion or sustained hypotension. Loop diuretics (furosemide, torsemide, bumetanide) are dosed for volume control as needed and titrated to euvolemia; they do not modify mortality and are not part of the four GDMT pillars.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#13",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "They are continued at eGFR as low as 20 to 25 mL/min/1.73 m\u00b2 in heart failure; hold around volume depletion or sustained hypotension. Loop diuretics (furosemide, torsemide, bumetanide) are dosed for volume control as needed and titrated to euvolemia; they do not modify mortality and are not part of the four GDMT pillars. Monitor weight trends and renal function during diuretic adjustments.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#14",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Loop diuretics (furosemide, torsemide, bumetanide) are dosed for volume control as needed and titrated to euvolemia; they do not modify mortality and are not part of the four GDMT pillars. Monitor weight trends and renal function during diuretic adjustments. B-type natriuretic peptide (BNP) and N-terminal pro-BNP are useful for diagnosis, prognosis, and monitoring.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#15",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Monitor weight trends and renal function during diuretic adjustments. B-type natriuretic peptide (BNP) and N-terminal pro-BNP are useful for diagnosis, prognosis, and monitoring. A BNP above 100 pg/mL or NT-proBNP above 300 pg/mL supports heart failure as the cause of dyspnea; markedly elevated values (BNP greater than 500 pg/mL, NT-proBNP above 900 to 1800 pg/mL by age band) carry prognostic weight.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#16",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "B-type natriuretic peptide (BNP) and N-terminal pro-BNP are useful for diagnosis, prognosis, and monitoring. A BNP above 100 pg/mL or NT-proBNP above 300 pg/mL supports heart failure as the cause of dyspnea; markedly elevated values (BNP greater than 500 pg/mL, NT-proBNP above 900 to 1800 pg/mL by age band) carry prognostic weight. Trends matter more than single values once therapy is in place.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#17",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "A BNP above 100 pg/mL or NT-proBNP above 300 pg/mL supports heart failure as the cause of dyspnea; markedly elevated values (BNP greater than 500 pg/mL, NT-proBNP above 900 to 1800 pg/mL by age band) carry prognostic weight. Trends matter more than single values once therapy is in place. Anemia in heart failure is common and most often reflects iron deficiency or chronic kidney disease.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/heart_failure_reduced_ef#18",
+      "source_doc_id": "aha/heart_failure_reduced_ef",
+      "text": "Trends matter more than single values once therapy is in place. Anemia in heart failure is common and most often reflects iron deficiency or chronic kidney disease. Hemoglobin below the lower adult reference (12 g/dL women, 13 g/dL men) warrants iron-status labs (ferritin, transferrin saturation); IV iron is reasonable for symptomatic iron-deficient HFrEF.",
+      "title": "Heart failure with reduced ejection fraction \u2014 guideline-directed medical therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001063"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#0",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "The 2017 American College of Cardiology / American Heart Association hypertension guideline defines stage 1 hypertension as a systolic blood pressure of 130 to 139 mm Hg or a diastolic of 80 to 89 mm Hg, and stage 2 as 140/90 or higher. Diagnosis is established with at least two elevated office readings on separate occasions, ideally confirmed with home or ambulatory blood pressure monitoring. For most adults with hypertension, the recommended treatment target is a blood pressure below 130/80 mm Hg.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#1",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "Diagnosis is established with at least two elevated office readings on separate occasions, ideally confirmed with home or ambulatory blood pressure monitoring. For most adults with hypertension, the recommended treatment target is a blood pressure below 130/80 mm Hg. This target applies to patients with established cardiovascular disease, type 2 diabetes, chronic kidney disease, and a 10-year atherosclerotic cardiovascular disease risk of 10 percent or higher.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#2",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "For most adults with hypertension, the recommended treatment target is a blood pressure below 130/80 mm Hg. This target applies to patients with established cardiovascular disease, type 2 diabetes, chronic kidney disease, and a 10-year atherosclerotic cardiovascular disease risk of 10 percent or higher. Stage 1 hypertension in lower-risk adults is initially managed with lifestyle therapy (DASH-style diet, sodium reduction, weight loss, alcohol limitation, aerobic activity); stage 2 or high-risk stage 1 starts pharmacotherapy concurrently with lifestyle.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#3",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "This target applies to patients with established cardiovascular disease, type 2 diabetes, chronic kidney disease, and a 10-year atherosclerotic cardiovascular disease risk of 10 percent or higher. Stage 1 hypertension in lower-risk adults is initially managed with lifestyle therapy (DASH-style diet, sodium reduction, weight loss, alcohol limitation, aerobic activity); stage 2 or high-risk stage 1 starts pharmacotherapy concurrently with lifestyle. First-line antihypertensive classes are thiazide-type diuretics (chlorthalidone, hydrochlorothiazide), calcium channel blockers (amlodipine), ACE inhibitors (lisinopril, enalapril), and angiotensin II receptor blockers (losartan, valsartan).",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#4",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "Stage 1 hypertension in lower-risk adults is initially managed with lifestyle therapy (DASH-style diet, sodium reduction, weight loss, alcohol limitation, aerobic activity); stage 2 or high-risk stage 1 starts pharmacotherapy concurrently with lifestyle. First-line antihypertensive classes are thiazide-type diuretics (chlorthalidone, hydrochlorothiazide), calcium channel blockers (amlodipine), ACE inhibitors (lisinopril, enalapril), and angiotensin II receptor blockers (losartan, valsartan). In Black adults without heart failure or chronic kidney disease, initial therapy is typically a thiazide or calcium channel blocker.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#5",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "First-line antihypertensive classes are thiazide-type diuretics (chlorthalidone, hydrochlorothiazide), calcium channel blockers (amlodipine), ACE inhibitors (lisinopril, enalapril), and angiotensin II receptor blockers (losartan, valsartan). In Black adults without heart failure or chronic kidney disease, initial therapy is typically a thiazide or calcium channel blocker. In patients with chronic kidney disease or proteinuria, ACE inhibitors or ARBs are preferred.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#6",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "In Black adults without heart failure or chronic kidney disease, initial therapy is typically a thiazide or calcium channel blocker. In patients with chronic kidney disease or proteinuria, ACE inhibitors or ARBs are preferred. Beta blockers are not first-line monotherapy unless there is a compelling indication such as ischemic heart disease, heart failure with reduced ejection fraction, or atrial arrhythmia.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#7",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "In patients with chronic kidney disease or proteinuria, ACE inhibitors or ARBs are preferred. Beta blockers are not first-line monotherapy unless there is a compelling indication such as ischemic heart disease, heart failure with reduced ejection fraction, or atrial arrhythmia. When monotherapy is insufficient, combine agents from different classes rather than maximizing one.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#8",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "Beta blockers are not first-line monotherapy unless there is a compelling indication such as ischemic heart disease, heart failure with reduced ejection fraction, or atrial arrhythmia. When monotherapy is insufficient, combine agents from different classes rather than maximizing one. ACE inhibitors and ARBs should not be used together.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "aha/hypertension_management#9",
+      "source_doc_id": "aha/hypertension_management",
+      "text": "When monotherapy is insufficient, combine agents from different classes rather than maximizing one. ACE inhibitors and ARBs should not be used together. Reassess blood pressure within 4 weeks of starting or adjusting therapy; once at goal, follow-up every 3 to 6 months is typical.",
+      "title": "Hypertension management \u2014 blood pressure targets and first-line therapy (AHA)",
+      "source": "AHA",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/HYP.0000000000000065"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#0",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "Acute otitis media is diagnosed by acute onset of symptoms, presence of middle-ear effusion, and signs of middle-ear inflammation (moderate-to-severe bulging of the tympanic membrane or otorrhea not caused by otitis externa). Mild bulging plus recent ear pain, or intense erythema of the tympanic membrane, also satisfy the inflammation criterion when otalgia is present. Initial antibiotic therapy is recommended for children aged 6 months or older with severe symptoms (moderate-to-severe otalgia, otalgia for at least 48 hours, or temperature 39\u00b0C or higher) and for children younger than 24 months with bilateral disease.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#1",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "Mild bulging plus recent ear pain, or intense erythema of the tympanic membrane, also satisfy the inflammation criterion when otalgia is present. Initial antibiotic therapy is recommended for children aged 6 months or older with severe symptoms (moderate-to-severe otalgia, otalgia for at least 48 hours, or temperature 39\u00b0C or higher) and for children younger than 24 months with bilateral disease. For children aged 6 months to 23 months with non-severe unilateral disease, and children 24 months or older with non-severe disease in either ear, a 48 to 72 hour observation period with shared decision making and a safety-net prescription is acceptable.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#2",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "Initial antibiotic therapy is recommended for children aged 6 months or older with severe symptoms (moderate-to-severe otalgia, otalgia for at least 48 hours, or temperature 39\u00b0C or higher) and for children younger than 24 months with bilateral disease. For children aged 6 months to 23 months with non-severe unilateral disease, and children 24 months or older with non-severe disease in either ear, a 48 to 72 hour observation period with shared decision making and a safety-net prescription is acceptable. First-line antibiotic is amoxicillin 80 to 90 mg per kg per day, divided into two doses, when the patient has not received amoxicillin in the prior 30 days, has no concurrent purulent conjunctivitis, and has no history of recurrent otitis media unresponsive to amoxicillin.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#3",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "For children aged 6 months to 23 months with non-severe unilateral disease, and children 24 months or older with non-severe disease in either ear, a 48 to 72 hour observation period with shared decision making and a safety-net prescription is acceptable. First-line antibiotic is amoxicillin 80 to 90 mg per kg per day, divided into two doses, when the patient has not received amoxicillin in the prior 30 days, has no concurrent purulent conjunctivitis, and has no history of recurrent otitis media unresponsive to amoxicillin. Amoxicillin-clavulanate at the same amoxicillin component dose is preferred when any of those conditions apply.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#4",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "First-line antibiotic is amoxicillin 80 to 90 mg per kg per day, divided into two doses, when the patient has not received amoxicillin in the prior 30 days, has no concurrent purulent conjunctivitis, and has no history of recurrent otitis media unresponsive to amoxicillin. Amoxicillin-clavulanate at the same amoxicillin component dose is preferred when any of those conditions apply. Treatment duration is 10 days for children younger than 2 years and those with severe symptoms, 7 days for children aged 2 to 5 years with non-severe disease, and 5 to 7 days for children 6 years or older with non-severe disease.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#5",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "Amoxicillin-clavulanate at the same amoxicillin component dose is preferred when any of those conditions apply. Treatment duration is 10 days for children younger than 2 years and those with severe symptoms, 7 days for children aged 2 to 5 years with non-severe disease, and 5 to 7 days for children 6 years or older with non-severe disease. Adults with acute otitis media are treated with amoxicillin or amoxicillin-clavulanate at standard adult dosing for 5 to 7 days; penicillin allergy alternatives include cefdinir, cefuroxime, or \u2014 in true non-anaphylactic reactions \u2014 azithromycin, acknowledging higher pneumococcal resistance to macrolides.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
+    },
+    {
+      "chunk_id": "cdc/acute_otitis_media#6",
+      "source_doc_id": "cdc/acute_otitis_media",
+      "text": "Treatment duration is 10 days for children younger than 2 years and those with severe symptoms, 7 days for children aged 2 to 5 years with non-severe disease, and 5 to 7 days for children 6 years or older with non-severe disease. Adults with acute otitis media are treated with amoxicillin or amoxicillin-clavulanate at standard adult dosing for 5 to 7 days; penicillin allergy alternatives include cefdinir, cefuroxime, or \u2014 in true non-anaphylactic reactions \u2014 azithromycin, acknowledging higher pneumococcal resistance to macrolides. Follow-up is guided by symptom course rather than fixed visit schedules; reassess at 48 to 72 hours when initial observation was elected, when symptoms persist or worsen, or when the diagnosis is in doubt.",
+      "title": "Acute otitis media \u2014 antibiotic selection and observation (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/antibiotic-use/clinicians/index.html"
     },
     {
       "chunk_id": "cdc/adult_immunization_schedule#0",
@@ -464,6 +1332,334 @@
       "source_url": "https://www.cdc.gov/tobacco/cessation/index.htm"
     },
     {
+      "chunk_id": "nih/alcohol_use_disorder#0",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Adults seen in primary care should be screened for unhealthy alcohol use at least annually. AUDIT-C is the recommended brief screen: three items totaling 0 to 12 points, with a positive screen at 4 or higher in men and 3 or higher in women. A positive AUDIT-C is followed by the full 10-item AUDIT or by direct clinical interview to characterize severity.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#1",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "AUDIT-C is the recommended brief screen: three items totaling 0 to 12 points, with a positive screen at 4 or higher in men and 3 or higher in women. A positive AUDIT-C is followed by the full 10-item AUDIT or by direct clinical interview to characterize severity. Standard-drink counts (one standard drink equals 14 g of ethanol \u2014 roughly 12 oz of regular beer, 5 oz of wine, or 1.5 oz of distilled spirits) anchor the conversation and the diagnostic thresholds: low-risk drinking is up to 14 drinks per week and 4 per day for men, and up to 7 per week and 3 per day for women; heavy-drinking days exceed those daily limits.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#2",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "A positive AUDIT-C is followed by the full 10-item AUDIT or by direct clinical interview to characterize severity. Standard-drink counts (one standard drink equals 14 g of ethanol \u2014 roughly 12 oz of regular beer, 5 oz of wine, or 1.5 oz of distilled spirits) anchor the conversation and the diagnostic thresholds: low-risk drinking is up to 14 drinks per week and 4 per day for men, and up to 7 per week and 3 per day for women; heavy-drinking days exceed those daily limits. Brief behavioral counseling for unhealthy alcohol use in primary care reduces drinking and is a USPSTF Grade B recommendation for adults.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#3",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Standard-drink counts (one standard drink equals 14 g of ethanol \u2014 roughly 12 oz of regular beer, 5 oz of wine, or 1.5 oz of distilled spirits) anchor the conversation and the diagnostic thresholds: low-risk drinking is up to 14 drinks per week and 4 per day for men, and up to 7 per week and 3 per day for women; heavy-drinking days exceed those daily limits. Brief behavioral counseling for unhealthy alcohol use in primary care reduces drinking and is a USPSTF Grade B recommendation for adults. Components include feedback on the patient's pattern, comparison to recommended limits, motivational interviewing, goal setting, and arranged follow-up.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#4",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Brief behavioral counseling for unhealthy alcohol use in primary care reduces drinking and is a USPSTF Grade B recommendation for adults. Components include feedback on the patient's pattern, comparison to recommended limits, motivational interviewing, goal setting, and arranged follow-up. Alcohol use disorder is diagnosed by DSM-5 criteria; the count of met criteria sets severity (mild 2 to 3, moderate 4 to 5, severe 6 or more).",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#5",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Components include feedback on the patient's pattern, comparison to recommended limits, motivational interviewing, goal setting, and arranged follow-up. Alcohol use disorder is diagnosed by DSM-5 criteria; the count of met criteria sets severity (mild 2 to 3, moderate 4 to 5, severe 6 or more). FDA-approved medications for alcohol use disorder are naltrexone (oral 50 mg daily or extended-release injection 380 mg monthly), acamprosate (666 mg three times daily), and disulfiram (250 to 500 mg daily).",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#6",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Alcohol use disorder is diagnosed by DSM-5 criteria; the count of met criteria sets severity (mild 2 to 3, moderate 4 to 5, severe 6 or more). FDA-approved medications for alcohol use disorder are naltrexone (oral 50 mg daily or extended-release injection 380 mg monthly), acamprosate (666 mg three times daily), and disulfiram (250 to 500 mg daily). Naltrexone is first-line for most adults including those who continue drinking; it is contraindicated with current opioid use or acute hepatitis.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#7",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "FDA-approved medications for alcohol use disorder are naltrexone (oral 50 mg daily or extended-release injection 380 mg monthly), acamprosate (666 mg three times daily), and disulfiram (250 to 500 mg daily). Naltrexone is first-line for most adults including those who continue drinking; it is contraindicated with current opioid use or acute hepatitis. Acamprosate is preferred when liver disease precludes naltrexone or when abstinence is the explicit goal.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#8",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Naltrexone is first-line for most adults including those who continue drinking; it is contraindicated with current opioid use or acute hepatitis. Acamprosate is preferred when liver disease precludes naltrexone or when abstinence is the explicit goal. Disulfiram requires committed abstinence and a supervised administration arrangement.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#9",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Acamprosate is preferred when liver disease precludes naltrexone or when abstinence is the explicit goal. Disulfiram requires committed abstinence and a supervised administration arrangement. Alcohol-related liver disease ranges from steatosis to hepatitis to cirrhosis.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#10",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Disulfiram requires committed abstinence and a supervised administration arrangement. Alcohol-related liver disease ranges from steatosis to hepatitis to cirrhosis. Laboratory pattern in alcohol-related hepatitis classically shows AST elevated more than ALT in a ratio of about 2 to 1, with both typically below 300 to 500 U/L.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#11",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Alcohol-related liver disease ranges from steatosis to hepatitis to cirrhosis. Laboratory pattern in alcohol-related hepatitis classically shows AST elevated more than ALT in a ratio of about 2 to 1, with both typically below 300 to 500 U/L. Total bilirubin elevation, INR prolongation, and a Maddrey discriminant function above 32 identify patients with severe alcoholic hepatitis who may benefit from specialty evaluation.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#12",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Laboratory pattern in alcohol-related hepatitis classically shows AST elevated more than ALT in a ratio of about 2 to 1, with both typically below 300 to 500 U/L. Total bilirubin elevation, INR prolongation, and a Maddrey discriminant function above 32 identify patients with severe alcoholic hepatitis who may benefit from specialty evaluation. Alkaline phosphatase rise is variable and may reflect cholestatic injury.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#13",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Total bilirubin elevation, INR prolongation, and a Maddrey discriminant function above 32 identify patients with severe alcoholic hepatitis who may benefit from specialty evaluation. Alkaline phosphatase rise is variable and may reflect cholestatic injury. Order a right-upper-quadrant ultrasound when biliary obstruction is in the differential, and pursue hepatology referral for transaminases above 5 times upper limit, persistent hyperbilirubinemia, or any feature of decompensation.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/alcohol_use_disorder#14",
+      "source_doc_id": "nih/alcohol_use_disorder",
+      "text": "Alkaline phosphatase rise is variable and may reflect cholestatic injury. Order a right-upper-quadrant ultrasound when biliary obstruction is in the differential, and pursue hepatology referral for transaminases above 5 times upper limit, persistent hyperbilirubinemia, or any feature of decompensation. Counsel every patient with unhealthy alcohol use on the bidirectional relationship between alcohol and depression, sleep, hypertension, and medication interactions; offer warm hand-off to behavioral-health support and follow up within 4 weeks.",
+      "title": "Unhealthy alcohol use and alcohol use disorder \u2014 screening, counseling, and pharmacotherapy (NIH/NIAAA)",
+      "source": "NIH/NIAAA",
+      "source_url": "https://www.niaaa.nih.gov/health-professionals-communities/core-resource-on-alcohol"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#0",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Asthma management is staged by severity and control. The 2020 NAEPP focused update from NHLBI organizes therapy into six steps; the goals of treatment are to maintain normal activity, minimize symptoms, preserve lung function, and avoid exacerbations and side effects. Persistent moderate asthma is treated with a daily inhaled corticosteroid in combination with a long-acting beta agonist (ICS-LABA), commonly fluticasone-furoate / vilanterol or fluticasone-propionate / salmeterol, with as-needed short-acting bronchodilator (albuterol) for rescue.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#1",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "The 2020 NAEPP focused update from NHLBI organizes therapy into six steps; the goals of treatment are to maintain normal activity, minimize symptoms, preserve lung function, and avoid exacerbations and side effects. Persistent moderate asthma is treated with a daily inhaled corticosteroid in combination with a long-acting beta agonist (ICS-LABA), commonly fluticasone-furoate / vilanterol or fluticasone-propionate / salmeterol, with as-needed short-acting bronchodilator (albuterol) for rescue. The single-maintenance-and- reliever (SMART) regimen using budesonide-formoterol once or twice daily and as needed is supported in steps 3 and 4 for patients age 4 years and older.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#2",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Persistent moderate asthma is treated with a daily inhaled corticosteroid in combination with a long-acting beta agonist (ICS-LABA), commonly fluticasone-furoate / vilanterol or fluticasone-propionate / salmeterol, with as-needed short-acting bronchodilator (albuterol) for rescue. The single-maintenance-and- reliever (SMART) regimen using budesonide-formoterol once or twice daily and as needed is supported in steps 3 and 4 for patients age 4 years and older. Spirometry is the recommended objective measure of asthma control.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#3",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "The single-maintenance-and- reliever (SMART) regimen using budesonide-formoterol once or twice daily and as needed is supported in steps 3 and 4 for patients age 4 years and older. Spirometry is the recommended objective measure of asthma control. An FEV1 that is 60 to 79 percent of predicted with bronchodilator responsiveness suggests moderate persistent disease; FEV1 below 60 percent reflects severe persistent disease.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#4",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Spirometry is the recommended objective measure of asthma control. An FEV1 that is 60 to 79 percent of predicted with bronchodilator responsiveness suggests moderate persistent disease; FEV1 below 60 percent reflects severe persistent disease. Reassess at every step change and at least annually.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#5",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "An FEV1 that is 60 to 79 percent of predicted with bronchodilator responsiveness suggests moderate persistent disease; FEV1 below 60 percent reflects severe persistent disease. Reassess at every step change and at least annually. Frequent rescue albuterol use (more than twice weekly other than for pre-exercise prophylaxis) or any oral corticosteroid course in the past year suggests inadequate control and warrants step-up.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#6",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Reassess at every step change and at least annually. Frequent rescue albuterol use (more than twice weekly other than for pre-exercise prophylaxis) or any oral corticosteroid course in the past year suggests inadequate control and warrants step-up. A written asthma action plan is a core element of management for all persistent asthma.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#7",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Frequent rescue albuterol use (more than twice weekly other than for pre-exercise prophylaxis) or any oral corticosteroid course in the past year suggests inadequate control and warrants step-up. A written asthma action plan is a core element of management for all persistent asthma. The plan defines green-yellow-red zones by symptoms or peak flow, lists controller and reliever doses, and specifies when to escalate care.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#8",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "A written asthma action plan is a core element of management for all persistent asthma. The plan defines green-yellow-red zones by symptoms or peak flow, lists controller and reliever doses, and specifies when to escalate care. Asthma in pregnancy: poorly controlled asthma poses greater risk to the fetus than the medications used to control it.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#9",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "The plan defines green-yellow-red zones by symptoms or peak flow, lists controller and reliever doses, and specifies when to escalate care. Asthma in pregnancy: poorly controlled asthma poses greater risk to the fetus than the medications used to control it. Inhaled corticosteroids are first-line and have the most pregnancy safety data; budesonide is the most-studied ICS in pregnancy, but other ICS already maintaining control can be continued.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#10",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Asthma in pregnancy: poorly controlled asthma poses greater risk to the fetus than the medications used to control it. Inhaled corticosteroids are first-line and have the most pregnancy safety data; budesonide is the most-studied ICS in pregnancy, but other ICS already maintaining control can be continued. Long-acting beta agonists (salmeterol, formoterol) and as-needed albuterol are considered safe in pregnancy.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#11",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Inhaled corticosteroids are first-line and have the most pregnancy safety data; budesonide is the most-studied ICS in pregnancy, but other ICS already maintaining control can be continued. Long-acting beta agonists (salmeterol, formoterol) and as-needed albuterol are considered safe in pregnancy. Continue leukotriene receptor antagonists (montelukast) only if needed for control; biologics are case-by-case.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#12",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Long-acting beta agonists (salmeterol, formoterol) and as-needed albuterol are considered safe in pregnancy. Continue leukotriene receptor antagonists (montelukast) only if needed for control; biologics are case-by-case. Pre-conception planning emphasizes optimizing control before pregnancy, ensuring an updated asthma action plan, reviewing inhaler technique, confirming influenza and Tdap vaccination, and counseling on smoking and trigger avoidance.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#13",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Continue leukotriene receptor antagonists (montelukast) only if needed for control; biologics are case-by-case. Pre-conception planning emphasizes optimizing control before pregnancy, ensuring an updated asthma action plan, reviewing inhaler technique, confirming influenza and Tdap vaccination, and counseling on smoking and trigger avoidance. Allergic rhinitis frequently coexists with asthma; treating rhinitis with intranasal corticosteroids and second-generation antihistamines (cetirizine, loratadine, fexofenadine) improves overall airway control and is compatible with pregnancy.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#14",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Pre-conception planning emphasizes optimizing control before pregnancy, ensuring an updated asthma action plan, reviewing inhaler technique, confirming influenza and Tdap vaccination, and counseling on smoking and trigger avoidance. Allergic rhinitis frequently coexists with asthma; treating rhinitis with intranasal corticosteroids and second-generation antihistamines (cetirizine, loratadine, fexofenadine) improves overall airway control and is compatible with pregnancy. Vitamin D deficiency (serum 25-hydroxyvitamin D below 20 ng/mL) is common and is replaced with cholecalciferol (vitamin D3) 1000 to 2000 IU daily, with rechecking after 8 to 12 weeks.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/asthma_management_and_pregnancy#15",
+      "source_doc_id": "nih/asthma_management_and_pregnancy",
+      "text": "Allergic rhinitis frequently coexists with asthma; treating rhinitis with intranasal corticosteroids and second-generation antihistamines (cetirizine, loratadine, fexofenadine) improves overall airway control and is compatible with pregnancy. Vitamin D deficiency (serum 25-hydroxyvitamin D below 20 ng/mL) is common and is replaced with cholecalciferol (vitamin D3) 1000 to 2000 IU daily, with rechecking after 8 to 12 weeks. Pre-pregnancy and pregnancy 25-OH vitamin D goals are typically 30 ng/mL or higher.",
+      "title": "Asthma \u2014 stepwise management and care during pregnancy (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/asthma/treatment-action-plan"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#0",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "The complete blood count reports concentrations of hemoglobin and hematocrit, total and differential leukocyte counts, platelet count, red cell indices including mean corpuscular volume (MCV), and red cell distribution width. Interpretation depends on the patient's baseline, clinical context, and the magnitude of any deviation, but laboratory-typical adult reference and action thresholds are useful anchors. Anemia is defined in adults as a hemoglobin below approximately 13 g/dL in men and below approximately 12 g/dL in non-pregnant women.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#1",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Interpretation depends on the patient's baseline, clinical context, and the magnitude of any deviation, but laboratory-typical adult reference and action thresholds are useful anchors. Anemia is defined in adults as a hemoglobin below approximately 13 g/dL in men and below approximately 12 g/dL in non-pregnant women. Hemoglobin below 10 g/dL is moderate anemia; below 8 g/dL is severe.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#2",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Anemia is defined in adults as a hemoglobin below approximately 13 g/dL in men and below approximately 12 g/dL in non-pregnant women. Hemoglobin below 10 g/dL is moderate anemia; below 8 g/dL is severe. The MCV partitions anemia into microcytic (MCV below 80 fL \u2014 iron deficiency, thalassemia trait, anemia of chronic disease in some cases), normocytic (MCV 80 to 100 fL \u2014 acute blood loss, anemia of chronic disease, early iron deficiency, hemolysis, marrow infiltration), and macrocytic (MCV above 100 fL \u2014 vitamin B12 or folate deficiency, hypothyroidism, alcohol-related, drug-induced including methotrexate or zidovudine).",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#3",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Hemoglobin below 10 g/dL is moderate anemia; below 8 g/dL is severe. The MCV partitions anemia into microcytic (MCV below 80 fL \u2014 iron deficiency, thalassemia trait, anemia of chronic disease in some cases), normocytic (MCV 80 to 100 fL \u2014 acute blood loss, anemia of chronic disease, early iron deficiency, hemolysis, marrow infiltration), and macrocytic (MCV above 100 fL \u2014 vitamin B12 or folate deficiency, hypothyroidism, alcohol-related, drug-induced including methotrexate or zidovudine). White blood cell count above approximately 11,000 per microliter (11.0 \u00d7 10\u2079/L) is leukocytosis; with a left shift toward neutrophils, this most commonly reflects acute infection, stress response, or corticosteroid effect.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#4",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "The MCV partitions anemia into microcytic (MCV below 80 fL \u2014 iron deficiency, thalassemia trait, anemia of chronic disease in some cases), normocytic (MCV 80 to 100 fL \u2014 acute blood loss, anemia of chronic disease, early iron deficiency, hemolysis, marrow infiltration), and macrocytic (MCV above 100 fL \u2014 vitamin B12 or folate deficiency, hypothyroidism, alcohol-related, drug-induced including methotrexate or zidovudine). White blood cell count above approximately 11,000 per microliter (11.0 \u00d7 10\u2079/L) is leukocytosis; with a left shift toward neutrophils, this most commonly reflects acute infection, stress response, or corticosteroid effect. WBC above 30,000 per microliter, persistent neutrophilia without an obvious driver, or basophilia, eosinophilia, or circulating blast forms warrant hematology evaluation.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#5",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "White blood cell count above approximately 11,000 per microliter (11.0 \u00d7 10\u2079/L) is leukocytosis; with a left shift toward neutrophils, this most commonly reflects acute infection, stress response, or corticosteroid effect. WBC above 30,000 per microliter, persistent neutrophilia without an obvious driver, or basophilia, eosinophilia, or circulating blast forms warrant hematology evaluation. Neutrophil percentage above 70 to 75 percent of total WBC supports a bacterial or acute inflammatory process; lymphocyte predominance is more typical of viral illness.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#6",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "WBC above 30,000 per microliter, persistent neutrophilia without an obvious driver, or basophilia, eosinophilia, or circulating blast forms warrant hematology evaluation. Neutrophil percentage above 70 to 75 percent of total WBC supports a bacterial or acute inflammatory process; lymphocyte predominance is more typical of viral illness. Platelet count below approximately 150,000 per microliter is thrombocytopenia.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#7",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Neutrophil percentage above 70 to 75 percent of total WBC supports a bacterial or acute inflammatory process; lymphocyte predominance is more typical of viral illness. Platelet count below approximately 150,000 per microliter is thrombocytopenia. Counts above 50,000 are typically asymptomatic; spontaneous bleeding risk rises below 20,000, and platelets below 10,000 are an indication for inpatient evaluation and possible transfusion.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#8",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Platelet count below approximately 150,000 per microliter is thrombocytopenia. Counts above 50,000 are typically asymptomatic; spontaneous bleeding risk rises below 20,000, and platelets below 10,000 are an indication for inpatient evaluation and possible transfusion. Sudden drops to under half of baseline or to under 100,000 within days warrant immediate work-up for drug-induced thrombocytopenia (heparin-induced thrombocytopenia is a notable emergency), immune thrombocytopenia, sepsis, or microangiopathic hemolytic anemia.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
+      "chunk_id": "nih/cbc_interpretation#9",
+      "source_doc_id": "nih/cbc_interpretation",
+      "text": "Counts above 50,000 are typically asymptomatic; spontaneous bleeding risk rises below 20,000, and platelets below 10,000 are an indication for inpatient evaluation and possible transfusion. Sudden drops to under half of baseline or to under 100,000 within days warrant immediate work-up for drug-induced thrombocytopenia (heparin-induced thrombocytopenia is a notable emergency), immune thrombocytopenia, sepsis, or microangiopathic hemolytic anemia. Pancytopenia (low hemoglobin, low WBC, and low platelets simultaneously) always warrants prompt evaluation for marrow failure, infiltration, or acute systemic illness.",
+      "title": "Complete blood count interpretation \u2014 common adult thresholds (NIH/NHLBI)",
+      "source": "NIH/NHLBI",
+      "source_url": "https://www.nhlbi.nih.gov/health/anemia"
+    },
+    {
       "chunk_id": "nih/cholesterol_thresholds#0",
       "source_doc_id": "nih/cholesterol_thresholds",
       "text": "A standard fasting lipid panel reports total cholesterol, LDL cholesterol, HDL cholesterol, and triglycerides. Reference ranges commonly printed on U.S. lab reports include: * Total cholesterol: less than 200 mg/dL (desirable). * LDL cholesterol: less than 100 mg/dL (optimal); 130 mg/dL or higher is borderline-to-high and is one criterion for the dyslipidemia risk factor used in cardiovascular risk calculators. * HDL cholesterol: greater than 40 mg/dL in men and greater than 50 mg/dL in women is desirable; values below 40 mg/dL count as a cardiovascular risk factor. * Triglycerides: less than 150 mg/dL (normal). A non-HDL cholesterol value (total minus HDL) of 130 mg/dL or higher roughly tracks an LDL of 100 mg/dL or higher and is increasingly used as a treatment threshold in patients with elevated triglycerides where calculated LDL is unreliable.",
@@ -478,6 +1674,302 @@
       "title": "Cholesterol thresholds and management overview (NHLBI)",
       "source": "NIH/NHLBI",
       "source_url": "https://www.nhlbi.nih.gov/health/blood-cholesterol"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#0",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Chronic kidney disease is staged by estimated glomerular filtration rate (eGFR), expressed in mL/min/1.73 m\u00b2. Stage G1 corresponds to an eGFR of 90 or higher with evidence of kidney damage; G2 is 60 to 89 with evidence of damage; G3a is 45 to 59; G3b is 30 to 44; G4 is 15 to 29; and G5 is below 15 (kidney failure). Albuminuria adds a parallel dimension: A1 is below 30 mg/g, A2 is 30 to 300, and A3 is above 300 mg of albumin per gram of creatinine on a spot urine albumin-to- creatinine ratio.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#1",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Stage G1 corresponds to an eGFR of 90 or higher with evidence of kidney damage; G2 is 60 to 89 with evidence of damage; G3a is 45 to 59; G3b is 30 to 44; G4 is 15 to 29; and G5 is below 15 (kidney failure). Albuminuria adds a parallel dimension: A1 is below 30 mg/g, A2 is 30 to 300, and A3 is above 300 mg of albumin per gram of creatinine on a spot urine albumin-to- creatinine ratio. A confirmed eGFR of 60 or below for at least three months establishes chronic kidney disease independent of cause.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#2",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Albuminuria adds a parallel dimension: A1 is below 30 mg/g, A2 is 30 to 300, and A3 is above 300 mg of albumin per gram of creatinine on a spot urine albumin-to- creatinine ratio. A confirmed eGFR of 60 or below for at least three months establishes chronic kidney disease independent of cause. Repeat the measurement to confirm \u2014 a single low eGFR can reflect acute illness, dehydration, recent contrast exposure, or laboratory variability.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#3",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "A confirmed eGFR of 60 or below for at least three months establishes chronic kidney disease independent of cause. Repeat the measurement to confirm \u2014 a single low eGFR can reflect acute illness, dehydration, recent contrast exposure, or laboratory variability. BUN-to-creatinine ratio interpretation is supplementary; isolated BUN elevation often reflects volume depletion, gastrointestinal bleeding, or high-protein intake rather than intrinsic renal disease.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#4",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Repeat the measurement to confirm \u2014 a single low eGFR can reflect acute illness, dehydration, recent contrast exposure, or laboratory variability. BUN-to-creatinine ratio interpretation is supplementary; isolated BUN elevation often reflects volume depletion, gastrointestinal bleeding, or high-protein intake rather than intrinsic renal disease. Most patients with CKD and either hypertension, diabetes, or albuminuria above 30 mg/g should be on an ACE inhibitor (lisinopril) or ARB (losartan).",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#5",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "BUN-to-creatinine ratio interpretation is supplementary; isolated BUN elevation often reflects volume depletion, gastrointestinal bleeding, or high-protein intake rather than intrinsic renal disease. Most patients with CKD and either hypertension, diabetes, or albuminuria above 30 mg/g should be on an ACE inhibitor (lisinopril) or ARB (losartan). These agents reduce intraglomerular pressure and slow CKD progression independent of their blood-pressure effect.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#6",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Most patients with CKD and either hypertension, diabetes, or albuminuria above 30 mg/g should be on an ACE inhibitor (lisinopril) or ARB (losartan). These agents reduce intraglomerular pressure and slow CKD progression independent of their blood-pressure effect. SGLT2 inhibitors (dapagliflozin, empagliflozin) further reduce CKD progression in patients with eGFR above 20 and albuminuria, and are now recommended in CKD with or without diabetes.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#7",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "These agents reduce intraglomerular pressure and slow CKD progression independent of their blood-pressure effect. SGLT2 inhibitors (dapagliflozin, empagliflozin) further reduce CKD progression in patients with eGFR above 20 and albuminuria, and are now recommended in CKD with or without diabetes. Drug dose adjustments are required at lower eGFR.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#8",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "SGLT2 inhibitors (dapagliflozin, empagliflozin) further reduce CKD progression in patients with eGFR above 20 and albuminuria, and are now recommended in CKD with or without diabetes. Drug dose adjustments are required at lower eGFR. Metformin is contraindicated below eGFR 30 and dose-reduced between 30 and 45.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#9",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Drug dose adjustments are required at lower eGFR. Metformin is contraindicated below eGFR 30 and dose-reduced between 30 and 45. Avoid NSAIDs in CKD when eGFR is below 60.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#10",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Metformin is contraindicated below eGFR 30 and dose-reduced between 30 and 45. Avoid NSAIDs in CKD when eGFR is below 60. Avoid gadolinium-based contrast at eGFR below 30 unless essential.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#11",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Avoid NSAIDs in CKD when eGFR is below 60. Avoid gadolinium-based contrast at eGFR below 30 unless essential. Reassess potassium, creatinine, and bicarbonate at intervals appropriate to the stage \u2014 every 3 months in stage G3b or G4, more frequently with active intercurrent illness or after dose changes to renin-angiotensin agents.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/ckd_staging_management#12",
+      "source_doc_id": "nih/ckd_staging_management",
+      "text": "Avoid gadolinium-based contrast at eGFR below 30 unless essential. Reassess potassium, creatinine, and bicarbonate at intervals appropriate to the stage \u2014 every 3 months in stage G3b or G4, more frequently with active intercurrent illness or after dose changes to renin-angiotensin agents. Refer to nephrology for eGFR below 30, rapid eGFR decline, A3 albuminuria, refractory hypertension or hyperkalemia, or unexplained-cause CKD.",
+      "title": "Chronic kidney disease \u2014 staging by eGFR and management implications (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#0",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "The comprehensive metabolic panel reports sodium, potassium, chloride, bicarbonate, blood urea nitrogen (BUN), creatinine, glucose, calcium, total protein, albumin, total bilirubin, alkaline phosphatase, AST, and ALT. The panel anchors evaluation of acid-base status, renal function, hepatic function, and metabolic state. Serum sodium below 135 mEq/L is hyponatremia.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#1",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "The panel anchors evaluation of acid-base status, renal function, hepatic function, and metabolic state. Serum sodium below 135 mEq/L is hyponatremia. Mild hyponatremia (130 to 134) is often dilutional in the outpatient setting, related to thiazides, SSRIs, or excess water intake; sodium below 125 with neurologic symptoms is a medical emergency requiring careful correction at no more than 8 to 10 mEq/L per 24 hours to avoid osmotic demyelination.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#2",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Serum sodium below 135 mEq/L is hyponatremia. Mild hyponatremia (130 to 134) is often dilutional in the outpatient setting, related to thiazides, SSRIs, or excess water intake; sodium below 125 with neurologic symptoms is a medical emergency requiring careful correction at no more than 8 to 10 mEq/L per 24 hours to avoid osmotic demyelination. Hypernatremia (sodium above 145) most commonly reflects free-water deficit and is corrected with hypotonic fluid at a similarly cautious rate.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#3",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Mild hyponatremia (130 to 134) is often dilutional in the outpatient setting, related to thiazides, SSRIs, or excess water intake; sodium below 125 with neurologic symptoms is a medical emergency requiring careful correction at no more than 8 to 10 mEq/L per 24 hours to avoid osmotic demyelination. Hypernatremia (sodium above 145) most commonly reflects free-water deficit and is corrected with hypotonic fluid at a similarly cautious rate. Serum potassium of 5.5 mEq/L or higher is hyperkalemia and warrants action: confirm with a non-hemolyzed sample, obtain an ECG when above 6.0 or with any conduction abnormality, and review medications including ACE inhibitors, ARBs, potassium-sparing diuretics, and non-steroidal anti-inflammatory drugs.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#4",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Hypernatremia (sodium above 145) most commonly reflects free-water deficit and is corrected with hypotonic fluid at a similarly cautious rate. Serum potassium of 5.5 mEq/L or higher is hyperkalemia and warrants action: confirm with a non-hemolyzed sample, obtain an ECG when above 6.0 or with any conduction abnormality, and review medications including ACE inhibitors, ARBs, potassium-sparing diuretics, and non-steroidal anti-inflammatory drugs. Persistent potassium above 6.0 mEq/L or any value with ECG changes is treated emergently with calcium, intracellular shift agents (insulin with glucose, beta-agonists), and removal therapy.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#5",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Serum potassium of 5.5 mEq/L or higher is hyperkalemia and warrants action: confirm with a non-hemolyzed sample, obtain an ECG when above 6.0 or with any conduction abnormality, and review medications including ACE inhibitors, ARBs, potassium-sparing diuretics, and non-steroidal anti-inflammatory drugs. Persistent potassium above 6.0 mEq/L or any value with ECG changes is treated emergently with calcium, intracellular shift agents (insulin with glucose, beta-agonists), and removal therapy. Hypokalemia below 3.5 mEq/L is often diuretic- or vomiting-related; replace and assess for ongoing losses, particularly in patients on digoxin or with cardiac arrhythmia risk.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#6",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Persistent potassium above 6.0 mEq/L or any value with ECG changes is treated emergently with calcium, intracellular shift agents (insulin with glucose, beta-agonists), and removal therapy. Hypokalemia below 3.5 mEq/L is often diuretic- or vomiting-related; replace and assess for ongoing losses, particularly in patients on digoxin or with cardiac arrhythmia risk. Acute kidney injury is defined by a creatinine rise of 0.3 mg/dL or greater within 48 hours, a 50 percent rise from baseline within 7 days, or oliguria.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#7",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Hypokalemia below 3.5 mEq/L is often diuretic- or vomiting-related; replace and assess for ongoing losses, particularly in patients on digoxin or with cardiac arrhythmia risk. Acute kidney injury is defined by a creatinine rise of 0.3 mg/dL or greater within 48 hours, a 50 percent rise from baseline within 7 days, or oliguria. Estimated glomerular filtration rate (eGFR) below 60 mL/min/1.73 m\u00b2 persisting for at least three months establishes chronic kidney disease; an isolated low eGFR may reflect acute illness, dehydration, recent contrast, or laboratory variability and should be confirmed before staging.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#8",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Acute kidney injury is defined by a creatinine rise of 0.3 mg/dL or greater within 48 hours, a 50 percent rise from baseline within 7 days, or oliguria. Estimated glomerular filtration rate (eGFR) below 60 mL/min/1.73 m\u00b2 persisting for at least three months establishes chronic kidney disease; an isolated low eGFR may reflect acute illness, dehydration, recent contrast, or laboratory variability and should be confirmed before staging. A BUN-to-creatinine ratio above about 20 favors a pre-renal pattern (volume depletion, GI bleed, high-protein intake) over intrinsic renal disease.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#9",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "Estimated glomerular filtration rate (eGFR) below 60 mL/min/1.73 m\u00b2 persisting for at least three months establishes chronic kidney disease; an isolated low eGFR may reflect acute illness, dehydration, recent contrast, or laboratory variability and should be confirmed before staging. A BUN-to-creatinine ratio above about 20 favors a pre-renal pattern (volume depletion, GI bleed, high-protein intake) over intrinsic renal disease. AST or ALT elevations are interpreted relative to upper limit of normal: less than 5 times upper limit is mild, 5 to 10 times is moderate, and greater than 10 times is severe.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#10",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "A BUN-to-creatinine ratio above about 20 favors a pre-renal pattern (volume depletion, GI bleed, high-protein intake) over intrinsic renal disease. AST or ALT elevations are interpreted relative to upper limit of normal: less than 5 times upper limit is mild, 5 to 10 times is moderate, and greater than 10 times is severe. ALT above AST favors non-alcoholic fatty liver disease and chronic hepatitis; AST above ALT in a 2-to-1 or higher ratio favors alcohol-related liver disease.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#11",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "AST or ALT elevations are interpreted relative to upper limit of normal: less than 5 times upper limit is mild, 5 to 10 times is moderate, and greater than 10 times is severe. ALT above AST favors non-alcoholic fatty liver disease and chronic hepatitis; AST above ALT in a 2-to-1 or higher ratio favors alcohol-related liver disease. Alkaline phosphatase rises with cholestatic processes and bone turnover; pair with gamma-glutamyl transferase to localize to the liver.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/cmp_interpretation#12",
+      "source_doc_id": "nih/cmp_interpretation",
+      "text": "ALT above AST favors non-alcoholic fatty liver disease and chronic hepatitis; AST above ALT in a 2-to-1 or higher ratio favors alcohol-related liver disease. Alkaline phosphatase rises with cholestatic processes and bone turnover; pair with gamma-glutamyl transferase to localize to the liver. Glucose interpretation depends on fasting status: a fasting glucose of 126 mg/dL or higher on two occasions, or a random glucose of 200 mg/dL with classic symptoms, indicates diabetes; fasting glucose of 100 to 125 indicates impaired fasting glucose.",
+      "title": "Comprehensive metabolic panel interpretation \u2014 electrolytes, kidney, and liver (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diagnostic-tests"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#0",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "For most non-pregnant adults with type 2 diabetes, a hemoglobin A1c target of less than 7 percent is reasonable, with individualization toward 7.5 to 8 percent in older adults, those with limited life expectancy, advanced complications, or a history of severe hypoglycemia. A1c should be checked at least twice yearly when on stable therapy at goal, and quarterly when therapy has changed or glycemic targets are not being met. Metformin remains first-line oral pharmacotherapy in patients without contraindications.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#1",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "A1c should be checked at least twice yearly when on stable therapy at goal, and quarterly when therapy has changed or glycemic targets are not being met. Metformin remains first-line oral pharmacotherapy in patients without contraindications. Initial dosing is typically 500 mg once or twice daily with meals, titrated over weeks to a maintenance dose of 1000 mg twice daily.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#2",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "Metformin remains first-line oral pharmacotherapy in patients without contraindications. Initial dosing is typically 500 mg once or twice daily with meals, titrated over weeks to a maintenance dose of 1000 mg twice daily. Metformin is contraindicated when estimated glomerular filtration rate (eGFR) is below 30 mL/min/1.73 m\u00b2.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#3",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "Initial dosing is typically 500 mg once or twice daily with meals, titrated over weeks to a maintenance dose of 1000 mg twice daily. Metformin is contraindicated when estimated glomerular filtration rate (eGFR) is below 30 mL/min/1.73 m\u00b2. For patients with eGFR between 30 and 45, metformin is not initiated, and existing therapy is dose-reduced and reassessed.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#4",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "Metformin is contraindicated when estimated glomerular filtration rate (eGFR) is below 30 mL/min/1.73 m\u00b2. For patients with eGFR between 30 and 45, metformin is not initiated, and existing therapy is dose-reduced and reassessed. Hold metformin around iodinated-contrast imaging and acute illness.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#5",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "For patients with eGFR between 30 and 45, metformin is not initiated, and existing therapy is dose-reduced and reassessed. Hold metformin around iodinated-contrast imaging and acute illness. When A1c remains above goal on metformin, second-line therapy is selected by comorbidity.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#6",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "Hold metformin around iodinated-contrast imaging and acute illness. When A1c remains above goal on metformin, second-line therapy is selected by comorbidity. In patients with established atherosclerotic cardiovascular disease, heart failure, or chronic kidney disease, an SGLT2 inhibitor (empagliflozin, dapagliflozin) or a GLP-1 receptor agonist (semaglutide, liraglutide, dulaglutide) is preferred for demonstrated cardiorenal benefit independent of glycemic effect.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#7",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "When A1c remains above goal on metformin, second-line therapy is selected by comorbidity. In patients with established atherosclerotic cardiovascular disease, heart failure, or chronic kidney disease, an SGLT2 inhibitor (empagliflozin, dapagliflozin) or a GLP-1 receptor agonist (semaglutide, liraglutide, dulaglutide) is preferred for demonstrated cardiorenal benefit independent of glycemic effect. For patients without these comorbidities, the choice is guided by weight, hypoglycemia risk, and cost, with sulfonylureas, DPP-4 inhibitors, basal insulin, and thiazolidinediones as additional options.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#8",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "In patients with established atherosclerotic cardiovascular disease, heart failure, or chronic kidney disease, an SGLT2 inhibitor (empagliflozin, dapagliflozin) or a GLP-1 receptor agonist (semaglutide, liraglutide, dulaglutide) is preferred for demonstrated cardiorenal benefit independent of glycemic effect. For patients without these comorbidities, the choice is guided by weight, hypoglycemia risk, and cost, with sulfonylureas, DPP-4 inhibitors, basal insulin, and thiazolidinediones as additional options. Glycemic monitoring beyond A1c includes self-monitoring of blood glucose for patients on insulin or sulfonylureas.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#9",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "For patients without these comorbidities, the choice is guided by weight, hypoglycemia risk, and cost, with sulfonylureas, DPP-4 inhibitors, basal insulin, and thiazolidinediones as additional options. Glycemic monitoring beyond A1c includes self-monitoring of blood glucose for patients on insulin or sulfonylureas. Continuous glucose monitoring should be considered for patients on multiple daily insulin injections or with frequent hypoglycemia.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
+    },
+    {
+      "chunk_id": "nih/diabetes_management#10",
+      "source_doc_id": "nih/diabetes_management",
+      "text": "Glycemic monitoring beyond A1c includes self-monitoring of blood glucose for patients on insulin or sulfonylureas. Continuous glucose monitoring should be considered for patients on multiple daily insulin injections or with frequent hypoglycemia. Annual screening for diabetic nephropathy (urine albumin-to-creatinine ratio plus eGFR), retinopathy, and neuropathy is part of routine diabetes management.",
+      "title": "Type 2 diabetes \u2014 pharmacologic management essentials (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/managing-diabetes"
     },
     {
       "chunk_id": "nih/hashimotos_thyroiditis#0",
@@ -606,6 +2098,190 @@
       "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
       "source": "NIH/NIDDK",
       "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#0",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Insulin therapy is added in type 2 diabetes when non-insulin agents fail to achieve the individualized A1c target despite adequate adherence and dose escalation. Common triggers for adding basal insulin are an A1c that remains above 9 percent on combination oral therapy, a fasting plasma glucose persistently above 180 mg/dL, the presence of catabolic features (weight loss, ketosis, classic symptoms), or hyperglycemic emergencies. A GLP-1 receptor agonist (semaglutide, dulaglutide, liraglutide) is generally preferred over basal insulin as the first injectable in patients without symptomatic hyperglycemia or acute illness because it preserves weight benefit and is comparably effective at A1c reduction up to about 1.5 to 2 points.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#1",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Common triggers for adding basal insulin are an A1c that remains above 9 percent on combination oral therapy, a fasting plasma glucose persistently above 180 mg/dL, the presence of catabolic features (weight loss, ketosis, classic symptoms), or hyperglycemic emergencies. A GLP-1 receptor agonist (semaglutide, dulaglutide, liraglutide) is generally preferred over basal insulin as the first injectable in patients without symptomatic hyperglycemia or acute illness because it preserves weight benefit and is comparably effective at A1c reduction up to about 1.5 to 2 points. When the A1c remains above target on combination metformin plus a GLP-1 receptor agonist, basal insulin is the next step.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#2",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "A GLP-1 receptor agonist (semaglutide, dulaglutide, liraglutide) is generally preferred over basal insulin as the first injectable in patients without symptomatic hyperglycemia or acute illness because it preserves weight benefit and is comparably effective at A1c reduction up to about 1.5 to 2 points. When the A1c remains above target on combination metformin plus a GLP-1 receptor agonist, basal insulin is the next step. Starting basal-insulin doses are 10 units once daily or 0.1 to 0.2 units per kg of body weight once daily, given at bedtime or in the morning.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#3",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "When the A1c remains above target on combination metformin plus a GLP-1 receptor agonist, basal insulin is the next step. Starting basal-insulin doses are 10 units once daily or 0.1 to 0.2 units per kg of body weight once daily, given at bedtime or in the morning. Long-acting analogs glargine U-100, glargine U-300, and degludec U-100 or U-200 are preferred over NPH for lower nocturnal hypoglycemia risk and once-daily convenience.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#4",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Starting basal-insulin doses are 10 units once daily or 0.1 to 0.2 units per kg of body weight once daily, given at bedtime or in the morning. Long-acting analogs glargine U-100, glargine U-300, and degludec U-100 or U-200 are preferred over NPH for lower nocturnal hypoglycemia risk and once-daily convenience. Continue metformin and the GLP-1 receptor agonist when starting basal insulin; reduce or stop sulfonylureas if previously prescribed, given hypoglycemia overlap.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#5",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Long-acting analogs glargine U-100, glargine U-300, and degludec U-100 or U-200 are preferred over NPH for lower nocturnal hypoglycemia risk and once-daily convenience. Continue metformin and the GLP-1 receptor agonist when starting basal insulin; reduce or stop sulfonylureas if previously prescribed, given hypoglycemia overlap. Titrate basal insulin to a fasting glucose target of 80 to 130 mg/dL in most patients (relax to 100 to 150 in older adults or those at hypoglycemia risk).",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#6",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Continue metformin and the GLP-1 receptor agonist when starting basal insulin; reduce or stop sulfonylureas if previously prescribed, given hypoglycemia overlap. Titrate basal insulin to a fasting glucose target of 80 to 130 mg/dL in most patients (relax to 100 to 150 in older adults or those at hypoglycemia risk). A common protocol is to increase by 2 units every 3 days until the target is met; alternatively, increase by 1 unit every day until target.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#7",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Titrate basal insulin to a fasting glucose target of 80 to 130 mg/dL in most patients (relax to 100 to 150 in older adults or those at hypoglycemia risk). A common protocol is to increase by 2 units every 3 days until the target is met; alternatively, increase by 1 unit every day until target. Reduce dose for any hypoglycemic event below 70 mg/dL or recurrent symptoms.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#8",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "A common protocol is to increase by 2 units every 3 days until the target is met; alternatively, increase by 1 unit every day until target. Reduce dose for any hypoglycemic event below 70 mg/dL or recurrent symptoms. Reassess A1c at 3 months; if A1c remains above target despite a fasting glucose at goal, post-prandial hyperglycemia is the residual driver and prandial insulin or intensification of the GLP-1 receptor agonist may be needed.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#9",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Reduce dose for any hypoglycemic event below 70 mg/dL or recurrent symptoms. Reassess A1c at 3 months; if A1c remains above target despite a fasting glucose at goal, post-prandial hyperglycemia is the residual driver and prandial insulin or intensification of the GLP-1 receptor agonist may be needed. Insulin therapy in type 2 diabetes does not require routine self-monitoring beyond fasting glucose for titration, but checks before lunch, dinner, and bedtime are useful when intensifying or when hypoglycemia is suspected.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#10",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Reassess A1c at 3 months; if A1c remains above target despite a fasting glucose at goal, post-prandial hyperglycemia is the residual driver and prandial insulin or intensification of the GLP-1 receptor agonist may be needed. Insulin therapy in type 2 diabetes does not require routine self-monitoring beyond fasting glucose for titration, but checks before lunch, dinner, and bedtime are useful when intensifying or when hypoglycemia is suspected. Counsel on hypoglycemia recognition, glucagon availability for severe events, sick-day rules, and insulin storage.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/insulin_initiation_t2dm#11",
+      "source_doc_id": "nih/insulin_initiation_t2dm",
+      "text": "Insulin therapy in type 2 diabetes does not require routine self-monitoring beyond fasting glucose for titration, but checks before lunch, dinner, and bedtime are useful when intensifying or when hypoglycemia is suspected. Counsel on hypoglycemia recognition, glucagon availability for severe events, sick-day rules, and insulin storage. Coexisting depression should be screened for and treated, as untreated depression strongly predicts non-adherence and hyperglycemia.",
+      "title": "Type 2 diabetes \u2014 basal insulin initiation and titration (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#0",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Patients on metformin should have renal function assessed at least annually with serum creatinine and estimated glomerular filtration rate (eGFR). Initial labs are obtained before starting therapy. Metformin is contraindicated when eGFR is below 30 mL/min/1.73 m\u00b2.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#1",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Initial labs are obtained before starting therapy. Metformin is contraindicated when eGFR is below 30 mL/min/1.73 m\u00b2. For an eGFR of 30 to 45, metformin is not initiated; if a patient is already on therapy and the eGFR drops into this range, dose-reduce by half and reassess every three months.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#2",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Metformin is contraindicated when eGFR is below 30 mL/min/1.73 m\u00b2. For an eGFR of 30 to 45, metformin is not initiated; if a patient is already on therapy and the eGFR drops into this range, dose-reduce by half and reassess every three months. Increase monitoring frequency in patients with progressive chronic kidney disease, advanced age, congestive heart failure, hepatic impairment, or concomitant nephrotoxic medications.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#3",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "For an eGFR of 30 to 45, metformin is not initiated; if a patient is already on therapy and the eGFR drops into this range, dose-reduce by half and reassess every three months. Increase monitoring frequency in patients with progressive chronic kidney disease, advanced age, congestive heart failure, hepatic impairment, or concomitant nephrotoxic medications. Long-term metformin use is associated with reduced vitamin B12 absorption.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#4",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Increase monitoring frequency in patients with progressive chronic kidney disease, advanced age, congestive heart failure, hepatic impairment, or concomitant nephrotoxic medications. Long-term metformin use is associated with reduced vitamin B12 absorption. Periodic measurement of serum B12 is reasonable in patients on metformin for several years, particularly those with peripheral neuropathy, anemia, or megaloblastic features on a complete blood count.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#5",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Long-term metformin use is associated with reduced vitamin B12 absorption. Periodic measurement of serum B12 is reasonable in patients on metformin for several years, particularly those with peripheral neuropathy, anemia, or megaloblastic features on a complete blood count. Mean corpuscular volume (MCV) above 100 fL on a CBC should prompt B12 testing.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#6",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Periodic measurement of serum B12 is reasonable in patients on metformin for several years, particularly those with peripheral neuropathy, anemia, or megaloblastic features on a complete blood count. Mean corpuscular volume (MCV) above 100 fL on a CBC should prompt B12 testing. Hold metformin around iodinated-contrast imaging in patients with eGFR between 30 and 60, in patients receiving intra-arterial contrast, or in those with conditions associated with reduced renal perfusion (heart failure, sepsis, dehydration).",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#7",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Mean corpuscular volume (MCV) above 100 fL on a CBC should prompt B12 testing. Hold metformin around iodinated-contrast imaging in patients with eGFR between 30 and 60, in patients receiving intra-arterial contrast, or in those with conditions associated with reduced renal perfusion (heart failure, sepsis, dehydration). Resume after 48 hours when renal function has been re-evaluated and is stable.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#8",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Hold metformin around iodinated-contrast imaging in patients with eGFR between 30 and 60, in patients receiving intra-arterial contrast, or in those with conditions associated with reduced renal perfusion (heart failure, sepsis, dehydration). Resume after 48 hours when renal function has been re-evaluated and is stable. Lactic acidosis is rare but serious.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#9",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Resume after 48 hours when renal function has been re-evaluated and is stable. Lactic acidosis is rare but serious. Risk is elevated by acute kidney injury, decompensated heart failure, sepsis, alcohol misuse, and hepatic failure.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/metformin_monitoring#10",
+      "source_doc_id": "nih/metformin_monitoring",
+      "text": "Lactic acidosis is rare but serious. Risk is elevated by acute kidney injury, decompensated heart failure, sepsis, alcohol misuse, and hepatic failure. Counsel patients to hold metformin and seek care for significant gastrointestinal upset, malaise, or muscle pain, especially in the context of dehydration or acute illness.",
+      "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
     },
     {
       "chunk_id": "uspstf/aspirin_primary_prevention#0",

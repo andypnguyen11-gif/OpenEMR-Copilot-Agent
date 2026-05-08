@@ -1,6 +1,6 @@
 """Unit smoke for the Stage 4A eval harness.
 
-Covers the load-time invariants (exact-50, duplicate detection, missing
+Covers the load-time invariants (exact-count, duplicate detection, missing
 artifact detection, unreviewed-label rejection) and one passing-rubric
 fixture per category. The full per-rubric coverage is the integration
 smoke (``test_eval_gate.py``) and the live ``make eval-extraction-gate``
@@ -74,7 +74,7 @@ def test_load_cases_rejects_partial_count(tmp_path: Path) -> None:
         ],
     )
 
-    with pytest.raises(CaseManifestError, match="exactly 50"):
+    with pytest.raises(CaseManifestError, match="exactly 65"):
         load_cases(manifest)
 
 

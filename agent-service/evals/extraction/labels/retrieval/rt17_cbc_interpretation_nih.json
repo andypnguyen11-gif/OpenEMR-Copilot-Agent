@@ -1,0 +1,14 @@
+{
+  "expected_retrieval": {
+    "expected_source_doc_ids": [
+      "nih/cbc_interpretation"
+    ],
+    "k": 5
+  },
+  "metadata": {
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy",
+    "source_notes": "added with corpus expansion to cover demo entities"
+  }
+}

@@ -1,6 +1,6 @@
 """``make eval-extraction-gate`` entrypoint.
 
-Runs the 50-case Stage 4A suite end-to-end: load manifest → produce
+Runs the 65-case Stage 4A suite end-to-end: load manifest → produce
 output per case (live extract, cached replay, or retrieval) → run
 rubrics → aggregate → check thresholds + regression vs ``baseline.json``
 → write results JSON + Markdown → exit 0 or non-zero.
@@ -121,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--allow-partial",
         action="store_true",
-        help="Skip exact-50 enforcement; only for incremental dev iteration.",
+        help="Skip exact-count enforcement; only for incremental dev iteration.",
     )
     args = parser.parse_args(argv)
 

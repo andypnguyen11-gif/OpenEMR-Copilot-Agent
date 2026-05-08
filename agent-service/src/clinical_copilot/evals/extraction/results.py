@@ -7,13 +7,13 @@ Result shape (committed under ``evals/extraction/results/<run_id>.json``):
     {
       "run_id": "2026-05-06T18-00-00Z",
       "schema_version": 1,
-      "case_count": 50,
+      "case_count": 65,
       "summary": {
-        "schema_valid":         {"passed": 50, "total": 50, "pass_rate": 1.00},
-        "citation_present":     {"passed": 48, "total": 50, "pass_rate": 0.96},
-        "factually_consistent": {"passed": 46, "total": 50, "pass_rate": 0.92},
+        "schema_valid":         {"passed": 65, "total": 65, "pass_rate": 1.00},
+        "citation_present":     {"passed": 63, "total": 65, "pass_rate": 0.97},
+        "factually_consistent": {"passed": 60, "total": 65, "pass_rate": 0.92},
         "safe_refusal":         {"passed": 8,  "total": 8,  "pass_rate": 1.00},
-        "no_phi_in_logs":       {"passed": 50, "total": 50, "pass_rate": 1.00}
+        "no_phi_in_logs":       {"passed": 65, "total": 65, "pass_rate": 1.00}
       },
       "cases": [
         {

@@ -4,7 +4,7 @@ Reads ``evals/extraction/cases.jsonl`` (one JSON object per line) and
 yields :class:`Case` instances. The loader enforces three invariants
 before any rubric runs:
 
-* exactly :data:`EXPECTED_CASE_COUNT` cases (50);
+* exactly :data:`EXPECTED_CASE_COUNT` cases (65);
 * every ``case_id`` is unique;
 * every referenced ``label_path`` and (when set) ``document_path`` /
   ``prediction_path`` resolves on disk.
@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-EXPECTED_CASE_COUNT = 50
+EXPECTED_CASE_COUNT = 65
 
 # ``cases.py`` lives at agent-service/src/clinical_copilot/evals/extraction/.
 # Walk up four parents to land on agent-service/, then descend into
@@ -102,7 +102,7 @@ def load_cases(manifest_path: Path | None = None, *, allow_partial: bool = False
     ``manifest_path`` defaults to :data:`DEFAULT_MANIFEST_PATH`. The
     runner accepts an override (used by unit tests with a temp manifest).
 
-    ``allow_partial=True`` skips the exact-50 enforcement so the harness
+    ``allow_partial=True`` skips the exact-count enforcement so the harness
     can be validated incrementally during initial authoring. The CI gate
     must always run with ``allow_partial=False`` (the default) so a
     partial suite cannot pass the gate by accident.

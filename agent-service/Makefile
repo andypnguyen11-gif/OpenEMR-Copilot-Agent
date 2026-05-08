@@ -57,12 +57,13 @@ test:
 eval: check
 	AGENT_BASE_URL=$(AGENT_BASE_URL) $(UV) run python -m tests.eval.runner
 
-# Stage 4A extraction eval gate. Runs the full 50-case suite live —
+# Stage 4A extraction eval gate. Runs the full 65-case suite live —
 # every case in evals/extraction/cases.jsonl drives the live extractor
 # (or a cached prediction for citation-bucket cases). Two failure modes:
 #   1. Per-rubric pass-rate drops below the threshold in baseline.json.
 #   2. Per-rubric pass-rate regresses by >5pp vs the last baseline.
-# Either fails CI. Cost: roughly $2-3 per run (~50 vision calls).
+# Either fails CI. Cost: roughly $2-3 per run (~50 vision calls; the
+# 15 added retrieval cases are corpus-only and don't spend vision tokens).
 eval-extraction-gate:
 	$(UV) run python -m clinical_copilot.evals.extraction.runner
 
