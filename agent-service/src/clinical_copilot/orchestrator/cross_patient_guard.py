@@ -46,6 +46,47 @@ _PATIENT_PREFIX_RE = re.compile(r"\b[Pp]atients?\s+([A-Z][A-Za-z]{2,})", re.ASCI
 # ``BP's trend`` (single uppercase letter run, not a name shape).
 _POSSESSIVE_RE = re.compile(r"\b([A-Z][a-z]{2,})['’]s\b", re.ASCII)
 
+# Sentence-initial words look Title-Case purely because the sentence
+# starts there, not because they are proper nouns. Without this denylist
+# every "What's the patient's A1c?" query would parse as if the user
+# named a patient called "What" and refuse to answer. Lowercased so the
+# membership check is case-insensitive against the captured token.
+#
+# Covers: interrogatives (what / where / when / why / how / who),
+# pronouns + dummy subjects (it / he / she / there / here / that /
+# this / they / one), the imperative "let's", and time-qualifier nouns
+# ("today's labs"). A patient legitimately named "Today" or "What" is
+# vanishingly rare and the LLM-side prompt rule still catches it.
+_CONTRACTION_DENYLIST: frozenset[str] = frozenset({
+    "what",
+    "where",
+    "when",
+    "why",
+    "how",
+    "who",
+    "it",
+    "he",
+    "she",
+    "there",
+    "here",
+    "that",
+    "this",
+    "they",
+    "one",
+    "let",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "someone",
+    "something",
+    "everyone",
+    "everybody",
+    "anybody",
+    "anyone",
+    "nobody",
+    "the",
+})
+
 
 def extract_referenced_names(query: str) -> list[str]:
     """Return Title-Case names the query explicitly attaches to a patient.
@@ -71,6 +112,12 @@ def extract_referenced_names(query: str) -> list[str]:
             name = match.group(1)
             key = name.lower()
             if key in seen:
+                continue
+            if key in _CONTRACTION_DENYLIST:
+                # Sentence-initial contractions ("What's", "Where's",
+                # "Today's labs") look like possessive names but aren't.
+                # Skip without recording so the caller sees an empty
+                # list and the guard returns None.
                 continue
             seen.add(key)
             found.append(name)

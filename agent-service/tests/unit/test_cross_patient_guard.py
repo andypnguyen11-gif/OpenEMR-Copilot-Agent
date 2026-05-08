@@ -14,7 +14,6 @@ from clinical_copilot.orchestrator.cross_patient_guard import (
     extract_referenced_names,
 )
 
-
 # ---- extract_referenced_names ---------------------------------------------
 
 
@@ -54,6 +53,25 @@ def test_extracts_explicit_name_patterns(query: str, expected: list[str]) -> Non
         "He's been on lisinopril",
         # Lowercase tokens after ``patient`` are not names.
         "the patient who came in yesterday",
+        # Sentence-initial interrogative contractions — see the
+        # _CONTRACTION_DENYLIST. Without the denylist these would each
+        # capture the interrogative as if it were a patient name and
+        # trigger a cross-patient mismatch on every typical question.
+        "What's her most recent TSH?",
+        "Where's the lab report?",
+        "When's the next visit scheduled?",
+        "Why's her A1c trending up?",
+        "How's her blood pressure looking?",
+        "Who's the referring provider?",
+        # Pronoun + dummy-subject contractions.
+        "It's been three months since the last visit.",
+        "She's on metformin.",
+        "There's no record of a recent A1c.",
+        "That's the lab from last week.",
+        "Let's review the medication list.",
+        # Time-qualifier nouns capitalised at sentence start.
+        "Today's labs show normal CBC.",
+        "Yesterday's note mentioned chest pain.",
     ],
     ids=[
         "bare-patient",
@@ -61,10 +79,40 @@ def test_extracts_explicit_name_patterns(query: str, expected: list[str]) -> Non
         "drug-name-sentence-initial",
         "pronoun-possessive",
         "lowercase-after-patient",
+        "interrogative-whats",
+        "interrogative-wheres",
+        "interrogative-whens",
+        "interrogative-whys",
+        "interrogative-hows",
+        "interrogative-whos",
+        "pronoun-its",
+        "pronoun-shes",
+        "dummy-subject-theres",
+        "demonstrative-thats",
+        "imperative-lets",
+        "time-qualifier-todays",
+        "time-qualifier-yesterdays",
     ],
 )
 def test_skips_non_name_patterns(query: str) -> None:
     assert extract_referenced_names(query) == []
+
+
+def test_olivia_tsh_query_does_not_trigger_cross_patient_guard() -> None:
+    """Regression: composite chart-fact + guideline question must
+    pass through the guard cleanly. The bug was that ``What's`` parsed
+    as if the user named a patient called "What", which then mismatched
+    the bound name and refused with NO_DATA on every typical query.
+    Reported via screenshot 2026-05-08; lock so it stays fixed.
+    """
+
+    reason = cross_patient_check(
+        "What's Olivia's most recent TSH and what does the guideline "
+        "recommend for levothyroxine titration?",
+        "Olivia Nguyen",
+    )
+
+    assert reason is None
 
 
 def test_dedupes_case_insensitively_preserving_first_seen() -> None:
