@@ -118,7 +118,11 @@ $panelEnabled = $patientLabel !== '';
 <head>
     <title><?php echo xlt('Clinical Co-Pilot'); ?></title>
     <?php Header::setupHeader(); ?>
-    <link rel="stylesheet" href="<?php echo attr($webroot); ?>/public/copilot/copilot.css">
+<?php
+$copilotCssSrc = $webroot . '/public/copilot/copilot.css';
+$copilotCssVer = (int) @filemtime(__DIR__ . '/../../public/copilot/copilot.css');
+?>
+    <link rel="stylesheet" href="<?php echo attr($copilotCssSrc); ?>?v=<?php echo $copilotCssVer; ?>">
 </head>
 <body class="bg-light">
     <div
@@ -187,7 +191,19 @@ $panelEnabled = $patientLabel !== '';
             csrfToken: <?php echo json_encode($apiCsrfToken); ?>
         };
     </script>
-    <script src="<?php echo attr($webroot); ?>/public/copilot/idle_timer.js"></script>
-    <script src="<?php echo attr($webroot); ?>/public/copilot/side_panel.js"></script>
+<?php
+// Cache-bust the script tags by appending the file's mtime as a query
+// param. Same rationale as chat.php — browsers cache the JS aggressively
+// and the side-panel iframe lifetime is long enough that stale JS can
+// linger across patient switches. Mtime resolves against the Docker
+// mount and is an integer so the URL stays cache-friendly between
+// genuine edits.
+$idleTimerSrc = $webroot . '/public/copilot/idle_timer.js';
+$idleTimerVer = (int) @filemtime(__DIR__ . '/../../public/copilot/idle_timer.js');
+$sidePanelJsSrc = $webroot . '/public/copilot/side_panel.js';
+$sidePanelJsVer = (int) @filemtime(__DIR__ . '/../../public/copilot/side_panel.js');
+?>
+    <script src="<?php echo attr($idleTimerSrc); ?>?v=<?php echo $idleTimerVer; ?>"></script>
+    <script src="<?php echo attr($sidePanelJsSrc); ?>?v=<?php echo $sidePanelJsVer; ?>"></script>
 </body>
 </html>

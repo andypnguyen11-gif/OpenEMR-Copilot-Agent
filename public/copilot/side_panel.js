@@ -338,28 +338,47 @@
 
     function summarizeRecord(rec) {
         if (typeof rec.name === "string") {
-            return joinNonEmpty([rec.name, rec.dose, rec.status, rec.started_on ? "started " + rec.started_on : ""]);
+            return joinNonEmpty([rec.name, rec.dose, rec.status, rec.started_on ? "started " + formatDateTime(rec.started_on) : ""]);
         }
         if (typeof rec.substance === "string") {
             return joinNonEmpty([rec.substance, rec.reaction, rec.severity]);
         }
         if (typeof rec.display === "string" && typeof rec.value !== "undefined") {
             const valueWithUnit = rec.unit ? rec.value + " " + rec.unit : String(rec.value);
-            return joinNonEmpty([rec.display, valueWithUnit, rec.observed_on, rec.reference_range ? "(ref " + rec.reference_range + ")" : ""]);
+            return joinNonEmpty([rec.display, valueWithUnit, formatDateTime(rec.observed_on), rec.reference_range ? "(ref " + rec.reference_range + ")" : ""]);
         }
         if (typeof rec.display === "string") {
-            return joinNonEmpty([rec.display, rec.status, rec.onset_date]);
+            return joinNonEmpty([rec.display, rec.status, formatDateTime(rec.onset_date)]);
         }
         if (typeof rec.encounter_type === "string") {
-            return joinNonEmpty([rec.encounter_type, rec.visited_on, rec.chief_complaint]);
+            return joinNonEmpty([rec.encounter_type, formatDateTime(rec.visited_on), rec.chief_complaint]);
         }
         if (typeof rec.note_date === "string") {
-            return joinNonEmpty([rec.note_date, rec.author, rec.body ? truncate(rec.body, 140) : ""]);
+            return joinNonEmpty([formatDateTime(rec.note_date), rec.author, rec.body ? truncate(rec.body, 140) : ""]);
         }
         if (typeof rec.rationale === "string") {
             return joinNonEmpty([rec.rule_id, rec.category, rec.rationale]);
         }
         return rec.source_id || "(unrecognized record)";
+    }
+
+    /**
+     * Re-shape an ISO 8601 date / datetime string into ``yyyy/mm/dd``
+     * (date-only inputs) or ``yyyy/mm/dd hh:mm`` (date+time). Mirrors
+     * the same helper in chat.js so the side panel and chat tab format
+     * dates identically. Anything not matching the ISO shape passes
+     * through unchanged.
+     */
+    function formatDateTime(value) {
+        if (typeof value !== "string" || value === "") {
+            return value;
+        }
+        const m = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+        if (!m) {
+            return value;
+        }
+        const datePart = m[1] + "/" + m[2] + "/" + m[3];
+        return m[4] ? datePart + " " + m[4] + ":" + m[5] : datePart;
     }
 
     function joinNonEmpty(parts) {
@@ -376,7 +395,11 @@
         claims.forEach(function (claim) {
             const line = document.createElement("span");
             line.className = "copilot-claim";
-            line.textContent = claim.text + " ";
+            // Mirrors chat.js renderProse — wraps embedded citation
+            // patterns (FHIR resource ids, corpus chunk ids) in
+            // styled spans so the reader can distinguish source
+            // references from surrounding prose.
+            line.appendChild(renderTextWithCitations(claim.text + " "));
             const cite = document.createElement("span");
             cite.className = "copilot-citation";
             cite.textContent = "[" + claim.source_id + "]";
@@ -384,6 +407,35 @@
             wrap.appendChild(line);
         });
         return wrap;
+    }
+
+    /**
+     * Split a string into alternating plain-text nodes and citation
+     * spans. Recognises two shapes:
+     *   * Chart FHIR ids — ``Observation/abc-123``, ``MedicationRequest/<uuid>``.
+     *   * Corpus chunk ids — ``nih/foo#7``, ``uspstf/bar#3``.
+     * Anything else passes through unchanged. Identical to the helper
+     * in chat.js; folding into a shared module is a follow-up.
+     */
+    function renderTextWithCitations(text) {
+        const frag = document.createDocumentFragment();
+        const pattern = /\b([A-Z][A-Za-z]+\/[A-Za-z0-9_-]+)|\b([a-z][a-z0-9_-]*\/[a-z0-9_-]+#\d+)/g;
+        let lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+            }
+            const span = document.createElement("span");
+            span.className = "copilot-citation-inline";
+            span.textContent = match[0];
+            frag.appendChild(span);
+            lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+        return frag;
     }
 
     function renderAbstention(abstention) {

@@ -124,7 +124,11 @@ if (is_string($pidParam) && array_key_exists($pidParam, $options)) {
 <head>
     <title><?php echo xlt('Clinical Co-Pilot'); ?></title>
     <?php Header::setupHeader(); ?>
-    <link rel="stylesheet" href="<?php echo attr($webroot); ?>/public/copilot/copilot.css">
+<?php
+$copilotCssSrc = $webroot . '/public/copilot/copilot.css';
+$copilotCssVer = (int) @filemtime(__DIR__ . '/../../public/copilot/copilot.css');
+?>
+    <link rel="stylesheet" href="<?php echo attr($copilotCssSrc); ?>?v=<?php echo $copilotCssVer; ?>">
 </head>
 <body class="bg-light">
     <div class="container-fluid copilot-shell" data-copilot-shell>
@@ -189,7 +193,19 @@ if (is_string($pidParam) && array_key_exists($pidParam, $options)) {
             csrfToken: <?php echo json_encode($apiCsrfToken); ?>
         };
     </script>
-    <script src="<?php echo attr($webroot); ?>/public/copilot/idle_timer.js"></script>
-    <script src="<?php echo attr($webroot); ?>/public/copilot/chat.js"></script>
+<?php
+// Cache-bust the script tags by appending the file's mtime as a query
+// param. Browsers cache /public/copilot/chat.js indefinitely otherwise,
+// so a JS edit doesn't reach the user until they hard-refresh — which
+// burned us once already. ``filemtime`` is local-fs only and resolves
+// against the Docker mount; the value is an integer epoch so the URL
+// stays cache-friendly across redeploys with no JS change.
+$idleTimerSrc = $webroot . '/public/copilot/idle_timer.js';
+$idleTimerVer = (int) @filemtime(__DIR__ . '/../../public/copilot/idle_timer.js');
+$chatJsSrc = $webroot . '/public/copilot/chat.js';
+$chatJsVer = (int) @filemtime(__DIR__ . '/../../public/copilot/chat.js');
+?>
+    <script src="<?php echo attr($idleTimerSrc); ?>?v=<?php echo $idleTimerVer; ?>"></script>
+    <script src="<?php echo attr($chatJsSrc); ?>?v=<?php echo $chatJsVer; ?>"></script>
 </body>
 </html>
