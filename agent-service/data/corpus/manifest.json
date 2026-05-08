@@ -1,11 +1,12 @@
 {
   "version": 1,
-  "doc_count": 11,
-  "chunk_count": 58,
+  "doc_count": 15,
+  "chunk_count": 90,
   "permitted_sources": [
     "AHA",
     "CDC",
     "NIH/NHLBI",
+    "NIH/NIDDK",
     "USPSTF"
   ],
   "dense_built": true,
@@ -44,6 +45,22 @@
       "sha256": "880319b9d239cca0"
     },
     {
+      "doc_id": "cdc/iron_deficiency_anemia",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html",
+      "date": "2023-01-01",
+      "topics": [
+        "iron deficiency",
+        "anemia",
+        "ferritin",
+        "hemoglobin",
+        "oral iron",
+        "ferrous sulfate"
+      ],
+      "sha256": "008946e273cff8a3"
+    },
+    {
       "doc_id": "cdc/tobacco_cessation",
       "title": "Tobacco use cessation counseling and pharmacotherapy (CDC / USPSTF)",
       "source": "CDC",
@@ -73,6 +90,38 @@
         "lipid panel"
       ],
       "sha256": "5d9da1226fec2b6c"
+    },
+    {
+      "doc_id": "nih/hashimotos_thyroiditis",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease",
+      "date": "2021-09-01",
+      "topics": [
+        "Hashimoto's",
+        "autoimmune",
+        "thyroiditis",
+        "TPO antibodies",
+        "hypothyroidism",
+        "thyroid"
+      ],
+      "sha256": "9937649dc5fd54d7"
+    },
+    {
+      "doc_id": "nih/hypothyroidism_management",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism",
+      "date": "2021-03-01",
+      "topics": [
+        "hypothyroidism",
+        "levothyroxine",
+        "TSH",
+        "free T4",
+        "thyroid",
+        "fatigue"
+      ],
+      "sha256": "aa1213a228e9adfe"
     },
     {
       "doc_id": "uspstf/aspirin_primary_prevention",
@@ -172,6 +221,21 @@
         "LDL"
       ],
       "sha256": "c2ba1e88c59267b9"
+    },
+    {
+      "doc_id": "uspstf/thyroid_dysfunction_screening",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening",
+      "date": "2015-03-24",
+      "topics": [
+        "thyroid",
+        "hypothyroidism",
+        "hyperthyroidism",
+        "TSH",
+        "screening"
+      ],
+      "sha256": "4778b4b2fda9105a"
     }
   ],
   "chunks": [
@@ -280,6 +344,86 @@
       "source_url": "https://www.cdc.gov/vaccines/schedules/hcp/imz/adult.html"
     },
     {
+      "chunk_id": "cdc/iron_deficiency_anemia#0",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Iron-deficiency anemia in adults is most commonly screened with a complete blood count and ferritin. Serum ferritin reflects total body iron stores and is the single most useful test for diagnosing iron deficiency in the absence of inflammation. In adults without active inflammatory illness, a serum ferritin below approximately 30 ng/mL is consistent with iron deficiency; ferritin in the 30 to 100 ng/mL range may still indicate deficiency in patients with chronic disease, chronic kidney disease, or active inflammation, since ferritin is an acute-phase reactant.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#1",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Serum ferritin reflects total body iron stores and is the single most useful test for diagnosing iron deficiency in the absence of inflammation. In adults without active inflammatory illness, a serum ferritin below approximately 30 ng/mL is consistent with iron deficiency; ferritin in the 30 to 100 ng/mL range may still indicate deficiency in patients with chronic disease, chronic kidney disease, or active inflammation, since ferritin is an acute-phase reactant. A low ferritin with a low or low-normal transferrin saturation supports the diagnosis.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#2",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "In adults without active inflammatory illness, a serum ferritin below approximately 30 ng/mL is consistent with iron deficiency; ferritin in the 30 to 100 ng/mL range may still indicate deficiency in patients with chronic disease, chronic kidney disease, or active inflammation, since ferritin is an acute-phase reactant. A low ferritin with a low or low-normal transferrin saturation supports the diagnosis. Initial work-up of newly identified iron deficiency in adults should include evaluation for menstrual blood loss in premenopausal women, gastrointestinal blood loss in adults at risk, dietary intake, and malabsorption (including celiac disease and prior gastric surgery).",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#3",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "A low ferritin with a low or low-normal transferrin saturation supports the diagnosis. Initial work-up of newly identified iron deficiency in adults should include evaluation for menstrual blood loss in premenopausal women, gastrointestinal blood loss in adults at risk, dietary intake, and malabsorption (including celiac disease and prior gastric surgery). Concurrent autoimmune thyroid disease can co-occur with iron deficiency and is worth noting on the differential.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#4",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Initial work-up of newly identified iron deficiency in adults should include evaluation for menstrual blood loss in premenopausal women, gastrointestinal blood loss in adults at risk, dietary intake, and malabsorption (including celiac disease and prior gastric surgery). Concurrent autoimmune thyroid disease can co-occur with iron deficiency and is worth noting on the differential. Oral iron is first-line for uncomplicated iron-deficiency anemia.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#5",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Concurrent autoimmune thyroid disease can co-occur with iron deficiency and is worth noting on the differential. Oral iron is first-line for uncomplicated iron-deficiency anemia. Ferrous sulfate 325 mg (65 mg elemental iron) once daily, or every other day, is the typical adult regimen; alternate-day dosing improves fractional absorption and is generally better tolerated.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#6",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Oral iron is first-line for uncomplicated iron-deficiency anemia. Ferrous sulfate 325 mg (65 mg elemental iron) once daily, or every other day, is the typical adult regimen; alternate-day dosing improves fractional absorption and is generally better tolerated. Vitamin C (or an acidic juice) co-administered improves absorption.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#7",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Ferrous sulfate 325 mg (65 mg elemental iron) once daily, or every other day, is the typical adult regimen; alternate-day dosing improves fractional absorption and is generally better tolerated. Vitamin C (or an acidic juice) co-administered improves absorption. Calcium-containing supplements, antacids, proton pump inhibitors, levothyroxine, and tetracyclines should be separated from oral iron by at least 2 hours.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#8",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Vitamin C (or an acidic juice) co-administered improves absorption. Calcium-containing supplements, antacids, proton pump inhibitors, levothyroxine, and tetracyclines should be separated from oral iron by at least 2 hours. Reassess hemoglobin in 4 to 8 weeks; ferritin and transferrin saturation typically lag and are rechecked at 8 to 12 weeks.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/iron_deficiency_anemia#9",
+      "source_doc_id": "cdc/iron_deficiency_anemia",
+      "text": "Calcium-containing supplements, antacids, proton pump inhibitors, levothyroxine, and tetracyclines should be separated from oral iron by at least 2 hours. Reassess hemoglobin in 4 to 8 weeks; ferritin and transferrin saturation typically lag and are rechecked at 8 to 12 weeks. Failure to respond to a trial of oral iron warrants evaluation for ongoing blood loss, malabsorption, or an alternative cause of anemia.",
+      "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
       "chunk_id": "cdc/tobacco_cessation#0",
       "source_doc_id": "cdc/tobacco_cessation",
       "text": "All adults should be asked about tobacco use, and adults who use tobacco should be advised to stop and offered both behavioral counseling and pharmacotherapy. The combined approach approximately doubles the likelihood of quit success compared to brief advice alone. First-line pharmacotherapy options include nicotine replacement therapy (patch, gum, lozenge, inhaler, or nasal spray), varenicline, and bupropion SR.",
@@ -334,6 +478,134 @@
       "title": "Cholesterol thresholds and management overview (NHLBI)",
       "source": "NIH/NHLBI",
       "source_url": "https://www.nhlbi.nih.gov/health/blood-cholesterol"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#0",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "Hashimoto's disease is a chronic autoimmune lymphocytic thyroiditis and is the most common cause of primary hypothyroidism in iodine- sufficient regions. Antibodies against thyroid peroxidase (TPO) are positive in roughly 90 percent of patients with Hashimoto's hypothyroidism, and antibodies against thyroglobulin are positive in a substantial minority. Either antibody can also be present in euthyroid relatives without active disease.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#1",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "Antibodies against thyroid peroxidase (TPO) are positive in roughly 90 percent of patients with Hashimoto's hypothyroidism, and antibodies against thyroglobulin are positive in a substantial minority. Either antibody can also be present in euthyroid relatives without active disease. A single TPO antibody titer is sufficient to support an autoimmune etiology when an elevated TSH and a low or low-normal free T4 are already documented.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#2",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "Either antibody can also be present in euthyroid relatives without active disease. A single TPO antibody titer is sufficient to support an autoimmune etiology when an elevated TSH and a low or low-normal free T4 are already documented. Repeat antibody testing has limited additional clinical value once the autoimmune diagnosis is established; titers do not reliably track disease activity or response to therapy and are not used to titrate levothyroxine.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#3",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "A single TPO antibody titer is sufficient to support an autoimmune etiology when an elevated TSH and a low or low-normal free T4 are already documented. Repeat antibody testing has limited additional clinical value once the autoimmune diagnosis is established; titers do not reliably track disease activity or response to therapy and are not used to titrate levothyroxine. Patients with Hashimoto's disease are at increased risk for other autoimmune conditions, including type 1 diabetes, Addison's disease, celiac disease, vitiligo, and pernicious anemia, so a careful review of systems and a low threshold for evaluating new symptoms are appropriate.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#4",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "Repeat antibody testing has limited additional clinical value once the autoimmune diagnosis is established; titers do not reliably track disease activity or response to therapy and are not used to titrate levothyroxine. Patients with Hashimoto's disease are at increased risk for other autoimmune conditions, including type 1 diabetes, Addison's disease, celiac disease, vitiligo, and pernicious anemia, so a careful review of systems and a low threshold for evaluating new symptoms are appropriate. A small proportion of patients also have an associated iron-deficiency state, partly reflecting impaired absorption and partly the gastric autoimmunity that can accompany the syndrome.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#5",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "Patients with Hashimoto's disease are at increased risk for other autoimmune conditions, including type 1 diabetes, Addison's disease, celiac disease, vitiligo, and pernicious anemia, so a careful review of systems and a low threshold for evaluating new symptoms are appropriate. A small proportion of patients also have an associated iron-deficiency state, partly reflecting impaired absorption and partly the gastric autoimmunity that can accompany the syndrome. Management of Hashimoto's hypothyroidism mirrors management of any other primary hypothyroidism: levothyroxine titrated to a TSH within the laboratory reference range, with periodic monitoring after the patient is stable.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hashimotos_thyroiditis#6",
+      "source_doc_id": "nih/hashimotos_thyroiditis",
+      "text": "A small proportion of patients also have an associated iron-deficiency state, partly reflecting impaired absorption and partly the gastric autoimmunity that can accompany the syndrome. Management of Hashimoto's hypothyroidism mirrors management of any other primary hypothyroidism: levothyroxine titrated to a TSH within the laboratory reference range, with periodic monitoring after the patient is stable. There is no role for routine immunosuppressive therapy.",
+      "title": "Hashimoto's disease \u2014 autoimmune thyroiditis and antibody testing (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hashimotos-disease"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#0",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Primary hypothyroidism is diagnosed biochemically when serum thyroid-stimulating hormone (TSH) is elevated and free thyroxine (free T4) is low. Subclinical hypothyroidism describes an elevated TSH with a normal free T4; the typical reflex is to confirm the finding with a repeat TSH at 6 to 8 weeks before initiating long-term therapy. Common causes include autoimmune (Hashimoto's) thyroiditis, prior radioiodine or thyroid surgery, and certain medications.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#1",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Subclinical hypothyroidism describes an elevated TSH with a normal free T4; the typical reflex is to confirm the finding with a repeat TSH at 6 to 8 weeks before initiating long-term therapy. Common causes include autoimmune (Hashimoto's) thyroiditis, prior radioiodine or thyroid surgery, and certain medications. Symptoms can include fatigue, cold intolerance, dry skin, constipation, weight change, menstrual irregularity, and depressed mood; symptom severity correlates loosely with biochemical severity.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#2",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Common causes include autoimmune (Hashimoto's) thyroiditis, prior radioiodine or thyroid surgery, and certain medications. Symptoms can include fatigue, cold intolerance, dry skin, constipation, weight change, menstrual irregularity, and depressed mood; symptom severity correlates loosely with biochemical severity. Levothyroxine is the standard replacement.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#3",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Symptoms can include fatigue, cold intolerance, dry skin, constipation, weight change, menstrual irregularity, and depressed mood; symptom severity correlates loosely with biochemical severity. Levothyroxine is the standard replacement. A common starting dose for otherwise healthy nonelderly adults is approximately 1.6 mcg per kg of ideal body weight per day, typically 50 to 100 mcg orally once daily, taken on an empty stomach 30 to 60 minutes before food, coffee, calcium, iron, or proton pump inhibitors.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#4",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Levothyroxine is the standard replacement. A common starting dose for otherwise healthy nonelderly adults is approximately 1.6 mcg per kg of ideal body weight per day, typically 50 to 100 mcg orally once daily, taken on an empty stomach 30 to 60 minutes before food, coffee, calcium, iron, or proton pump inhibitors. Lower starting doses (25 to 50 mcg) are used in older adults or in patients with coronary artery disease.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#5",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "A common starting dose for otherwise healthy nonelderly adults is approximately 1.6 mcg per kg of ideal body weight per day, typically 50 to 100 mcg orally once daily, taken on an empty stomach 30 to 60 minutes before food, coffee, calcium, iron, or proton pump inhibitors. Lower starting doses (25 to 50 mcg) are used in older adults or in patients with coronary artery disease. After initiation or dose change, recheck TSH no sooner than 6 to 8 weeks.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#6",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "Lower starting doses (25 to 50 mcg) are used in older adults or in patients with coronary artery disease. After initiation or dose change, recheck TSH no sooner than 6 to 8 weeks. The treatment goal in primary hypothyroidism is a TSH within the laboratory reference range; in most adults this corresponds to a TSH between roughly 0.5 and 4.5 mIU/L.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#7",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "After initiation or dose change, recheck TSH no sooner than 6 to 8 weeks. The treatment goal in primary hypothyroidism is a TSH within the laboratory reference range; in most adults this corresponds to a TSH between roughly 0.5 and 4.5 mIU/L. A persistently elevated TSH on therapy commonly reflects under-replacement, malabsorption (e.g., celiac disease), drug-drug interactions, or inconsistent dosing relative to meals.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
+    },
+    {
+      "chunk_id": "nih/hypothyroidism_management#8",
+      "source_doc_id": "nih/hypothyroidism_management",
+      "text": "The treatment goal in primary hypothyroidism is a TSH within the laboratory reference range; in most adults this corresponds to a TSH between roughly 0.5 and 4.5 mIU/L. A persistently elevated TSH on therapy commonly reflects under-replacement, malabsorption (e.g., celiac disease), drug-drug interactions, or inconsistent dosing relative to meals. Once the patient is on a stable dose with TSH in range, repeat TSH every 6 to 12 months, or sooner with new symptoms, weight change of more than ~10 percent, pregnancy, or initiation of an interacting medication.",
+      "title": "Hypothyroidism \u2014 diagnosis, levothyroxine therapy, and follow-up monitoring (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/endocrine-diseases/hypothyroidism"
     },
     {
       "chunk_id": "uspstf/aspirin_primary_prevention#0",
@@ -638,6 +910,54 @@
       "title": "Statin use for the primary prevention of cardiovascular disease (USPSTF)",
       "source": "USPSTF",
       "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/statin-use-in-adults-preventive-medication"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#0",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "The U.S. Preventive Services Task Force concludes that the current evidence is insufficient to assess the balance of benefits and harms of screening for thyroid dysfunction in nonpregnant, asymptomatic adults. This is a Grade I statement.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#1",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "Preventive Services Task Force concludes that the current evidence is insufficient to assess the balance of benefits and harms of screening for thyroid dysfunction in nonpregnant, asymptomatic adults. This is a Grade I statement. This Grade I statement applies only to screening of asymptomatic adults who do not have clinical signs or symptoms of thyroid dysfunction and are not pregnant.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#2",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "This is a Grade I statement. This Grade I statement applies only to screening of asymptomatic adults who do not have clinical signs or symptoms of thyroid dysfunction and are not pregnant. It does not apply to follow-up of patients with prior thyroid disease, abnormal prior thyroid testing, or symptoms suggestive of thyroid dysfunction (fatigue, unintentional weight change, cold intolerance, abnormal menses, goiter), in whom evaluation with TSH is clinically indicated.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#3",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "This Grade I statement applies only to screening of asymptomatic adults who do not have clinical signs or symptoms of thyroid dysfunction and are not pregnant. It does not apply to follow-up of patients with prior thyroid disease, abnormal prior thyroid testing, or symptoms suggestive of thyroid dysfunction (fatigue, unintentional weight change, cold intolerance, abnormal menses, goiter), in whom evaluation with TSH is clinically indicated. When TSH testing is performed, an elevated serum thyroid-stimulating hormone with a low or low-normal free thyroxine (free T4) is the biochemical pattern of overt primary hypothyroidism.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#4",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "It does not apply to follow-up of patients with prior thyroid disease, abnormal prior thyroid testing, or symptoms suggestive of thyroid dysfunction (fatigue, unintentional weight change, cold intolerance, abnormal menses, goiter), in whom evaluation with TSH is clinically indicated. When TSH testing is performed, an elevated serum thyroid-stimulating hormone with a low or low-normal free thyroxine (free T4) is the biochemical pattern of overt primary hypothyroidism. An isolated elevated TSH with a normal free T4 is the pattern of subclinical hypothyroidism.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
+    },
+    {
+      "chunk_id": "uspstf/thyroid_dysfunction_screening#5",
+      "source_doc_id": "uspstf/thyroid_dysfunction_screening",
+      "text": "When TSH testing is performed, an elevated serum thyroid-stimulating hormone with a low or low-normal free thyroxine (free T4) is the biochemical pattern of overt primary hypothyroidism. An isolated elevated TSH with a normal free T4 is the pattern of subclinical hypothyroidism. Confirmation of an abnormal TSH with a repeat measurement, typically several weeks later, is recommended before a lifelong treatment decision is made.",
+      "title": "Screening for thyroid dysfunction in nonpregnant, asymptomatic adults (USPSTF)",
+      "source": "USPSTF",
+      "source_url": "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/thyroid-dysfunction-screening"
     }
   ]
 }

@@ -14,6 +14,7 @@ or under permissive licensing:
 | U.S. Preventive Services Task Force (USPSTF) | Federal works, public domain (17 U.S.C. § 105). |
 | Centers for Disease Control and Prevention (CDC) | Federal works, public domain (17 U.S.C. § 105). |
 | National Institutes of Health (NIH) / NHLBI | Federal works, public domain. |
+| National Institutes of Health (NIH) / NIDDK | Federal works, public domain (17 U.S.C. § 105). |
 | American Heart Association (AHA) — short adapted excerpts | Cited under fair-use for non-commercial educational demo; canonical text remains AHA's. |
 
 The corpus is rebuilt from these markdown files via

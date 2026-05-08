@@ -122,3 +122,6 @@ hightlight
 occurance
 seperator
 vlaue
+
+# Iron-binding glycoprotein; codespell mis-suggests "transferring"
+transferrin
