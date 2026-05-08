@@ -13,6 +13,7 @@ dependencies = [
     "cryptography>=44",
     "fastapi>=0.136.1",
     "httpx>=0.28.1",
+    "langgraph>=0.2,<0.3",
     "langsmith>=0.7.38",
     "numpy>=1.26",
     "openai>=1.50",
@@ -81,7 +82,7 @@ explicit_package_bases = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = ["langsmith.*"]
+module = ["langsmith.*", "langgraph.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -99,6 +100,14 @@ markers = [
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:fastapi.*",
+    # langgraph 0.2 imports ``langgraph.checkpoint.serde.jsonplus``
+    # at module load, which fires a LangChainPendingDeprecationWarning
+    # about ``allowed_objects`` that's an internal detail we don't
+    # control. Suppress so ``filterwarnings = error`` doesn't promote
+    # it; revisit on the langgraph 0.3 bump.
+    "ignore::DeprecationWarning:langgraph.*",
+    "ignore::PendingDeprecationWarning:langgraph.*",
+    "ignore:.*allowed_objects.*:",
     # ssl.SSLSocket teardown from a long-lived httpx pool (the
     # Anthropic SDK constructs one per ``Anthropic(...)`` instance and
     # holds it for the process lifetime) surfaces as

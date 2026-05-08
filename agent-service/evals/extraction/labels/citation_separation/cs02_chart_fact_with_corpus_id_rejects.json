@@ -1,0 +1,24 @@
+{
+  "case_id": "citation_separation/cs02_chart_fact_with_corpus_id_rejects",
+  "description": "chart_fact claim with a corpus_id citation must be rejected with CITATION_TYPE_MISMATCH (A.5 chart-vs-corpus split).",
+  "claim_type": "chart_fact",
+  "draft": {
+    "text": "The patient's A1c was 7.4%.",
+    "citations": [
+      {
+        "corpus_id": "uspstf/diabetes/chunk-1",
+        "confidence": 0.92
+      }
+    ]
+  },
+  "expected": {
+    "verdict": "reject",
+    "rejection_reason": "citation_type_mismatch"
+  },
+  "metadata": {
+    "covers": "Critic catches a chart claim citing a guideline source.",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}

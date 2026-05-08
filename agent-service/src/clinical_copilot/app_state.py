@@ -162,6 +162,12 @@ class AppState:
     supervisor_intake_extractor: IntakeExtractorFn | None = None
     supervisor_evidence_retriever: EvidenceRetrieverFn | None = None
     supervisor_model: str | None = None
+    # Raw corpus retriever surfaced for the LangGraph supervisor's
+    # evidence_retriever node, which calls the retriever directly
+    # (rather than via the Anthropic ``tool_use`` partial used by the
+    # plain-Python supervisor). ``None`` whenever the corpus index is
+    # unavailable; same fail-soft contract.
+    supervisor_corpus_retriever: CorpusRetriever | None = None
 
 
 def build_app_state(
@@ -324,6 +330,7 @@ def build_app_state(
     # should never crash the app on startup.
     supervisor_intake_extractor: IntakeExtractorFn | None = None
     supervisor_evidence_retriever: EvidenceRetrieverFn | None = None
+    corpus_retriever: CorpusRetriever | None = None
     if supervisor_anthropic is not None:
         try:
             corpus_retriever = CorpusRetriever()
@@ -419,6 +426,7 @@ def build_app_state(
         supervisor_intake_extractor=supervisor_intake_extractor,
         supervisor_evidence_retriever=supervisor_evidence_retriever,
         supervisor_model=settings.model_slow if supervisor_anthropic is not None else None,
+        supervisor_corpus_retriever=corpus_retriever,
     )
 
 

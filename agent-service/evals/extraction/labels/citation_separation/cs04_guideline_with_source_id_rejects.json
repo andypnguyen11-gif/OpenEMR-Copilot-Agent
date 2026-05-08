@@ -1,0 +1,24 @@
+{
+  "case_id": "citation_separation/cs04_guideline_with_source_id_rejects",
+  "description": "guideline claim citing a chart record must be rejected with CITATION_TYPE_MISMATCH \u2014 guidelines never come from a single patient's chart.",
+  "claim_type": "guideline",
+  "draft": {
+    "text": "Annual screening is recommended for adults aged 35 to 70.",
+    "citations": [
+      {
+        "source_id": "Observation/lab-a1c-1",
+        "confidence": 0.9
+      }
+    ]
+  },
+  "expected": {
+    "verdict": "reject",
+    "rejection_reason": "citation_type_mismatch"
+  },
+  "metadata": {
+    "covers": "Critic catches a guideline claim citing a chart record.",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}

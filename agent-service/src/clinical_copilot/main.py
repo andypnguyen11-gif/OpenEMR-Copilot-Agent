@@ -73,6 +73,9 @@ from clinical_copilot.orchestrator.supervisor import (
 from clinical_copilot.orchestrator.supervisor import (
     run as supervisor_run,
 )
+from clinical_copilot.orchestrator.supervisor_langgraph import (
+    run_turn as supervisor_lg_run_turn,
+)
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 from clinical_copilot.tools.records import FlagRecord, ToolResult
 from clinical_copilot.verification.abstention import Abstention, AbstentionState
@@ -607,6 +610,50 @@ def create_app(
                         error=f"{type(exc).__name__}: {exc}",
                     )
                     chart_pack = None
+
+            # W2-07 LangGraph branch (opt-in via USE_LANGGRAPH=true).
+            # Fail-soft: any exception falls through to the plain-Python
+            # supervisor below, which itself falls through to v1
+            # Orchestrator on its own exception path. Two-layer fallback
+            # so flipping the flag on can never strand a request.
+            if (
+                resolved_settings.use_langgraph
+                and resolved_state.supervisor_corpus_retriever is not None
+                and resolved_state.supervisor_model is not None
+            ):
+                try:
+                    sup = supervisor_lg_run_turn(
+                        user_query=body.query,
+                        request_id=request_id,
+                        patient_id=claims.patient_id,
+                        bound_patient_name=bound_patient_name,
+                        planner_client=resolved_state.supervisor_anthropic,
+                        planner_model=resolved_settings.model_fast,
+                        synthesizer_client=resolved_state.supervisor_anthropic,
+                        synthesizer_model=resolved_state.supervisor_model,
+                        critic_client=resolved_state.supervisor_anthropic,
+                        critic_model=resolved_settings.model_fast,
+                        retriever=resolved_state.supervisor_corpus_retriever,
+                        rerank_client=resolved_state.supervisor_anthropic,
+                        rerank_model=resolved_settings.model_fast,
+                        orchestrator=resolved_state.orchestrator,
+                        claims=claims,
+                        session_id=body.session_id,
+                        lane=body.lane,
+                        chart_pack=chart_pack,
+                    )
+                except Exception as exc:
+                    get_logger(__name__).warning(
+                        "supervisor_lg.fallback_to_supervisor",
+                        request_id=request_id,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                else:
+                    return _supervisor_to_agent_response(
+                        sup,
+                        session_id=canonical_id,
+                        chart_pack=chart_pack,
+                    )
 
             try:
                 sup = supervisor_run(

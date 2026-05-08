@@ -1,0 +1,24 @@
+{
+  "case_id": "citation_separation/cs03_guideline_with_corpus_id_accepts",
+  "description": "guideline claim with a corpus_id citation passes the chart-vs-corpus check.",
+  "claim_type": "guideline",
+  "draft": {
+    "text": "USPSTF guidance covers diabetes screening for adults aged 35 to 70.",
+    "citations": [
+      {
+        "corpus_id": "uspstf/diabetes/chunk-2",
+        "confidence": 0.88
+      }
+    ]
+  },
+  "expected": {
+    "verdict": "accept",
+    "rejection_reason": null
+  },
+  "metadata": {
+    "covers": "Guideline claim with guideline citation \u2014 happy path.",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}

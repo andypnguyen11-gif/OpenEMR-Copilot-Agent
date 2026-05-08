@@ -94,6 +94,17 @@ class Settings:
     # on every test/fixture path, so defaulting True here cannot
     # accidentally route a test through the live supervisor.
     use_supervisor: bool = True
+    # Opt-in flag for the W2-07 LangGraph supervisor. When ``True`` AND
+    # ``use_supervisor`` is ``True`` AND every supervisor collaborator
+    # is wired (anthropic client, corpus retriever, model strings), the
+    # slow lane routes through ``supervisor_langgraph.run_turn``. Any
+    # exception falls back to the plain-Python ``supervisor.run`` (which
+    # itself falls back to the v1 Orchestrator on its own exception path),
+    # so flipping this on can never strand a request. Defaults ``False``
+    # for early submission so the production demo path stays on the
+    # currently-deployed plain-Python supervisor unless the env var
+    # is set deliberately.
+    use_langgraph: bool = False
 
     @property
     def is_production(self) -> bool:
@@ -117,6 +128,20 @@ def _load() -> Settings:
     # Railway to roll back without a redeploy. Fast lane is unaffected
     # (side-panel chat keeps its v1 path / ≤5s p50 budget).
     use_supervisor = _optional("USE_SUPERVISOR", "true").strip().lower() in {
+        "true",
+        "1",
+        "yes",
+        "on",
+    }
+
+    # USE_LANGGRAPH gates the W2-07 LangGraph StateGraph supervisor.
+    # Defaults OFF so an env that doesn't set the var keeps the
+    # currently-deployed plain-Python supervisor. Flip to "true" on
+    # Railway to roll the LangGraph path forward. Has no effect when
+    # ``USE_SUPERVISOR`` is false (LangGraph requires the supervisor
+    # branch to be live; the route does not bypass the supervisor
+    # gate to reach LangGraph).
+    use_langgraph = _optional("USE_LANGGRAPH", "false").strip().lower() in {
         "true",
         "1",
         "yes",
@@ -162,6 +187,7 @@ def _load() -> Settings:
         model_fast=model_fast,
         internal_token=internal_token,
         use_supervisor=use_supervisor,
+        use_langgraph=use_langgraph,
     )
 
 

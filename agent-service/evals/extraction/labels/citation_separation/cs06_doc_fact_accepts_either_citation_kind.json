@@ -1,0 +1,24 @@
+{
+  "case_id": "citation_separation/cs06_doc_fact_accepts_either_citation_kind",
+  "description": "doc_fact claims accept either a chart-style source_id (referencing the extracted_facts row, when stored) or a corpus_id (referencing a guideline cross-walk during reconciliation). Permissive in both directions per orchestrator/critic._citation_type_matches.",
+  "claim_type": "doc_fact",
+  "draft": {
+    "text": "The intake form lists penicillin allergy with rash reaction.",
+    "citations": [
+      {
+        "source_id": "ExtractedFact/openemr:doc:42#allergy[0]",
+        "confidence": 0.93
+      }
+    ]
+  },
+  "expected": {
+    "verdict": "accept",
+    "rejection_reason": null
+  },
+  "metadata": {
+    "covers": "doc_fact path is intentionally permissive on citation kind during W2 reconciliation.",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}

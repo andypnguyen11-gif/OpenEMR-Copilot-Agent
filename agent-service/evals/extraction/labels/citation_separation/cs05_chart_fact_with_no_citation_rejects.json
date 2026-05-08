@@ -1,0 +1,19 @@
+{
+  "case_id": "citation_separation/cs05_chart_fact_with_no_citation_rejects",
+  "description": "chart_fact claim with empty citations must be rejected with NO_CITATION (preceeds CITATION_TYPE_MISMATCH in the order \u2014 fastest check first).",
+  "claim_type": "chart_fact",
+  "draft": {
+    "text": "The patient takes metformin 500mg twice daily.",
+    "citations": []
+  },
+  "expected": {
+    "verdict": "reject",
+    "rejection_reason": "no_citation"
+  },
+  "metadata": {
+    "covers": "NO_CITATION fires before chart-vs-corpus on an empty citations list.",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "case_id": "citation_separation/cs01_chart_fact_with_source_id_accepts",
+  "description": "chart_fact claim with a Observation/{id} source_id citation passes the critic's chart-vs-corpus check.",
+  "claim_type": "chart_fact",
+  "draft": {
+    "text": "The patient's most recent A1c was 7.4% on 2026-04-12.",
+    "citations": [
+      {
+        "source_id": "Observation/lab-a1c-1",
+        "confidence": 0.95
+      }
+    ]
+  },
+  "expected": {
+    "verdict": "accept",
+    "rejection_reason": null
+  },
+  "metadata": {
+    "covers": "PRD2 Appendix A.5 / A.6 \u2014 chart claim with chart citation",
+    "review_status": "human_reviewed",
+    "reviewed_at": "2026-05-08",
+    "reviewed_by": "andy"
+  }
+}
