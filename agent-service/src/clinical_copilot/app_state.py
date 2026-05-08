@@ -61,11 +61,11 @@ import structlog
 from anthropic import Anthropic
 
 from clinical_copilot.audit.log import AuditLogWriter
-from clinical_copilot.config import ConfigError
 from clinical_copilot.audit.reader import AuditLogReader
 from clinical_copilot.auth.jwt_verifier import JwtVerifier
 from clinical_copilot.auth.oauth_client import OAuthClient
 from clinical_copilot.auth.session import NonceStore
+from clinical_copilot.config import ConfigError
 from clinical_copilot.corpus.retriever import CorpusRetriever
 from clinical_copilot.data.fhir_client import FhirClient
 from clinical_copilot.db.engine import create_engine_from_url, create_session_factory
@@ -140,6 +140,13 @@ class AppState:
     metrics_service: MetricsService
     audit_reader: AuditLogReader | None
     bridge: AsyncBridge | None
+    # The tool registry the v1 Orchestrator already holds privately
+    # (``orchestrator/agent.py``: ``self._registry``). Surfaced on
+    # AppState so the supervisor branch can build a per-request
+    # :class:`PatientScopedToolRegistry` for the chart-pack pre-fetch
+    # without reaching into the orchestrator's internals. ``None`` on
+    # tests that build AppState directly without a registry.
+    tool_registry: ToolRegistry | None = None
     # Best-effort sync lookup of the bound patient's display name.
     # ``None`` is a valid return — the orchestrator's cross-patient
     # guard treats a missing name as "no comparator available" and
@@ -406,6 +413,7 @@ def build_app_state(
         metrics_service=metrics_service,
         audit_reader=audit_reader,
         bridge=bridge,
+        tool_registry=registry,
         patient_name_resolver=patient_name_resolver,
         supervisor_anthropic=supervisor_anthropic,
         supervisor_intake_extractor=supervisor_intake_extractor,
@@ -472,7 +480,7 @@ def _build_fhir_patient_name_resolver(
             return None
         try:
             patient = bridge.run(fhir.get_patient(patient_id))
-        except Exception:  # noqa: BLE001 — fail-soft by design
+        except Exception:
             return None
         if not patient.name:
             return None

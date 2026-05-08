@@ -27,7 +27,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -297,13 +297,38 @@ def test_query_route_uses_supervisor_when_flagged(audit: _RecordingAudit, monkey
             "expected_value": None,
         },
     ]
+    # No cards: the supervisor's prose only cites the corpus chunk
+    # ``uspstf-lung-2023#chunk-2`` — no chart source_ids appear in
+    # the text. Per the W2-08 card-filtering rule, cards are emitted
+    # only when the supervisor's prose grounds a claim on that
+    # topic's source_ids; a corpus-only answer surfaces zero cards
+    # so the UI doesn't show "Recent labs" boxes for a question
+    # about lung-cancer screening.
     assert body["cards"] == []
+    assert body["tool_results"] == []
     # Evidence worker was called exactly once with the supervisor's query.
     assert evidence_calls == [{"query": "lung cancer screening"}]
-    # No audit rows on the supervisor branch — supervisor's two workers
-    # never touch chart/PHI tools, so there's nothing for the trail to
-    # capture (documented behavior in main.py:query_route).
-    assert audit.events == []
+    # Chart-pack pre-fetch (W2-08) now drives one tool dispatch per
+    # topic on every supervisor request, each writing its own audit
+    # row through the existing :class:`PatientScopedToolRegistry`.
+    # That closes the W2-07 PHI-audit gap: every chart access on the
+    # supervisor branch is logged the same way as on v1.
+    audit_resource_types = sorted({event.resource_type for event in audit.events})
+    assert audit_resource_types == [
+        "get_allergies",
+        "get_labs",
+        "get_meds",
+        "get_notes",
+        "get_problems",
+        "get_visits",
+    ]
+    assert all(event.action == "SUCCESS" for event in audit.events)
+    # Every audit row carries the same request_id so an operator
+    # tracing one request can pull the full PHI-access fan-out.
+    assert {event.request_id for event in audit.events} == {
+        event.request_id for event in audit.events
+    }
+    assert len({event.request_id for event in audit.events}) == 1
 
 
 def test_query_route_supervisor_off_uses_v1_orchestrator(audit: _RecordingAudit) -> None:

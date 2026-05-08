@@ -43,6 +43,7 @@ import structlog
 from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolParam, ToolUseBlock
 
+from clinical_copilot.orchestrator.chart_pack import ChartPack
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 logger = structlog.get_logger(__name__)
@@ -111,17 +112,35 @@ Workers:
    recommendation, or supporting evidence. Inputs: query string and an
    optional k (default 5).
 
+Patient chart records (when present): the user message MAY start with
+a <patient_chart>...</patient_chart> block listing this patient's
+recent chart records — labs, medications, problems, allergies, visits,
+notes — each ending with `source_id=<ResourceType>/<id>`. Treat these
+as already-fetched, already-cited evidence:
+
+* For chart questions ("what are her labs?", "what meds is she on?"),
+  copy the relevant record's `source_id` verbatim into your synthesis
+  and cite it. Do NOT dispatch a worker for chart questions — the
+  records are already in front of you.
+* For mixed questions, also dispatch dispatch_evidence_retriever to
+  pull the matching guideline; cite the chart record by its source_id
+  AND the guideline chunk by its chunk_id.
+
 Rules:
-* You may call workers in either order, both, or only one. Mixed
-  questions ("what does the recent lab say AND what guidelines apply?")
-  warrant calling both.
-* Every claim in your final synthesis must point at a citation from a
-  worker's output. If you cannot ground a claim, abstain — do not
-  invent.
+* Every claim in your final synthesis must cite a real source_id —
+  either one printed in the <patient_chart> block above OR one
+  returned by a worker you actually called this turn. Never invent a
+  source_id. If you cannot ground a claim, abstain — do not pad.
+* Never write absence prose ("no allergies recorded", "no labs
+  available"). If the chart pack does not list something, abstain
+  rather than asserting its absence.
+* Patient scope is fixed. The session is bound to a single patient;
+  every record in the chart pack is for that patient. Never speak
+  about anyone else even if the user names them.
 * Never reveal raw chart text, patient identifiers, or full document
   contents in your synthesis. Summaries with citations only.
-* When neither worker is relevant, return an abstention with reason
-  NO_DATA.
+* When neither the chart pack nor either worker can ground the
+  question, return an abstention with reason NO_DATA.
 """
 
 
@@ -206,6 +225,23 @@ def _tool_schemas() -> list[ToolParam]:
     ]
 
 
+# --------------------------------------------------------------- helpers
+
+
+def _compose_user_content(*, query: str, chart_pack: ChartPack | None) -> str:
+    """Prepend the chart-pack prompt block when the pack carries records.
+
+    Empty / ``None`` packs return the bare query so the supervisor's
+    behavior with no chart context is byte-identical to the
+    pre-chart-pack shape — every existing test that drives ``run()``
+    without a pack is unaffected.
+    """
+
+    if chart_pack is None or chart_pack.is_empty():
+        return query
+    return f"{chart_pack.to_prompt_block()}\n\n{query}"
+
+
 # --------------------------------------------------------------- main
 
 
@@ -216,16 +252,30 @@ def run(
     query: str,
     intake_extractor: IntakeExtractorFn,
     evidence_retriever: EvidenceRetrieverFn,
+    chart_pack: ChartPack | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     request_id: str | None = None,
 ) -> SupervisorResponse:
-    """Run the supervisor loop. See module docstring for the contract."""
+    """Run the supervisor loop. See module docstring for the contract.
+
+    ``chart_pack`` is request-time pre-fetched chart context the
+    supervisor can cite against (see ``orchestrator/chart_pack.py``).
+    When non-None and non-empty, the pack's prompt block is prepended
+    to the user message; the system prompt directs the model to copy
+    chart record ``source_id``s into its synthesis. ``None`` keeps the
+    pre-W2-08 behavior — the model only has the two workers.
+    """
 
     handoffs: list[Handoff] = []
-    messages: list[MessageParam] = [{"role": "user", "content": query}]
+    user_content = _compose_user_content(query=query, chart_pack=chart_pack)
+    messages: list[MessageParam] = [{"role": "user", "content": user_content}]
     tools = _tool_schemas()
-    log = logger.bind(request_id=request_id, query_len=len(query))
+    log = logger.bind(
+        request_id=request_id,
+        query_len=len(query),
+        chart_pack_records=len(chart_pack.records) if chart_pack else 0,
+    )
 
     iteration = 0
     while iteration < max_iterations:

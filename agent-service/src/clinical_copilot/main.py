@@ -13,18 +13,27 @@ shapes only.
 
 from __future__ import annotations
 
-import uuid
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
-
 import tempfile
 import time
+import uuid
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime, timedelta
 from pathlib import Path as PathlibPath
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any
 
 from anthropic import Anthropic
-from fastapi import Body, FastAPI, File, Form, HTTPException, Path, Query, Response, UploadFile, status
+from fastapi import (
+    Body,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, Field
 
 from clinical_copilot import __version__
@@ -40,21 +49,32 @@ from clinical_copilot.documents import store as facts_store
 from clinical_copilot.documents.extractor import (
     DocumentType,
     ExtractorError,
+)
+from clinical_copilot.documents.extractor import (
     extract as run_extraction,
 )
-from clinical_copilot.documents.schemas.citation import ExtractedField
 from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
 from clinical_copilot.orchestrator.agent import UnknownLaneError
+from clinical_copilot.orchestrator.chart_pack import (
+    TOPIC_TO_TOOL,
+    ChartPack,
+    ChartPackRecord,
+    ChartTopic,
+    build_chart_pack,
+)
+from clinical_copilot.orchestrator.cross_patient_guard import cross_patient_check
 from clinical_copilot.orchestrator.lanes import Lane
-from clinical_copilot.orchestrator.schemas import AgentResponse, CitedClaim
+from clinical_copilot.orchestrator.schemas import AgentResponse, Card, CardKind, CitedClaim
 from clinical_copilot.orchestrator.supervisor import (
     Handoff,
     SupervisorResponse,
+)
+from clinical_copilot.orchestrator.supervisor import (
     run as supervisor_run,
 )
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
-from clinical_copilot.tools.records import FlagRecord
+from clinical_copilot.tools.records import FlagRecord, ToolResult
 from clinical_copilot.verification.abstention import Abstention, AbstentionState
 
 if TYPE_CHECKING:
@@ -231,16 +251,33 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info("agent_service.shutdown")
 
 
-def _first_citation_source_id(handoffs: tuple[Handoff, ...]) -> str | None:
-    """Walk supervisor handoffs and return the first citation source_id.
+def _first_citation_source_id(
+    handoffs: tuple[Handoff, ...],
+    *,
+    chart_pack: ChartPack | None = None,
+    synthesized_text: str = "",
+) -> str | None:
+    """Walk supervisor handoffs and chart pack to find a citation anchor.
 
     Used by the supervisor → AgentResponse adapter to anchor the
-    synthesized prose at a real citation. ``evidence_retriever`` chunks
-    expose their citation as ``output["chunks"][i]["chunk_id"]``;
-    ``intake_extractor`` flattens citations into
-    ``output["citations"][i]["source_doc_id"]``. Walk both shapes and
-    return the first non-empty id we see — the adapter abstains rather
-    than emit ungrounded prose if nothing turns up.
+    synthesized prose at a real citation. The lookup runs in two
+    passes:
+
+    1. **Worker-handoff citations.** ``evidence_retriever`` chunks
+       expose their citation as ``output["chunks"][i]["chunk_id"]``;
+       ``intake_extractor`` flattens citations into
+       ``output["citations"][i]["source_doc_id"]``. Walk both shapes
+       and return the first non-empty id we see.
+
+    2. **Chart-pack source_id substring match.** When a chart pack is
+       supplied AND the synthesized text contains a chart-pack
+       ``source_id`` verbatim (the supervisor prompt instructs the
+       model to copy the id), that id is a valid anchor. This is the
+       chart-only case where the supervisor synthesizes a chart
+       answer without dispatching a worker.
+
+    Returns ``None`` when neither pass yields a citation; the adapter
+    then abstains rather than emit ungrounded prose.
     """
 
     for handoff in handoffs:
@@ -261,13 +298,113 @@ def _first_citation_source_id(handoffs: tuple[Handoff, ...]) -> str | None:
                     source_doc_id = citation.get("source_doc_id")
                     if isinstance(source_doc_id, str) and source_doc_id:
                         return source_doc_id
+
+    if chart_pack is not None and synthesized_text:
+        # Substring match against the chart-pack source_ids. The
+        # supervisor's system prompt instructs the model to print the
+        # id verbatim ("source_id=Observation/12345"); a present
+        # source_id therefore means the model grounded its claim in
+        # that record. Match longest-first so a chart pack with both
+        # ``Observation/1`` and ``Observation/10`` doesn't anchor an
+        # answer about #10 to #1.
+        for source_id in sorted(chart_pack.source_ids(), key=len, reverse=True):
+            if source_id in synthesized_text:
+                return source_id
+
     return None
+
+
+# Topic -> (CardKind, display title). The CardKind constants and
+# chart_pack topics share a vocabulary, so the mapping is just a
+# rename for the title; ``_supervisor_to_agent_response`` uses it to
+# materialize one card per non-empty topic on the supervisor's happy
+# path. Fast-lane (v1 orchestrator) cards have always existed; the
+# slow lane needed this bridge so the chat UI renders the same
+# structured surface for both.
+_TOPIC_TO_CARD: dict[str, tuple[str, str]] = {
+    "labs": (CardKind.LABS, "Recent labs"),
+    "meds": (CardKind.MEDS, "Active medications"),
+    "problems": (CardKind.PROBLEMS, "Active problems"),
+    "allergies": (CardKind.ALLERGIES, "Allergies"),
+    "visits": (CardKind.VISITS, "Recent visits"),
+    "notes": (CardKind.NOTES, "Recent notes"),
+}
+
+
+def _chart_pack_surface(
+    chart_pack: ChartPack | None,
+    *,
+    synthesized_text: str,
+) -> tuple[list[Card], list[ToolResult]]:
+    """Project the chart pack into the wire-side cards + tool_results.
+
+    Two design points pinned by the slow-lane chat UX:
+
+    * **Topic relevance**: only emit a card for a topic when the
+      supervisor's synthesized text actually references one of that
+      topic's source_ids. The pre-fetch always fans across all six
+      topics so the LLM has cross-topic context, but the user
+      shouldn't see "Recent labs" cards on a "what meds is this
+      patient on" turn. Filtering by what the model grounded its
+      claim on matches the fast lane's tool-driven topic selection.
+
+    * **Full record details**: chat.js renders each card row by
+      joining ``card.source_ids`` against
+      ``tool_results[*].records`` and calling its summary
+      formatter. Without ``tool_results`` the slow-lane card shows
+      bare source_id strings; passing the original Pydantic records
+      through restores the dose/observed_on/value+unit detail the
+      fast lane already shows.
+
+    Empty / ``None`` packs and packs with no cited source_ids both
+    return ``([], [])`` so the abstention paths can keep their
+    cards-empty / tool_results-empty shape unchanged.
+    """
+
+    if chart_pack is None or chart_pack.is_empty() or not synthesized_text:
+        return ([], [])
+
+    # Bucket records by topic up front so both the citation-presence
+    # check and the per-topic card / tool_result builds walk the
+    # records exactly once.
+    by_topic: dict[ChartTopic, list[ChartPackRecord]] = {}
+    for record in chart_pack.records:
+        by_topic.setdefault(record.topic, []).append(record)
+
+    cards: list[Card] = []
+    tool_results: list[ToolResult] = []
+    for topic, (kind, title) in _TOPIC_TO_CARD.items():
+        bucket = by_topic.get(topic)
+        if not bucket:
+            continue
+        if not any(item.source_id in synthesized_text for item in bucket):
+            # Topic was pre-fetched but the supervisor's prose never
+            # cited it. Skip — the user's question wasn't about this
+            # topic and surfacing it would clutter the response.
+            continue
+        cards.append(
+            Card(
+                title=title,
+                kind=kind,
+                source_ids=[item.source_id for item in bucket],
+            ),
+        )
+        tool_name = TOPIC_TO_TOOL[topic]
+        tool_results.append(
+            ToolResult(
+                tool_name=tool_name,
+                patient_id=chart_pack.patient_id,
+                records=[item.record for item in bucket],
+            ),
+        )
+    return (cards, tool_results)
 
 
 def _supervisor_to_agent_response(
     sup: SupervisorResponse,
     *,
     session_id: str,
+    chart_pack: ChartPack | None = None,
 ) -> AgentResponse:
     """Adapt a :class:`SupervisorResponse` to the wire :class:`AgentResponse`.
 
@@ -306,8 +443,12 @@ def _supervisor_to_agent_response(
             session_id=session_id,
         )
 
-    anchor = _first_citation_source_id(sup.handoffs)
     text = sup.synthesized_text.strip()
+    anchor = _first_citation_source_id(
+        sup.handoffs,
+        chart_pack=chart_pack,
+        synthesized_text=text,
+    )
     if not anchor or not text:
         return AgentResponse(
             cards=[],
@@ -320,10 +461,14 @@ def _supervisor_to_agent_response(
             session_id=session_id,
         )
 
+    cards, tool_results = _chart_pack_surface(
+        chart_pack,
+        synthesized_text=text,
+    )
     return AgentResponse(
-        cards=[],
+        cards=cards,
         prose=[CitedClaim(text=text, source_id=anchor)],
-        tool_results=[],
+        tool_results=tool_results,
         session_id=session_id,
     )
 
@@ -386,13 +531,13 @@ def create_app(
         # W2-07 supervisor branch. Slow-lane traffic with the supervisor
         # wiring populated (real Anthropic client + corpus index loaded)
         # routes through :func:`supervisor_run`; fast lane and any
-        # missing piece falls through to v1 Orchestrator. Audit-log
-        # writes are intentionally absent on this branch — the
-        # supervisor's two workers (``intake_extractor``,
-        # ``evidence_retriever``) touch only document files and the
-        # public guideline corpus, not patient-bound chart records, so
-        # there is no PHI access for the audit trail to capture.
-        # Supervisor exceptions fall through to v1 (fail-soft).
+        # missing piece falls through to v1 Orchestrator. Each
+        # ``build_chart_pack`` dispatch goes through the existing
+        # :class:`PatientScopedToolRegistry`, which writes a per-tool
+        # audit row before any record leaves the tool layer — so the
+        # supervisor branch's PHI-audit gap (called out in the W2-07
+        # commit) closes automatically once the registry is on the
+        # path. Supervisor exceptions fall through to v1 (fail-soft).
         if (
             resolved_settings.use_supervisor
             and body.lane == Lane.SLOW
@@ -411,6 +556,58 @@ def create_app(
                 claims, body.session_id,
             )
             resolved_state.session_store.release(claims, canonical_id)
+
+            # Cross-patient guard: lifted from the v1 Orchestrator
+            # (``orchestrator/agent.py:284-300``) onto the supervisor
+            # branch so a "patient X" / "X's labs" query against a
+            # bound session for someone else short-circuits before the
+            # chart-pack pre-fetch and supervisor LLM round-trips run.
+            # Skipped when ``bound_patient_name`` is missing — same
+            # fail-soft policy as v1.
+            guard_reason = cross_patient_check(body.query, bound_patient_name)
+            if guard_reason is not None:
+                return AgentResponse(
+                    cards=[],
+                    prose=[],
+                    tool_results=[],
+                    abstention=Abstention(
+                        state=AbstentionState.NO_DATA,
+                        reason=guard_reason,
+                    ),
+                    session_id=canonical_id,
+                )
+
+            # Pre-fetch chart pack so the supervisor can cite chart
+            # records by their FHIR ``ResourceType/{id}`` source_id
+            # without breaking the locked "2 workers + 2 tool_use
+            # tools" supervisor contract. ``tool_registry`` is None
+            # only in tests that bypass ``build_app_state``; in that
+            # case the pack stays empty and the supervisor behaves as
+            # it did before — corpus-only.
+            chart_pack: ChartPack | None = None
+            if resolved_state.tool_registry is not None:
+                scoped_registry = resolved_state.tool_registry.scoped_for(
+                    claims.patient_id,
+                )
+                try:
+                    chart_pack = await build_chart_pack(
+                        scoped_registry=scoped_registry,
+                        claims=claims,
+                        request_id=request_id,
+                    )
+                except Exception as exc:
+                    # A patient-mismatch wiring bug (UnauthorizedToolCallError)
+                    # would also land here. Log loudly and continue —
+                    # an empty chart pack falls through to NO_DATA on
+                    # any chart question, which is the right answer
+                    # when the registry can't serve this patient.
+                    get_logger(__name__).warning(
+                        "chart_pack.build_failed",
+                        request_id=request_id,
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
+                    chart_pack = None
+
             try:
                 sup = supervisor_run(
                     client=resolved_state.supervisor_anthropic,
@@ -418,16 +615,21 @@ def create_app(
                     query=body.query,
                     intake_extractor=resolved_state.supervisor_intake_extractor,
                     evidence_retriever=resolved_state.supervisor_evidence_retriever,
+                    chart_pack=chart_pack,
                     request_id=request_id,
                 )
-            except Exception as exc:  # noqa: BLE001 — fail-soft fallback to v1
+            except Exception as exc:
                 get_logger(__name__).warning(
                     "supervisor.fallback_to_v1",
                     request_id=request_id,
                     error=f"{type(exc).__name__}: {exc}",
                 )
             else:
-                return _supervisor_to_agent_response(sup, session_id=canonical_id)
+                return _supervisor_to_agent_response(
+                    sup,
+                    session_id=canonical_id,
+                    chart_pack=chart_pack,
+                )
 
         try:
             return resolved_state.orchestrator.run(
@@ -694,10 +896,8 @@ def create_app(
                     detail=f"extraction failed: {exc}",
                 ) from exc
         finally:
-            try:
+            with suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
