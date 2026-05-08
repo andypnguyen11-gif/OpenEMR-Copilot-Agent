@@ -192,22 +192,11 @@
             body.session_id = currentSessionId;
         }
 
-        fetch(queryUrl, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "apicsrftoken": csrfToken
-            },
-            body: JSON.stringify(body)
-        }).then(function (resp) {
-            return resp.json().then(function (jsonBody) {
-                return { status: resp.status, body: jsonBody };
-            }).catch(function () {
-                return { status: resp.status, body: null };
-            });
-        }).then(function (result) {
+        // One silent retry on a 200-with-empty-body response — same
+        // truncation issue chat.js handles. Spinner copy updates so
+        // the user sees we noticed; the original error only renders
+        // if both attempts come back empty.
+        postQueryWithRetry(queryUrl, csrfToken, body, spinner).then(function (result) {
             spinner.remove();
             if (result.status >= 200 && result.status < 300 && result.body) {
                 if (typeof result.body.session_id === "string" && result.body.session_id !== "") {
@@ -246,6 +235,43 @@
         thread.appendChild(spinner);
         thread.scrollTop = thread.scrollHeight;
         return spinner;
+    }
+
+    /**
+     * One-retry POST helper. Mirrors chat.js — on a 200 status with
+     * an empty / unparsable body, retry once silently with the
+     * spinner text bumped to "Still thinking…" so the user knows
+     * we're still working. The renderError path only fires when
+     * both attempts come back empty (a real outage, vs. a transient
+     * proxy truncation).
+     */
+    function postQueryWithRetry(url, csrfToken, body, spinner) {
+        const attempt = function () {
+            return fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "apicsrftoken": csrfToken
+                },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                return resp.json().then(function (parsed) {
+                    return { status: resp.status, body: parsed };
+                }).catch(function () {
+                    return { status: resp.status, body: null };
+                });
+            });
+        };
+        return attempt().then(function (first) {
+            const got200ButEmpty = first.status >= 200 && first.status < 300 && !first.body;
+            if (!got200ButEmpty) {
+                return first;
+            }
+            spinner.textContent = "Still thinking…";
+            return attempt();
+        });
     }
 
     function clearEmpty() {

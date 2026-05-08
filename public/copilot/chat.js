@@ -228,22 +228,18 @@
             body.session_id = currentSessionId;
         }
 
-        fetch(queryUrl, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "apicsrftoken": csrfToken
-            },
-            body: JSON.stringify(body)
-        }).then(function (resp) {
-            return resp.json().then(function (body) {
-                return { status: resp.status, body: body };
-            }).catch(function () {
-                return { status: resp.status, body: null };
-            });
-        }).then(function (result) {
+        // Slow-lane composite queries take 10-12s through LangGraph,
+        // long enough that an intermediate proxy / NAT timeout
+        // occasionally truncates the response: status 200, headers
+        // arrive, but the JSON body is empty / partial → resp.json()
+        // throws → body=null. The user has been retrying manually
+        // and the second attempt usually works, so do that retry
+        // silently before showing an error. Spinner stays up; only
+        // the spinner text changes so the user knows we noticed and
+        // are trying again. One retry max — repeated transient
+        // failures probably mean a real outage and surfacing the
+        // original error is correct then.
+        postQueryWithRetry(queryUrl, csrfToken, body, spinner).then(function (result) {
             spinner.remove();
             if (result.status >= 200 && result.status < 300 && result.body) {
                 if (typeof result.body.session_id === "string" && result.body.session_id !== "") {
@@ -291,6 +287,48 @@
         thread.appendChild(spinner);
         thread.scrollTop = thread.scrollHeight;
         return spinner;
+    }
+
+    /**
+     * POST the query and retry exactly once on a 200-with-empty-body
+     * response. Resolves to ``{status, body}`` from whichever attempt
+     * succeeds first; if both attempts return null body, resolves to
+     * the second attempt's result so the caller can render the error.
+     * Network-level failures (DNS, TLS, fetch reject) skip the retry
+     * and reject normally so the caller's catch handler renders the
+     * fallback message.
+     */
+    function postQueryWithRetry(url, csrfToken, body, spinner) {
+        const attempt = function () {
+            return fetch(url, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "apicsrftoken": csrfToken
+                },
+                body: JSON.stringify(body)
+            }).then(function (resp) {
+                return resp.json().then(function (parsed) {
+                    return { status: resp.status, body: parsed };
+                }).catch(function () {
+                    return { status: resp.status, body: null };
+                });
+            });
+        };
+        return attempt().then(function (first) {
+            const got200ButEmpty = first.status >= 200 && first.status < 300 && !first.body;
+            if (!got200ButEmpty) {
+                return first;
+            }
+            // Stay silent toward the user — only update the spinner
+            // copy so a watcher knows progress is still happening.
+            // Don't re-append; the spinner element still belongs to
+            // the thread.
+            spinner.textContent = "Still thinking…";
+            return attempt();
+        });
     }
 
     function clearEmpty() {
