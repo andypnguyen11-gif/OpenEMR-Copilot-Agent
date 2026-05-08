@@ -78,9 +78,10 @@ agent-service:eval-gate:
     changes:
     - agent-service/**/*
     - .gitlab-ci.yml
-  variables:
-    # Pulled from the masked, protected CI/CD variable.
-    ANTHROPIC_API_KEY: $ANTHROPIC_API_KEY
+  # ANTHROPIC_API_KEY comes from the project-level masked CI/CD
+  # variable. We do NOT redeclare it in a job-level `variables:`
+  # block — that pattern self-references and was observed to mangle
+  # the value to where Anthropic returned 401 invalid-x-api-key.
   script:
   - |
     if [ -z "${ANTHROPIC_API_KEY}" ]; then
@@ -88,6 +89,11 @@ agent-service:eval-gate:
       echo "Configure under Settings → CI/CD → Variables (masked + protected)."
       exit 1
     fi
+    # Diagnostic: emit non-sensitive shape info so we can see if the
+    # value is being mangled in transit. The key prefix `sk-ant-` is
+    # public; anything else is a length count.
+    echo "ANTHROPIC_API_KEY length: ${#ANTHROPIC_API_KEY}"
+    echo "ANTHROPIC_API_KEY prefix: ${ANTHROPIC_API_KEY:0:7}"
    # Fail fast on label/manifest drift before spending tokens.
   - make eval-labels-validate
     # Full 50-case live gate — boolean rubrics, baseline regression.
