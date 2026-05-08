@@ -103,7 +103,7 @@ $panelSize = 7;
 $panelRows = QueryUtils::fetchRecords(
     'SELECT pid, fname, lname, DOB, sex, uuid FROM patient_data '
     . 'WHERE providerID = ? AND providerID != 0 '
-    . 'ORDER BY pid '
+    . 'ORDER BY date DESC, pid DESC '
     . 'LIMIT ' . $panelSize,
     [$authUserId],
 );
