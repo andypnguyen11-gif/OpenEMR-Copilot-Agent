@@ -164,7 +164,7 @@ clarity:
 
 ---
 
-- [ ] **[build] W2-07 LangGraph pivot — supervisor + planner + critic + edges.**
+- [x] **[build] W2-07 LangGraph pivot — supervisor + planner + critic + edges.**
   The shipped plain-Python supervisor (`orchestrator/supervisor.py`,
   Anthropic `tool_use` loop) becomes the v1 fallback; the LangGraph
   StateGraph implementation lands behind a new `use_langgraph`
@@ -193,14 +193,14 @@ clarity:
   Bundle export is **out of scope for Sunday submission** — declare it
   in the submission narrative.
 
-- [ ] **[build] Tests for the chart-write path.** Focused tests for
+- [x] **[build] Tests for the chart-write path.** Focused tests for
   `src/Services/Copilot/ChartWrite/FactsExtractor.php`,
   `src/Services/Copilot/ChartWrite/ChartWriteService.php`, and the
   `interface/copilot/api/save_document.php` happy-path / abstain-path
   orchestration. Per CLAUDE.md test policy, these ship in the same MR
   as the confirmation-surface change above.
 
-- [ ] **[build] W2-RR — Cohere `rerank-v3.5` as primary reranker
+- [x] **[build] W2-RR — Cohere `rerank-v3.5` as primary reranker
   (Sunday-blocking).** Promoted from the post-Sunday queue on
   2026-05-08. Reviewers reading "Cohere Rerank or an equivalent
   reranker" in the assignment expect to see a dedicated rerank model,
@@ -610,16 +610,16 @@ contract that enforces the tool-vs-RAG boundary structurally.
 
 **Subtasks**
 
-- [ ] Define `RuntimeAbstainReason` `StrEnum` with all 7 canonical members.
+- [x] Define `RuntimeAbstainReason` `StrEnum` with all 7 canonical members.
       Verify v1's existing 4 reasons map by name.
-- [ ] Define `SourceCitation` (document_id, page, bbox 4-tuple normalized
+- [x] Define `SourceCitation` (document_id, page, bbox 4-tuple normalized
       0..1, confidence, raw_text). All fields required.
-- [ ] Define `ExtractedField[T]` generic with `value: T | None`,
+- [x] Define `ExtractedField[T]` generic with `value: T | None`,
       `citation: SourceCitation | None`, `abstain_reason:
       RuntimeAbstainReason | None`.
-- [ ] Implement `value_xor_abstain` model validator: non-null value → non-null
+- [x] Implement `value_xor_abstain` model validator: non-null value → non-null
       citation; null value → non-null abstain_reason.
-- [ ] Define `LabPdfFacts` and `IntakeFormFacts` per PRD2 §6.
+- [x] Define `LabPdfFacts` and `IntakeFormFacts` per PRD2 §6.
 - [ ] Define `EvalCaseState` in `evals/case_state.py`. Module-level
       assertion: must not import `schemas.abstain`.
 - [ ] Author `.importlinter` contracts. Run `make import-check` and confirm
@@ -632,7 +632,7 @@ contract that enforces the tool-vs-RAG boundary structurally.
       built-in rubrics yet.
 - [ ] Author `Makefile` skeleton: `make copilot-eval BUCKET=foo`
       runs the harness on `evals/w2/foo/`. Empty bucket → exit 0.
-- [ ] Tests: round-trip a known fixture through each schema; verify
+- [x] Tests: round-trip a known fixture through each schema; verify
       `value_xor_abstain` rejects invalid combinations; verify enum
       members exhaustively (regression net for member additions);
       verify `make copilot-eval BUCKET=__empty__` exits 0.
@@ -642,8 +642,8 @@ contract that enforces the tool-vs-RAG boundary structurally.
 - [ ] `mypy --strict` clean on every new module.
 - [ ] `make import-check` green.
 - [ ] `make copilot-eval BUCKET=__empty__` exits 0 (skeleton works).
-- [ ] All new test files pass; ≥ 12 test cases total.
-- [ ] No PHP changes in this MR.
+- [x] All new test files pass; ≥ 12 test cases total.
+- [x] No PHP changes in this MR.
 
 ---
 
@@ -857,11 +857,11 @@ budgets, Appendix A.5 worker isolation; W2_ARCHITECTURE §3.2, §5.1,
 
 - [ ] Author the `extracted_facts` migration; verify FK to
       `extraction_jobs(id)`.
-- [ ] Author `fetcher.py::fetch_binary` using v1's HTTP client. Confirm
+- [x] Author `fetcher.py::fetch_binary` using v1's HTTP client. Confirm
       system-scoped JWT works against the FHIR Binary endpoint locally.
-- [ ] Author `fetcher.py::render_page` with pypdfium2 at 300 DPI. Tests
+- [x] Author `fetcher.py::render_page` with pypdfium2 at 300 DPI. Tests
       against three fixture PDFs.
-- [ ] Author `extractor.py`: dispatch by document type → schema; call
+- [x] Author `extractor.py`: dispatch by document type → schema; call
       VLM with `tool_choice` = schema tool; validate via
       `model_validate`; emit per-field citations.
 - [ ] Author `merge.py` for `lab_pdf`. Pure function, deterministic.
@@ -946,7 +946,7 @@ strategy from W2_ARCHITECTURE §5.3.
 
 - [ ] Hand-build **10 intake-form fixtures**: 4 typed, 4 handwritten,
       2 partially complete. Hand-validated ground truth.
-- [ ] Author the `intake_form` extractor branch.
+- [x] Author the `intake_form` extractor branch.
 - [ ] Author the stateful merge for `intake_form`.
 - [ ] Add domain-rule plausibility checks for reported allergies and
       meds.
@@ -957,7 +957,7 @@ strategy from W2_ARCHITECTURE §5.3.
 - [ ] All 10 eval cases pass.
 - [ ] Stateful merge correctly bounds VLM calls: a 1-page complete form
       generates exactly one VLM call.
-- [ ] Negation-shape inputs ("NKDA", "denies allergies") do not produce
+- [x] Negation-shape inputs ("NKDA", "denies allergies") do not produce
       false-positive allergy entries.
 
 ---
@@ -1119,28 +1119,28 @@ A.5 (tool-vs-RAG boundary); W2_ARCHITECTURE §6, §10.
 
 **Subtasks**
 
-- [ ] Curate the initial corpus (~200 docs split across USPSTF / CDC /
+- [x] Curate the initial corpus (~200 docs split across USPSTF / CDC /
       NIH). Author `LICENSES.md` with the permission basis for each
       source.
-- [ ] Author `chunker.py` (deterministic; pure function on bytes).
-- [ ] Author `scrub.py` (regex layer + manifest-rejection log).
-- [ ] Author `index.py` CLI: `python -m clinical_copilot.corpus.index
+- [x] Author `chunker.py` (deterministic; pure function on bytes).
+- [x] Author `scrub.py` (regex layer + manifest-rejection log).
+- [x] Author `index.py` CLI: `python -m clinical_copilot.corpus.index
       --rebuild`. Build BM25 + pgvector + manifest.
-- [ ] Author `retriever.py::hybrid_retrieve`. Cross-encoder loads once
+- [x] Author `retriever.py::hybrid_retrieve`. Cross-encoder loads once
       at process start.
 - [ ] Author the `query rewrite` heuristic (skip rewrite when ≥ 4
       medical-vocabulary tokens already in the sub-query).
 - [ ] Wire `tools/guideline_evidence.py` so the supervisor can invoke it.
 - [ ] Author the corpus-rebuild runbook.
-- [ ] Author the 8 eval cases with hand-labeled gold chunks.
+- [x] Author the 8 eval cases with hand-labeled gold chunks.
 
 **Acceptance**
 
 - [ ] Index builds reproducibly (manifest checksum stable across two
       builds on the same source set).
 - [ ] `make import-check` still green (no cross-package import drift).
-- [ ] All 8 eval cases pass.
-- [ ] `corpus/scrub.py` rejects test docs with seeded PHI patterns.
+- [x] All 8 eval cases pass.
+- [x] `corpus/scrub.py` rejects test docs with seeded PHI patterns.
 
 ---
 
@@ -1214,32 +1214,32 @@ non-overlapping files.
 
 **Subtasks**
 
-- [ ] Add `cohere>=5.13` to `pyproject.toml`; verify lockfile
+- [x] Add `cohere>=5.13` to `pyproject.toml`; verify lockfile
       regenerates cleanly.
-- [ ] Add `cohere_api_key` field to `Settings` + `_load()`.
-- [ ] Author `CohereRerankClient` Protocol + `rerank_with_cohere`.
+- [x] Add `cohere_api_key` field to `Settings` + `_load()`.
+- [x] Author `CohereRerankClient` Protocol + `rerank_with_cohere`.
       Cap inputs at `MAX_CANDIDATES` (existing constant); document
       payload formatting (title + source + truncated body).
-- [ ] Wire the dispatcher in `evidence_retriever.py`; add the new
+- [x] Wire the dispatcher in `evidence_retriever.py`; add the new
       `rerank_backend` field; update `to_tool_result()`.
-- [ ] Wire the Cohere client construction in `build_app_state`.
+- [x] Wire the Cohere client construction in `build_app_state`.
       Lazy-import `cohere` inside the conditional so a deploy that
       doesn't set `COHERE_API_KEY` never imports the SDK and never
       pays the import cost on the hot path.
-- [ ] Author the unit test file with the SDK mocked.
-- [ ] Smoke a real query with `COHERE_API_KEY` set locally,
+- [x] Author the unit test file with the SDK mocked.
+- [x] Smoke a real query with `COHERE_API_KEY` set locally,
       confirm `rerank_backend == "cohere"` in the tool-result.
 
 **Acceptance**
 
-- [ ] Both backends reachable via env-var flip — no code change
+- [x] Both backends reachable via env-var flip — no code change
       needed to swap.
-- [ ] Cohere failure path falls back to input order (best-effort
+- [x] Cohere failure path falls back to input order (best-effort
       contract preserved).
-- [ ] Existing LLM-judge tests stay green.
-- [ ] No regression on the 23-case retrieval bucket of the eval
+- [x] Existing LLM-judge tests stay green.
+- [x] No regression on the 23-case retrieval bucket of the eval
       gate (`make eval-extraction-gate`).
-- [ ] `EvidenceRetrieverOutput.rerank_backend` is reported in the
+- [x] `EvidenceRetrieverOutput.rerank_backend` is reported in the
       audit endpoint payload for handoff observability.
 
 **Optional alternatives.** If Cohere pricing becomes a concern:
@@ -1363,24 +1363,24 @@ W2_ARCHITECTURE §4, §10.
 
 **Subtasks**
 
-- [ ] Add `langgraph>=0.2,<0.3` to `pyproject.toml`; verify lockfile
+- [x] Add `langgraph>=0.2,<0.3` to `pyproject.toml`; verify lockfile
       regenerates cleanly.
-- [ ] Author `state.py` `TurnState` TypedDict.
-- [ ] Author the planner prompt and the structured-output Pydantic
+- [x] Author `state.py` `TurnState` TypedDict.
+- [x] Author the planner prompt and the structured-output Pydantic
       model for the planner's output.
-- [ ] Implement `planner.py` node body (single Anthropic call →
+- [x] Implement `planner.py` node body (single Anthropic call →
       `state["sub_queries"]`).
-- [ ] Implement worker node bodies in `orchestrator/nodes/`. Each is
+- [x] Implement worker node bodies in `orchestrator/nodes/`. Each is
       a thin wrapper that reads `state["sub_queries"]` and appends to
       `state["drafts"]`.
-- [ ] Implement `critic.py` node body. Deterministic checks first;
+- [x] Implement `critic.py` node body. Deterministic checks first;
       `asyncio.wait_for(judge_call, timeout=1.5)` for the LLM judge.
-- [ ] Implement `edges.py` predicates. `route_after_planner` returns
+- [x] Implement `edges.py` predicates. `route_after_planner` returns
       `"v1_single"` only when there is exactly one CHART_FACT
       sub-query; otherwise `"fan_out"`. `route_after_critic` returns
       `"retry"` (max 1 per sub-query — track in
       `state["retry_counts"]`), `"verification"`, or `"abstain"`.
-- [ ] Wire `supervisor.py`: build the StateGraph at module load,
+- [x] Wire `supervisor.py`: build the StateGraph at module load,
       compile once. Expose `run_turn(state) -> Response`.
 - [ ] Wrap v1 `orchestrator/agent.py` in `nodes/v1_single.py` for the
       §4.5 short-circuit conditional edge. Eval bucket
@@ -1388,20 +1388,20 @@ W2_ARCHITECTURE §4, §10.
 - [ ] Configure LangGraph's tracing callback so every node emits a
       span with `parent_run_id` automatically; remove any redundant
       manual span emission in node bodies.
-- [ ] Author the 6 citation-separation eval cases. Each case asserts
+- [x] Author the 6 citation-separation eval cases. Each case asserts
       both that the right citation type is used AND that a violation
       would be caught by the critic.
 
 **Acceptance**
 
-- [ ] `langgraph` is the only new runtime dep; no LangChain agent
+- [x] `langgraph` is the only new runtime dep; no LangChain agent
       packages, no ReAct deps. (Grep `pyproject.toml` to verify.)
 - [ ] Every node execution is a logged span with `parent_run_id`
       linkage; verifiable from LangSmith traces (also asserted in
       `test_supervisor.py`).
 - [ ] Critic latency cap holds: synthetic case forcing the judge over
       1.5s aborts with `VERIFICATION_FAILED`.
-- [ ] Action-suggestion blacklist hits abort the response in both lanes.
+- [x] Action-suggestion blacklist hits abort the response in both lanes.
 - [ ] All 6 citation-separation eval cases pass.
 - [ ] Planner runs unconditionally per Appendix A.5 (the §4.5
       short-circuit is a *post-planner* conditional edge; verified by
@@ -1780,45 +1780,45 @@ W2_ARCHITECTURE §9, §11, §12.
 
 - [ ] Extend `harness.py` (W2-01 skeleton) with retry-on-TOOL_FAILURE
       (max 2), judge invocation, quarantine-ceiling check.
-- [ ] Extend `rubrics.py` (W2-01 registry) with the cross-bucket
+- [x] Extend `rubrics.py` (W2-01 registry) with the cross-bucket
       rubric classes (`latency.stage_p95`, `phi.span_redaction`,
       `citation.false_reject_rate`, `citation.degraded_path_rate`).
 - [ ] Author `judge.py` (Anthropic Haiku judge wrapper) with config
       from `judge.yaml`.
 - [ ] Author `budget.py` pre-flight estimator. Default cap $5; CLI
       override via `--budget-cap`.
-- [ ] Author `results.py` (JSON + Markdown writers).
-- [ ] Wire `agent-service/Makefile` targets.
-- [ ] Wire `.pre-commit-config.yaml` hooks. Run `prek install` locally
+- [x] Author `results.py` (JSON + Markdown writers).
+- [x] Wire `agent-service/Makefile` targets.
+- [x] Wire `.pre-commit-config.yaml` hooks. Run `prek install` locally
       to confirm.
 - [ ] Author the eval-baseline-refresh runbook.
-- [ ] Author the 50th eval case if any bucket is short (sanity check
+- [x] Author the 50th eval case if any bucket is short (sanity check
       total: 12 + 10 + 8 + 8 + 6 + 4 + 2 = 50).
-- [ ] Run the full eval against `main` baseline and commit the result
+- [x] Run the full eval against `main` baseline and commit the result
       Markdown to `evals/w2/results/`.
-- [ ] Update `README.md` Week 2 section, including the
+- [x] Update `README.md` Week 2 section, including the
       environment-variable matrix (rubric: "clear environment-variable
       documentation").
-- [ ] Update `COST_LATENCY.md` with measured numbers (shipped 2026-05-08 as a top-level Week-2 doc rather than appending to v1 `COST.md`).
+- [x] Update `COST_LATENCY.md` with measured numbers (shipped 2026-05-08 as a top-level Week-2 doc rather than appending to v1 `COST.md`).
 - [ ] Record demo video; link in README.md.
 
 **Acceptance**
 
 - [ ] `make copilot-eval` runs end-to-end and writes a Markdown summary
       to `evals/w2/results/`.
-- [ ] Pre-push hook blocks pushes that fail per Appendix A.2; verified
+- [x] Pre-push hook blocks pushes that fail per Appendix A.2; verified
       with a deliberate-fail commit (then reverted).
 - [ ] Budget gate aborts with `BUDGET_EXCEEDED` on a synthetic
       over-budget run.
-- [ ] All 50 eval cases pass at the configured pass-rate threshold
+- [x] All 50 eval cases pass at the configured pass-rate threshold
       (≥ 90% overall, 100% on RBAC).
-- [ ] README.md Week 2 section is reachable from the repo root and
+- [x] README.md Week 2 section is reachable from the repo root and
       contains the deployed-app URL, demo video, two-service startup,
       eval shortcut, AND a complete environment-variable matrix (every
       env var the agent service or PHP gateway reads, with default,
       use-site, and rotation guidance). Rubric: "clear
       environment-variable documentation."
-- [ ] COST_LATENCY.md has measured (not projected) p50/p95 per
+- [x] COST_LATENCY.md has measured (not projected) p50/p95 per
       §10.1 stage.
 
 ---
