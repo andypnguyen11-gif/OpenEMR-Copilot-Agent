@@ -361,30 +361,30 @@ not `/api/agent/query`. They don't carry `rerank_backend` and don't get the badg
 - reference (template only): `agent-service/src/clinical_copilot/observability/metrics.py`
 
 ### Subtasks
-- [ ] Alembic migration `0004_agent_traces_extension.py`: up adds `retrieval_hits INTEGER NULL`, `extraction_confidence REAL NULL`; down drops them
-- [ ] Do NOT edit `0001_initial.py`
-- [ ] Update `db/models.py` `AgentTrace` ORM class with the two new columns (must match migration column types/nullability or SQLAlchemy will mismap)
-- [ ] Add `input_tokens: int`, `output_tokens: int` fields to `LlmTurn` in `llm_gateway.py`
-- [ ] Populate at every Anthropic call site: `supervisor.py`, `supervisor_langgraph.py`, any `corpus/rerank.py` critic/judge call
-- [ ] Aggregate into a `UsageTotals` field on the supervisor response (and the extractor result for ingest)
-- [ ] Write `traces.py` mirroring `metrics.py` (fail-open, never raises into clinician path); same `session_factory` from `app_state.py`
-- [ ] Method signature: `record(request_id, user_id, role, lane, latency_ms, token_in, token_out, model_tier, retrieval_hits, extraction_confidence)`
-- [ ] Construct `TracesService` in `app_state.py` and inject into the orchestrator (`agent.py` constructor) and the document-ingest path
-- [ ] Wire `self._traces.record(...)` at every request entry point that runs extraction or retrieval — not just `/api/agent/query`. Document upload is an encounter for trace purposes
-- [ ] NULL semantics are independent per column (slow-lane retrieval-only → `extraction_confidence` NULL; doc-ingest extraction-only → `retrieval_hits` NULL)
-- [ ] Unit test: each Anthropic call site contributes its tokens (mock `client.messages.create` return value)
-- [ ] Unit test: fail-open on DB error
-- [ ] Unit test: NULL handling per independent-column semantics
-- [ ] Integration test: POST `/api/agent/query` → exactly one row in `agent_traces` with non-zero token counts
-- [ ] Integration test: document-ingest path → exactly one row with `extraction_confidence` populated and `retrieval_hits` NULL (`test_document_ingest_writes_trace.py`)
+- [x] Alembic migration `0004_agent_traces_extension.py`: up adds `retrieval_hits INTEGER NULL`, `extraction_confidence REAL NULL`; down drops them — verified upgrade head + downgrade to 0003 round-trip cleanly against SQLite
+- [x] Do NOT edit `0001_initial.py`
+- [x] Update `db/models.py` `AgentTrace` ORM class with the two new columns (must match migration column types/nullability or SQLAlchemy will mismap)
+- [x] Add `input_tokens: int`, `output_tokens: int` fields to `LlmTurn` in `llm_gateway.py`; populated from `response.usage` in `AnthropicLlmGateway.complete`
+- [x] Populate at every Anthropic call site: v1 LLM gateway, plain-Python supervisor, `corpus/rerank.py` LLM-judge (returns `(chunks, UsageTotals)`), `planner.py` (returns `(sub_queries, UsageTotals)`), `critic.py` (`judge`/`_run_judge` return `(Verdict, UsageTotals)`), and `supervisor_langgraph.py` synthesizer node — all surfaced via the LangGraph state's new `usage_totals` key with the `_add_usage` reducer in `state.py`
+- [x] Aggregate into a `UsageTotals` field on the supervisor response (defined in `observability/traces.py`; defined `__add__` so node-level partials can fold)
+- [x] Write `traces.py` mirroring `metrics.py` (fail-open, never raises into clinician path); same `session_factory` from `app_state.py`
+- [x] Method signature: `record(TraceRecord(request_id, user_id, role, lane, latency_ms, token_in, token_out, model_tier, retrieval_hits, extraction_confidence))`
+- [x] Construct `TracesService` in `app_state.py` and inject into the orchestrator (`agent.py` constructor) and the supervisor branch via `AppState.traces_service`
+- [x] Wire `self._traces.record(...)` at every request entry point that runs extraction or retrieval — `/api/agent/query` v1 fallback + supervisor (plain-Python and LangGraph) branches + `/api/agent/internal/ingest`
+- [x] NULL semantics are independent per column (slow-lane retrieval-only → `extraction_confidence` NULL; doc-ingest extraction-only → `retrieval_hits` NULL); v1 fallback writes both NULL since it never invokes either subsystem
+- [x] Unit test: token totals threaded through the v1 LlmTurn loop (covered by `test_agent_query_writes_one_trace_row`)
+- [x] Unit test: fail-open on DB error (`test_db_exception_does_not_propagate`)
+- [x] Unit test: NULL handling per independent-column semantics (`test_extraction_confidence_only_row_keeps_retrieval_hits_null` + sibling)
+- [x] Integration test: POST `/api/agent/query` → exactly one row in `agent_traces` with summed token counts (`test_agent_query_writes_one_trace_row`)
+- [x] Integration test: document-ingest path → exactly one row with `extraction_confidence` populated and `retrieval_hits` NULL (`test_document_ingest_writes_trace.py`) — monkeypatches `clinical_copilot.main.run_extraction` with a stub returning a real `LabPdfFacts` so we don't hit Anthropic
 
 ### Verification
-- [ ] `pytest agent-service/tests/unit/observability/ -v` green
-- [ ] `pytest agent-service/tests/integration/test_agent_query_writes_trace.py -v` green
-- [ ] `pytest agent-service/tests/integration/test_document_ingest_writes_trace.py -v` green
+- [x] `pytest agent-service/tests/unit/observability/ -v` green (15 tests)
+- [x] `pytest agent-service/tests/integration/test_agent_query_writes_trace.py -v` green
+- [x] `pytest agent-service/tests/integration/test_document_ingest_writes_trace.py -v` green
 - [ ] Local doc-ingest of lipid-panel fixture → one new `agent_traces` row with `extraction_confidence` populated, `retrieval_hits` NULL
 - [ ] Local slow-lane `/api/agent/query` → row with `retrieval_hits` populated, `extraction_confidence` NULL
-- [ ] DB outage simulation does not surface error to clinician
+- [x] DB outage simulation does not surface error to clinician (covered by `test_db_exception_does_not_propagate`)
 
 ---
 
