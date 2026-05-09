@@ -1,5 +1,12 @@
 """Compiled-graph tests for the LangGraph supervisor (W2-07).
 
+Includes a ``usage_totals`` regression pin: PR W2-04 was bitten by a
+``state.get("usage_totals")`` typo (initial state, always zero) where
+``final_state.get(...)`` was meant. The pin scripts non-zero
+``response.usage`` on the planner + synthesizer messages and asserts
+the run_turn output sums them — a future regression to the same typo
+class will fail this test.
+
 The integration synthesis_flow_test exercises the full route end-to-
 end; these unit tests target a tighter contract:
 
@@ -32,7 +39,12 @@ from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 # --------------------------------------------------------------- helpers
 
 
-def _planner_message(*, sub_queries: list[dict[str, str]]) -> Message:
+def _planner_message(
+    *,
+    sub_queries: list[dict[str, str]],
+    usage_in: int = 0,
+    usage_out: int = 0,
+) -> Message:
     block = ToolUseBlock.model_construct(
         type="tool_use",
         id="tu_planner",
@@ -47,11 +59,16 @@ def _planner_message(*, sub_queries: list[dict[str, str]]) -> Message:
         content=[block],
         stop_reason="tool_use",
         stop_sequence=None,
-        usage={"input_tokens": 0, "output_tokens": 0},
+        usage={"input_tokens": usage_in, "output_tokens": usage_out},
     )
 
 
-def _text_message(text: str) -> Message:
+def _text_message(
+    text: str,
+    *,
+    usage_in: int = 0,
+    usage_out: int = 0,
+) -> Message:
     class _TextBlock:
         def __init__(self, t: str) -> None:
             self.type = "text"
@@ -65,7 +82,7 @@ def _text_message(text: str) -> Message:
         content=[_TextBlock(text)],
         stop_reason="end_turn",
         stop_sequence=None,
-        usage={"input_tokens": 0, "output_tokens": 0},
+        usage={"input_tokens": usage_in, "output_tokens": usage_out},
     )
 
 
@@ -456,3 +473,75 @@ def test_guideline_wire_response_anchors_with_no_chart_pack() -> None:
     assert len(wire.prose) >= 1
     assert wire.prose[0].source_id, "anchor source_id must be populated"
     assert wire.prose[0].text, "synthesized prose must be preserved"
+
+
+# ----------------------------------------------------- usage_totals regression
+
+
+def test_run_turn_aggregates_usage_totals_from_planner_and_synthesizer() -> None:
+    """Regression pin for the PR W2-04 ``state.get`` typo.
+
+    ``run_turn`` previously read ``state.get("usage_totals")`` (the
+    pre-graph initial state, always zero) where ``final_state.get(...)``
+    was meant. The bug only surfaced once the trace writer started
+    consuming :attr:`SupervisorResponse.usage_totals` — earlier tests
+    didn't assert on it, so the typo lived. Pin: script non-zero
+    ``response.usage`` on the planner + synthesizer messages and
+    require the run_turn output to sum them. The critic stays on the
+    deterministic-only path (``run_llm_judge=False``) so its scripted
+    usage is intentionally not folded.
+    """
+
+    planner_client = _make_anthropic_returning(
+        [
+            _planner_message(
+                sub_queries=[{"text": "ADA recs?", "claim_type": "guideline"}],
+                usage_in=100,
+                usage_out=20,
+            ),
+        ],
+    )
+    synth_client = _make_anthropic_returning(
+        [
+            _text_message(
+                "The guideline recommends annual screening [c1].",
+                usage_in=300,
+                usage_out=50,
+            ),
+        ],
+    )
+    critic_client = _make_anthropic_returning([_critic_verdict_message(accept=True)])
+    retriever = _make_retriever_returning([_retrieved_chunk(chunk_id="c1")])
+
+    response = run_turn(
+        user_query="What does ADA recommend?",
+        request_id="req_usage",
+        patient_id="p1",
+        bound_patient_name=None,
+        planner_client=planner_client,
+        planner_model="haiku",
+        synthesizer_client=synth_client,
+        synthesizer_model="sonnet",
+        critic_client=critic_client,
+        critic_model="haiku",
+        retriever=retriever,
+        rerank_client=None,
+        rerank_model=None,
+        orchestrator=_make_orchestrator_returning(_agent_response_stub()),
+        claims=_claims_stub(),
+        session_id=None,
+        lane=__import__(
+            "clinical_copilot.orchestrator.lanes",
+            fromlist=["Lane"],
+        ).Lane.SLOW,
+        chart_pack=None,
+    )
+
+    assert response.usage_totals.input_tokens == 400, (
+        f"Expected 100 (planner) + 300 (synthesizer) = 400 input tokens "
+        f"folded into the supervisor response; got "
+        f"{response.usage_totals.input_tokens}. The most likely cause is "
+        f"reading from the pre-graph initial state instead of "
+        f"``final_state`` after ``graph.invoke``."
+    )
+    assert response.usage_totals.output_tokens == 70
