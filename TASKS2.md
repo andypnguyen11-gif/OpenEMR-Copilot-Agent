@@ -57,7 +57,7 @@ recommending it as "next up."
 | W2-11 — Pre-push eval hook + Makefile + flake policy | **SHIPPED** | Extraction eval gate is now **65 cases** at `agent-service/evals/extraction/cases.jsonl` (28 extraction · 23 retrieval · 6 citations · 4 missing-data · 4 refusals); runner at `src/clinical_copilot/evals/extraction/runner.py`; thresholds in `evals/extraction/baseline.json`: `citation_present ≥ 0.95`, `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`, `schema_valid = 1.0`, `no_phi_in_logs = 1.0`, regression budget 5 pp. Pre-push hook (`4a81eca23`) and GitLab pipeline at `.gitlab-ci.yml` (`24ae138b9`) both invoke the gate. Boolean rubrics only; no judge wrapper, no per-stage latency rubric. |
 | W2-12 — PHI redaction in LangSmith spans | **DEFERRED** | Demo runs with `LANGSMITH_TRACING=false`. Re-enabling tracing requires this MR. |
 | W2-MM — Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 35 multimodal extraction cases (5 modality sub-buckets × 7 cases) on top of the 14 lab + intake cases. As of 2026-05-08 the eval manifest is **65 total cases across 5 top-level buckets** (extraction 28 / retrieval 23 / citations 6 / missing-data 4 / refusals 4); the extraction bucket subdivides into 7 modality sub-buckets (lab, intake, fax, referral, workbook, hl7-oru, hl7-adt). See plans/week2-multimodal-expansion.md for the per-step breakdown. |
-| W2-CW — Chart-write confirmation path | **IN PROGRESS (FEEDBACK-CUT)** | PHP review/save flow can attach uploaded documents to an existing patient and write selected extracted sections into OpenEMR chart tables (`lists` for allergies/meds/problems via `ChartWriteService:85,129,179`; `dated_reminders` for care gaps via `:236`; `procedure_order` chain for labs). Remaining proof points: tests for `ChartWriteService` / `FactsExtractor` / save orchestration, visible write-confirmation summary, transaction/idempotency story, and a clear written position vs FHIR Bundle persistence. |
+| W2-CW — Chart-write confirmation path | **IN PROGRESS (FEEDBACK-CUT)** | PHP review/save flow can attach uploaded documents to an existing patient and write selected extracted sections into OpenEMR chart tables (`lists` for allergies/meds/problems via `ChartWriteService:85,129,179`; `dated_reminders` for care gaps via `:236`; `procedure_order` chain for labs). Tests for `ChartWriteService` / `FactsExtractor` / save orchestration shipped (`tests/Tests/Services/Copilot/ChartWrite/`); transaction/idempotency story shipped via `ChartWriteCoordinator` + `documents.chart_written_at`/`chart_write_started_at`/`chart_write_summary` markers (`SaveDocumentEndpointIdempotencyTest`). Remaining proof points: visible write-confirmation summary in the review UI, and a clear written position vs FHIR Bundle persistence. |
 
 Cross-cutting infrastructure that landed alongside the Week 2 demo (not
 attributed to a specific W2-XX block):
@@ -184,14 +184,35 @@ clarity:
   Sunday item; plan in `plans/week2-langgraph-supervisor.md`.**
 
 - [ ] **[build] OpenEMR chart persistence — confirmation surface (W2-CW).**
-  The write path is in place (`save_document.php:199–238` →
-  `ChartWriteService::writeAllergies/Medications/ActiveProblems/Reminders`
+  The write path is in place (`save_document.php` → `ChartWriteCoordinator`
+  → `ChartWriteService::writeAllergies/Medications/ActiveProblems/Reminders`
   → `lists` / `dated_reminders` / `procedure_*` tables). What's missing:
   a visible post-save confirmation summary in the review UI ("4 facts
-  written to chart, 2 abstained — see audit row 1234"), plus an
-  idempotency story (re-clicking save must not duplicate rows). FHIR
-  Bundle export is **out of scope for Sunday submission** — declare it
-  in the submission narrative.
+  written to chart, 2 abstained — see audit row 1234"). FHIR Bundle
+  export is **out of scope for Sunday submission** — declare it in the
+  submission narrative. The idempotency story (re-clicking save must
+  not duplicate rows) is split out below.
+
+- [x] **[build] Idempotent chart-write save endpoint (W2-CW
+  idempotency story).** A documents-side conditional UPDATE on
+  `chart_write_started_at` / `chart_written_at` / `chart_write_summary`
+  (added in migration `db/Migrations/Version20260509201506.php`)
+  doubles as a per-document row lock and an idempotency check.
+  `ChartWriteCoordinator` (`src/Services/Copilot/ChartWrite/`) wraps
+  the lock-acquire / chart-write / finalize-marker cycle in one
+  transaction and reports one of four outcomes (`AcquiredAndWrote` /
+  `IdempotentReplay` / `ConcurrentInFlight` / `DocumentNotFound`) the
+  endpoint maps to 302 / 302+`idempotent=1` / 409 / 404. New-patient
+  retries that find `documents.foreign_id` already pointing at a
+  previously-created chart short-circuit past the duplicate-patient
+  guard and reuse that pid. Tests:
+  `tests/Tests/Services/Copilot/ChartWrite/SaveDocumentEndpointIdempotencyTest.php`
+  (8 cases — happy path, replay × 2, concurrent rejection × 2, stale-lock
+  TTL recovery, document-not-found × 2). The pre-existing
+  `ChartWriteServiceTest::testWriteAllergiesDoesNotDedupeOnRepeatCall`
+  remains green — the no-dedupe contract on the writer service
+  intentionally still holds; idempotency lives one layer up at the
+  coordinator.
 
 - [x] **[build] Tests for the chart-write path.** Focused tests for
   `src/Services/Copilot/ChartWrite/FactsExtractor.php`,
