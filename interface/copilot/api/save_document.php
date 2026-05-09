@@ -46,9 +46,11 @@ use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\Core\OEGlobalsBag;
 use OpenEMR\Services\Copilot\AgentHttpClient;
 use OpenEMR\Services\Copilot\AgentServiceException;
+use OpenEMR\Services\Copilot\ChartWrite\ChartWriteCoordinator;
 use OpenEMR\Services\Copilot\ChartWrite\ChartWriteOrchestrator;
 use OpenEMR\Services\Copilot\ChartWrite\ChartWriteService;
-use OpenEMR\Services\Copilot\ChartWrite\ChartWriteSummary;
+use OpenEMR\Services\Copilot\ChartWrite\SaveOutcome;
+use OpenEMR\Services\Copilot\ChartWrite\SaveOutcomeKind;
 use OpenEMR\Services\Copilot\Config\CopilotConfig;
 use OpenEMR\Services\Copilot\DocumentClassifier;
 use OpenEMR\Services\Copilot\Documents\FactsFormHelper;
@@ -195,32 +197,68 @@ $authUserId = is_int($authUserIdRaw) ? $authUserIdRaw
 // The chart-write dispatcher is shared between the existing-patient
 // and create-new-patient branches below — both write into the same
 // lists/reminders/procedure tables, only the pid differs. Lifted into
-// ChartWriteOrchestrator so the dispatch logic is unit-testable.
-$chartWriteOrchestrator = new ChartWriteOrchestrator(new ChartWriteService($authUserId));
+// ChartWriteOrchestrator so the dispatch logic is unit-testable;
+// {@see ChartWriteCoordinator} wraps it in the lock-acquire /
+// chart-write / finalize-marker cycle that delivers idempotency
+// against double-clicks and concurrent submits.
+$chartWriteCoordinator = new ChartWriteCoordinator(
+    new ChartWriteOrchestrator(new ChartWriteService($authUserId)),
+);
 
 /**
- * Build a save_success.php redirect URL with the per-section counts
- * encoded as ``count_<section>=N``. The success page picks them back up
- * to render the "wrote N rows to chart" confirmation.
+ * Build a save_success.php redirect URL from a {@see SaveOutcome}.
+ * The success page picks the per-section counts back up via
+ * ``count_<section>=N`` to render "wrote N rows to chart"; the
+ * ``idempotent=1`` flag (only set on a replay) lets the page show a
+ * "this document was already saved" hint instead of the first-time
+ * confirmation.
  */
 $successUrl = static function (
     string $webroot,
-    int $pid,
-    bool $created,
-    ChartWriteSummary $summary,
+    SaveOutcome $outcome,
     string $documentType,
     string $documentId,
 ): string {
     $params = [
-        'pid' => $pid,
-        'created' => $created ? '1' : '0',
+        'pid' => $outcome->pid,
+        'created' => $outcome->patientCreated ? '1' : '0',
         'document_type' => $documentType,
         'document_id' => $documentId,
     ];
-    foreach ($summary->counts() as $section => $count) {
+    if ($outcome->kind === SaveOutcomeKind::IdempotentReplay) {
+        $params['idempotent'] = '1';
+    }
+    foreach ($outcome->counts as $section => $count) {
         $params['count_' . $section] = (string) $count;
     }
     return $webroot . '/interface/copilot/save_success.php?' . http_build_query($params);
+};
+
+/**
+ * Map a {@see SaveOutcome} to an HTTP response. AcquiredAndWrote and
+ * IdempotentReplay both redirect to the success page (the latter with
+ * an extra ``idempotent=1`` flag); ConcurrentInFlight surfaces a 409;
+ * DocumentNotFound surfaces a 404.
+ */
+$respondToOutcome = static function (
+    SaveOutcome $outcome,
+    string $webroot,
+    string $documentType,
+    string $documentId,
+) use ($successUrl): never {
+    switch ($outcome->kind) {
+        case SaveOutcomeKind::AcquiredAndWrote:
+        case SaveOutcomeKind::IdempotentReplay:
+            header('Location: ' . $successUrl($webroot, $outcome, $documentType, $documentId));
+            exit;
+        case SaveOutcomeKind::ConcurrentInFlight:
+            http_response_code(409);
+            exit('Another save is already in progress for this document. '
+                . 'Wait a moment and refresh to see the result.');
+        case SaveOutcomeKind::DocumentNotFound:
+            http_response_code(404);
+            exit('document not found');
+    }
 };
 
 // Step 3: route based on the patient choice.
@@ -238,18 +276,69 @@ if (ctype_digit($patientChoice) && (int) $patientChoice > 0) {
         exit('document_id is not a numeric documents.id (got '
             . htmlspecialchars($bareDocId, ENT_QUOTES, 'UTF-8') . ')');
     }
-    QueryUtils::sqlStatementThrowException(
-        'UPDATE documents SET foreign_id = ? WHERE id = ?',
-        [$targetPid, (int) $bareDocId],
+
+    // The foreign_id flip happens inside the coordinator's transaction
+    // (alongside the lock-acquire) so a concurrent submit can't get a
+    // half-attached document with no chart-writes.
+    $linkExistingPatient = static function (int $rowId) use ($targetPid): array {
+        QueryUtils::sqlStatementThrowException(
+            'UPDATE documents SET foreign_id = ? WHERE id = ?',
+            [$targetPid, $rowId],
+        );
+        return ['pid' => $targetPid, 'created' => false];
+    };
+
+    $outcome = $chartWriteCoordinator->attemptSave(
+        (int) $bareDocId,
+        $documentId,
+        $documentType,
+        $checkedSections,
+        $mergedFacts,
+        $linkExistingPatient,
     );
 
-    $writeSummary = $chartWriteOrchestrator->run($targetPid, $checkedSections, $mergedFacts, $documentType);
-
-    header('Location: ' . $successUrl($webroot, $targetPid, false, $writeSummary, $documentType, $documentId));
-    exit;
+    $respondToOutcome($outcome, $webroot, $documentType, $documentId);
 }
 
 if ($patientChoice === 'new') {
+    // Idempotency recovery: a prior submit may have committed the
+    // patient_data INSERT and ``UPDATE documents SET foreign_id = ?``
+    // before the chart-write txn could land (e.g. PHP timeout, browser
+    // close). On retry the form re-posts patient_choice=new, but the
+    // document is already linked to a freshly-created chart. Reuse it
+    // instead of MAX(pid)+1'ing again — and short-circuit past the
+    // demographic-extraction + duplicate-patient guard, which would
+    // otherwise block on the patient we just created on the prior
+    // attempt.
+    $existingForeignRow = ctype_digit($bareDocId)
+        ? QueryUtils::querySingleRow(
+            'SELECT foreign_id FROM documents WHERE id = ?',
+            [(int) $bareDocId],
+        )
+        : false;
+    $existingForeignPid = is_array($existingForeignRow)
+        && isset($existingForeignRow['foreign_id'])
+        && is_numeric($existingForeignRow['foreign_id'])
+            ? (int) $existingForeignRow['foreign_id']
+            : 0;
+
+    if ($existingForeignPid > 0) {
+        $resumePid = $existingForeignPid;
+        $linkResumedPatient = static fn (int $rowId): array
+            => ['pid' => $resumePid, 'created' => false];
+
+        $outcome = $chartWriteCoordinator->attemptSave(
+            (int) $bareDocId,
+            $documentId,
+            $documentType,
+            $checkedSections,
+            $mergedFacts,
+            $linkResumedPatient,
+        );
+
+        $respondToOutcome($outcome, $webroot, $documentType, $documentId);
+    }
+
     // Pull demographics out of the extracted facts. Each document type
     // has a different schema layout (workbook nests under ``patient.*``,
     // referrals expose ``patient_name``/``patient_dob`` flat at the top,
@@ -640,10 +729,24 @@ if ($patientChoice === 'new') {
         throw $exc;
     }
 
-    $writeSummary = $chartWriteOrchestrator->run($newpid, $checkedSections, $mergedFacts, $documentType);
+    // Patient was just created; the coordinator's lock-acquire +
+    // chart-write + finalize cycle runs in its own transaction so a
+    // crash before COMMIT leaves no chart-side rows behind. The
+    // recovery branch above handles re-submits that find ``foreign_id``
+    // already pointing at the just-created chart.
+    $linkNewPatient = static fn (int $rowId): array
+        => ['pid' => $newpid, 'created' => true];
 
-    header('Location: ' . $successUrl($webroot, $newpid, true, $writeSummary, $documentType, $documentId));
-    exit;
+    $outcome = $chartWriteCoordinator->attemptSave(
+        (int) $bareDocId,
+        $documentId,
+        $documentType,
+        $checkedSections,
+        $mergedFacts,
+        $linkNewPatient,
+    );
+
+    $respondToOutcome($outcome, $webroot, $documentType, $documentId);
 }
 
 // Unassigned: keep documents.foreign_id="00", redirect back to
