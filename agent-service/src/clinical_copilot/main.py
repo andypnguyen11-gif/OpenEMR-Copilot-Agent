@@ -66,7 +66,13 @@ from clinical_copilot.orchestrator.chart_pack import (
 )
 from clinical_copilot.orchestrator.cross_patient_guard import cross_patient_check
 from clinical_copilot.orchestrator.lanes import Lane
-from clinical_copilot.orchestrator.schemas import AgentResponse, Card, CardKind, CitedClaim
+from clinical_copilot.orchestrator.schemas import (
+    AgentResponse,
+    Card,
+    CardKind,
+    CitedClaim,
+    RerankBackendLabel,
+)
 from clinical_copilot.orchestrator.supervisor import (
     Handoff,
     SupervisorResponse,
@@ -436,6 +442,14 @@ def _supervisor_to_agent_response(
     "routing observable" surface.
     """
 
+    # Surface the active rerank backend on every supervisor-built
+    # response. ``None`` on every branch that didn't actually run
+    # retrieval (chart-only, abstention before the worker ran) so the
+    # UI badge stays off rather than implying a Cohere outage on a turn
+    # the reranker never saw — the supervisor stamps ``None`` in those
+    # cases and we surface it verbatim.
+    rerank_backend = _wire_rerank_backend(sup.rerank_backend)
+
     if sup.abstention_reason is not None:
         return AgentResponse(
             cards=[],
@@ -446,6 +460,7 @@ def _supervisor_to_agent_response(
                 reason=sup.abstention_reason,
             ),
             session_id=session_id,
+            rerank_backend=rerank_backend,
         )
 
     text = sup.synthesized_text.strip()
@@ -464,6 +479,7 @@ def _supervisor_to_agent_response(
                 reason=RuntimeAbstainReason.NO_DATA.value,
             ),
             session_id=session_id,
+            rerank_backend=rerank_backend,
         )
 
     cards, tool_results = _chart_pack_surface(
@@ -476,7 +492,32 @@ def _supervisor_to_agent_response(
         prose=[CitedClaim(text=text, source_id=anchor, citation=anchor_citation)],
         tool_results=tool_results,
         session_id=session_id,
+        rerank_backend=rerank_backend,
     )
+
+
+def _wire_rerank_backend(value: str | None) -> RerankBackendLabel | None:
+    """Validate the supervisor-supplied label against the wire enum.
+
+    The supervisor types ``rerank_backend`` as ``str | None`` so it can
+    accept whatever the worker stamped without coupling the supervisor
+    package to the schemas package. We narrow at the wire boundary so
+    a stray legacy spelling (``"llm-judge"`` / ``"none"``) coming back
+    from a cassette or a degraded build can't end up as an
+    ``extra="forbid"`` validation error against
+    :class:`AgentResponse`. Old → new mapping is intentional belt-and-
+    suspenders against the rename in this PR.
+    """
+
+    if value is None or value == "":
+        return None
+    if value in ("cohere", "llm_judge", "bm25_only"):
+        return value  # type: ignore[return-value]
+    if value == "llm-judge":
+        return "llm_judge"
+    if value == "none":
+        return "bm25_only"
+    return None
 
 
 def _resolve_anchor_citation(

@@ -209,6 +209,35 @@
     font-size: 0.85rem;
 }
 
+/* Rerank backend pill — only renders when the active backend is not
+   Cohere (the steady-state primary). The `data-backend` selector keys
+   the warning palette to llm_judge (amber, soft fallback) vs bm25_only
+   (grey, full degradation) so the demo viewer can tell at a glance
+   which fallback layer is serving traffic. */
+.copilot-rerank-badge {
+    display: inline-block;
+    align-self: flex-start;
+    margin-bottom: 0.4rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.copilot-rerank-badge[data-backend="llm_judge"] {
+    background: #fff4e0;
+    border: 1px solid #f0c870;
+    color: #8a5a00;
+}
+
+.copilot-rerank-badge[data-backend="bm25_only"] {
+    background: #f0f0f0;
+    border: 1px solid #c8c8c8;
+    color: #555;
+}
+
 .copilot-form {
     display: flex;
     gap: 0.5rem;

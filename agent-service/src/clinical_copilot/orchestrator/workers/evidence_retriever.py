@@ -31,10 +31,14 @@ from clinical_copilot.corpus.retriever import CorpusRetriever, RetrievedChunk
 from clinical_copilot.documents.schemas.citation import GuidelineCitation
 
 RerankBackend = str
-"""``"cohere"`` | ``"llm-judge"`` | ``"none"`` — recorded on
+"""``"cohere"`` | ``"llm_judge"`` | ``"bm25_only"`` — recorded on
 :class:`EvidenceRetrieverOutput` so the supervisor's audit row names
 the actual reranker used. Plain ``str`` rather than an Enum keeps
-JSON serialization and tool-result payloads trivial."""
+JSON serialization and tool-result payloads trivial. Underscore form
+is the canonical wire spelling reflected on
+:class:`AgentResponse.rerank_backend`; older deploys / cassettes that
+emitted ``"llm-judge"`` / ``"none"`` are mapped at the wire boundary
+in :mod:`main`."""
 
 
 class WorkerError(RuntimeError):
@@ -49,10 +53,11 @@ class EvidenceRetrieverOutput:
     chunks: list[dict[str, Any]]
     hybrid_enabled: bool
     reranked: bool
-    # ``"none"`` default keeps any direct constructor / cassette test
-    # working without modification; the worker overrides it per-call
-    # based on which backend actually ran.
-    rerank_backend: RerankBackend = "none"
+    # ``"bm25_only"`` default keeps any direct constructor / cassette
+    # test working without modification; the worker overrides it
+    # per-call based on which backend actually ran. Underscore spelling
+    # matches the wire shape on :class:`AgentResponse.rerank_backend`.
+    rerank_backend: RerankBackend = "bm25_only"
 
     def to_tool_result(self) -> dict[str, Any]:
         return {
@@ -126,11 +131,11 @@ def run_evidence_retriever(
             llm_kwargs["model"] = rerank_model
         chunks = rerank_with_llm(**llm_kwargs)
         reranked = True
-        backend = "llm-judge"
+        backend = "llm_judge"
     else:
         chunks = retriever.retrieve(query=query, k=k)
         reranked = False
-        backend = "none"
+        backend = "bm25_only"
 
     return EvidenceRetrieverOutput(
         query=query,

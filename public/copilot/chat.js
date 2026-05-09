@@ -344,6 +344,12 @@
 
         // Abstention takes precedence — when present, cards/prose are
         // empty by contract, and the UI surfaces only the abstention.
+        // The rerank badge still renders alongside an abstention so a
+        // Cohere outage that triggered the abstention is visible.
+        const rerankBadge = renderRerankBadge(body.rerank_backend);
+        if (rerankBadge) {
+            wrap.appendChild(rerankBadge);
+        }
         if (body.abstention) {
             wrap.appendChild(renderAbstention(body.abstention));
             thread.appendChild(wrap);
@@ -367,6 +373,32 @@
 
         thread.appendChild(wrap);
         thread.scrollTop = thread.scrollHeight;
+    }
+
+    /**
+     * Build a small badge surfacing the active rerank backend when the
+     * response was served by a fallback path. Cohere is the Sunday
+     * primary; rendering its label every turn would be visual noise.
+     * llm_judge / bm25_only mean a Cohere outage or missing
+     * COHERE_API_KEY — surface them so the demo doesn't silently
+     * degrade. Returns null when the field is missing (legacy / fast
+     * lane / chart-only responses) or when Cohere served the turn.
+     */
+    function renderRerankBadge(backend) {
+        if (typeof backend !== "string" || backend === "" || backend === "cohere") {
+            return null;
+        }
+        const badge = document.createElement("div");
+        badge.className = "copilot-rerank-badge";
+        badge.setAttribute("data-backend", backend);
+        if (backend === "llm_judge") {
+            badge.textContent = "rerank: llm-judge fallback";
+        } else if (backend === "bm25_only") {
+            badge.textContent = "rerank: BM25 only — degraded";
+        } else {
+            badge.textContent = "rerank: " + backend;
+        }
+        return badge;
     }
 
     function renderCards(cards, recordIndex) {

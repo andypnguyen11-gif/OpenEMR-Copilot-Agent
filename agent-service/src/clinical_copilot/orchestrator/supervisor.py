@@ -89,6 +89,14 @@ class SupervisorResponse:
     """How many tool-use turns the model went through. Useful for
     diagnostics; bounded by ``max_iterations``."""
 
+    rerank_backend: str | None = None
+    """``"cohere"`` | ``"llm_judge"`` | ``"bm25_only"`` when this turn
+    actually invoked the evidence retriever; ``None`` on chart-only
+    turns and on abstentions that never reached retrieval. The plain-
+    Python supervisor fills this from the most recent
+    ``dispatch_evidence_retriever`` handoff; the LangGraph supervisor
+    fills it from the evidence-retriever node's state mutation."""
+
 
 # Worker callables — opaque to the supervisor. They take **kwargs from
 # the model's tool input and return a JSON-serializable dict (or raise).
@@ -295,16 +303,19 @@ def run(
             text = "".join(
                 getattr(b, "text", "") for b in response.content if getattr(b, "type", "") == "text"
             )
+            backend = _latest_rerank_backend(handoffs)
             log.info(
                 "supervisor.synth",
                 iterations=iteration,
                 handoffs=len(handoffs),
                 text_len=len(text),
+                rerank_backend=backend,
             )
             return SupervisorResponse(
                 synthesized_text=text,
                 handoffs=tuple(handoffs),
                 iterations=iteration,
+                rerank_backend=backend,
             )
 
         # Append the assistant's tool-use turn before sending tool_result.
@@ -330,7 +341,31 @@ def run(
         handoffs=tuple(handoffs),
         abstention_reason=RuntimeAbstainReason.TOOL_FAILURE.value,
         iterations=iteration,
+        rerank_backend=_latest_rerank_backend(handoffs),
     )
+
+
+def _latest_rerank_backend(handoffs: list[Handoff]) -> str | None:
+    """Read the most recent ``dispatch_evidence_retriever`` backend.
+
+    The evidence-retriever worker stamps ``rerank_backend`` on every
+    successful tool result (see :class:`EvidenceRetrieverOutput`). We
+    walk handoffs in reverse so a multi-turn synthesis that re-queried
+    retrieval surfaces the *last* run's backend — that's the one whose
+    ranking influenced the final synthesis. ``None`` when no evidence
+    retriever ran on this turn (chart-only / abstention paths) so the
+    UI badge stays off rather than mislabeling the response.
+    """
+
+    for handoff in reversed(handoffs):
+        if handoff.worker != "evidence_retriever":
+            continue
+        if handoff.output is None:
+            continue
+        backend = handoff.output.get("rerank_backend")
+        if isinstance(backend, str) and backend:
+            return backend
+    return None
 
 
 def _dispatch(

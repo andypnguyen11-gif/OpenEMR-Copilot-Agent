@@ -110,7 +110,7 @@ def make_node(
     keeps running for sibling sub-queries.
     """
 
-    def node(state: TurnState) -> dict[str, list[Draft]]:
+    def node(state: TurnState) -> dict[str, Any]:
         sub_queries = state.get("sub_queries", [])
         targeted = [sq for sq in sub_queries if sq.target_worker is Worker.EVIDENCE_RETRIEVER]
         session = state.get("session", {})
@@ -119,6 +119,14 @@ def make_node(
         log.info("evidence_retriever.node.invoke")
 
         drafts: list[Draft] = []
+        # Track the most-recent backend label across sub-queries so the
+        # turn's ``rerank_backend`` reflects what actually ran on the
+        # final synthesis input. All sub-queries share the same client
+        # wiring so the value is the same on every successful call;
+        # using the last successful run keeps a TOOL_FAILURE on the
+        # final sub-query from blanking the field if an earlier one
+        # succeeded.
+        backend_label: str | None = None
         for sub_query in targeted:
             try:
                 output = run_evidence_retriever(
@@ -147,7 +155,16 @@ def make_node(
                 )
                 continue
             drafts.append(_output_to_draft(sub_query=sub_query, output=output))
+            backend_label = output.rerank_backend
 
-        return {"drafts": drafts}
+        update: dict[str, Any] = {"drafts": drafts}
+        if backend_label is not None:
+            # ``corpus.rerank.backend_used`` mirrors the same event the
+            # plain-Python supervisor logs on ``supervisor.synth`` — kept
+            # at the node level so deploys on either supervisor flag
+            # surface a per-request label in structured logs.
+            log.info("corpus.rerank.backend_used", rerank_backend=backend_label)
+            update["rerank_backend"] = backend_label
+        return update
 
     return node

@@ -163,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     # against the wrong backend is obvious. Force the lazy load now
     # so any cohere construction error prints before the per-case
     # output starts.
-    rerank_backend_label = "cohere" if _get_cohere_client() is not None else "bm25-only"
+    rerank_backend_label = "cohere" if _get_cohere_client() is not None else "bm25_only"
     print(f"retrieval rerank backend: {rerank_backend_label}", flush=True)
 
     results: list[tuple[Case, list[RubricOutcome]]] = []

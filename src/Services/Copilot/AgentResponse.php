@@ -28,6 +28,13 @@ final readonly class AgentResponse
      * fall back to the canonical `source_id` / `source_ids` strings the
      * verifier joins on.
      *
+     * The slow-lane shape also carries an optional top-level
+     * `rerank_backend` ∈ {`cohere`, `llm_judge`, `bm25_only`, null}.
+     * Null on every response that didn't run retrieval (fast lane,
+     * chart-only, abstention before retrieval). The chat / side-panel
+     * JS clients render a fallback / degraded badge when the value is
+     * non-null and not `cohere`.
+     *
      * The class intentionally stores the body as-is rather than projecting
      * it into typed sub-objects: `Citation` is a discriminated union and
      * structural typing in PHP would force a class hierarchy that consumers

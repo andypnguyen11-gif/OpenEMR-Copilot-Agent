@@ -206,6 +206,15 @@ class TurnState(TypedDict, total=False):
     keeps working unchanged.
     """
 
+    rerank_backend: str | None
+    """Stamped by the evidence_retriever node when it actually invokes
+    a reranker. ``"cohere" | "llm_judge" | "bm25_only"``; ``None`` on
+    turns that never reach the evidence retriever (chart-only,
+    abstention) so :func:`run_turn` can leave
+    :attr:`SupervisorResponse.rerank_backend` ``None`` and the UI badge
+    stays off. Single-writer key — only the evidence_retriever node
+    mutates it — so no reducer is needed."""
+
 
 def initial_state(*, user_query: str, session: SessionInfo) -> TurnState:
     """Build a fresh :class:`TurnState` for a single turn.
@@ -223,4 +232,5 @@ def initial_state(*, user_query: str, session: SessionInfo) -> TurnState:
         verdicts=[],
         retry_counts={},
         final_response=None,
+        rerank_backend=None,
     )

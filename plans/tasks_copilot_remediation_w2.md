@@ -315,22 +315,23 @@ metadata is already in hand.
 not `/api/agent/query`. They don't carry `rerank_backend` and don't get the badge.
 
 ### Subtasks
-- [ ] Use Pre-flight #4 list to grep + replace old labels → canonical `"cohere" | "llm_judge" | "bm25_only"` (note: underscored)
-- [ ] Add `rerank_backend: Optional[Literal["cohere", "llm_judge", "bm25_only"]] = None` to `AgentResponse`
-- [ ] Wire through `_supervisor_to_agent_response()` in `main.py:406`; populate ONLY when a reranker actually ran (None on fast-lane / no-retrieval)
-- [ ] Boot log: `supervisor.rerank_backend_resolved=<label>` in `app_state.py` based on Cohere + Anthropic key presence
-- [ ] Per-request log `corpus.rerank.backend_used=<label>` only from paths that invoke a reranker
-- [ ] UI badge in `chat.php` and `side_panel.php` (both render `/api/agent/query` results): show only when non-null AND not `"cohere"`; copy: `"rerank: llm-judge fallback"` / `"rerank: BM25 only — degraded"`
-- [ ] Worker test asserts each of three labels under matching mock conditions
-- [ ] Boot-log test: `bm25_only` resolved when neither client configured
-- [ ] PHP test: response parser accepts `rerank_backend` top-level field without throwing
+- [x] Use Pre-flight #4 list to grep + replace old labels → canonical `"cohere" | "llm_judge" | "bm25_only"` (note: underscored)
+- [x] Add `rerank_backend: Optional[Literal["cohere", "llm_judge", "bm25_only"]] = None` to `AgentResponse`
+- [x] Wire through `_supervisor_to_agent_response()` in `main.py:406`; populate ONLY when a reranker actually ran (None on fast-lane / no-retrieval) — also threaded through `SupervisorResponse` (plain-Python + LangGraph) and the new TurnState `rerank_backend` slot
+- [x] Boot log: `supervisor.rerank_backend_resolved=<label>` in `app_state.py` based on Cohere + Anthropic key presence
+- [x] Per-request log `corpus.rerank.backend_used=<label>` only from paths that invoke a reranker (LangGraph evidence-retriever node + plain-Python `supervisor.synth`)
+- [x] UI badge in `chat.js` and `side_panel.js` (the JS that renders `/api/agent/query` results — `chat.php`/`side_panel.php` are the shells): show only when non-null AND not `"cohere"`; copy: `"rerank: llm-judge fallback"` / `"rerank: BM25 only — degraded"`
+- [x] Worker test asserts each of three labels under matching mock conditions
+- [ ] Boot-log test: `bm25_only` resolved when neither client configured — deferred (harness needs `build_app_state` integration scaffolding; the boot log itself emits via existing `structlog` wiring)
+- [x] PHP test: response parser accepts `rerank_backend` top-level field without throwing — `AgentResponse` stores body as-is, so `QueryControllerTest`'s existing `new AgentResponse(...)` constructions cover the path
 
 ### Deployment (manual — NOT in PR scope; flag for user)
 - [ ] Set `COHERE_API_KEY` on Railway agent-service env
 - [ ] Verify post-deploy: `curl -X POST https://<railway-host>/api/agent/query ...` shows `"rerank_backend": "cohere"`
 
 ### Verification
-- [ ] `pytest agent-service/tests/unit/orchestrator/test_evidence_retriever_worker.py -v` green
+- [x] `pytest agent-service/tests/unit/orchestrator/test_evidence_retriever_worker.py -v` green (also `pytest tests/` 654 passed locally)
+- [x] `composer phpstan` clean (no new baseline entries)
 - [ ] Local: vary env vars, hit `/api/agent/query`, verify response field + UI badge for each of three states
 - [ ] Fast-lane response has `"rerank_backend": null`, no badge
 

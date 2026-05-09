@@ -103,7 +103,7 @@ def test_llm_judge_runs_when_only_anthropic_passed(
         rerank_client=MagicMock(),
         cohere_client=None,
     )
-    assert output.rerank_backend == "llm-judge"
+    assert output.rerank_backend == "llm_judge"
     assert output.reranked is True
     mocks["llm"].assert_called_once()
     mocks["cohere"].assert_not_called()
@@ -121,24 +121,25 @@ def test_pure_bm25_when_no_rerank_clients(
         rerank_client=None,
         cohere_client=None,
     )
-    assert output.rerank_backend == "none"
+    assert output.rerank_backend == "bm25_only"
     assert output.reranked is False
     mocks["cohere"].assert_not_called()
     mocks["llm"].assert_not_called()
 
 
-def test_default_rerank_backend_is_none() -> None:
-    # Direct construction (cassette / fixture path) must default to "none"
-    # so existing tests that build the dataclass don't have to be updated.
+def test_default_rerank_backend_is_bm25_only() -> None:
+    # Direct construction (cassette / fixture path) must default to
+    # ``bm25_only`` so existing tests that build the dataclass don't
+    # have to be updated when no reranker actually ran.
     out: EvidenceRetrieverOutput = EvidenceRetrieverOutput(
         query="x",
         chunks=[],
         hybrid_enabled=False,
         reranked=False,
     )
-    assert out.rerank_backend == "none"
+    assert out.rerank_backend == "bm25_only"
     payload: dict[str, Any] = out.to_tool_result()
-    assert payload["rerank_backend"] == "none"
+    assert payload["rerank_backend"] == "bm25_only"
 
 
 # ----------------------------------------------------- chunk-dict citation shape

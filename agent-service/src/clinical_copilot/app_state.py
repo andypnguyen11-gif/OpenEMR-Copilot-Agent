@@ -356,6 +356,23 @@ def build_app_state(
                 error=f"{type(exc).__name__}: {exc}",
             )
             supervisor_cohere_client = None
+    # One-line boot log so a deploy with the wrong env vars surfaces
+    # the resolved rerank backend in the startup logs without having
+    # to fire a query first. ``cohere`` wins when the SDK loaded;
+    # ``llm_judge`` is the fallback when only Anthropic is wired (the
+    # supervisor's evidence retriever still runs the judge); ``bm25_only``
+    # is the offline / no-network path. Mirrors the per-request label
+    # the worker stamps on :class:`AgentResponse.rerank_backend`.
+    if supervisor_cohere_client is not None:
+        resolved_backend = "cohere"
+    elif supervisor_anthropic is not None:
+        resolved_backend = "llm_judge"
+    else:
+        resolved_backend = "bm25_only"
+    structlog.get_logger(__name__).info(
+        "supervisor.rerank_backend_resolved",
+        rerank_backend=resolved_backend,
+    )
     if supervisor_anthropic is not None:
         try:
             corpus_retriever = CorpusRetriever()

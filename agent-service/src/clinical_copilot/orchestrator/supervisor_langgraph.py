@@ -549,12 +549,14 @@ def run_turn(
     abstain = final.get("abstention_reason")
     handoffs_payload = final.get("handoffs", [])
     iterations = int(final.get("iterations", 0) or 0)
+    backend = final_state.get("rerank_backend")
 
     log.info(
         "supervisor_lg.done",
         text_len=len(text),
         abstention=abstain,
         handoffs=len(handoffs_payload) if isinstance(handoffs_payload, list) else 0,
+        rerank_backend=backend,
     )
 
     # Build a SupervisorResponse so :func:`_supervisor_to_agent_response`
@@ -567,6 +569,7 @@ def run_turn(
         handoffs=(),  # plain-Python Handoff tuples are heavy; legacy adapter is tolerant of empty
         abstention_reason=abstain if isinstance(abstain, str) else None,
         iterations=iterations,
+        rerank_backend=backend if isinstance(backend, str) and backend else None,
     )
 
 

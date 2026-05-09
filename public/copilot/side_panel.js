@@ -285,6 +285,15 @@
         const wrap = document.createElement("div");
         wrap.className = "copilot-message copilot-message-agent";
 
+        // Mirror chat.js: surface a rerank-backend badge when Cohere
+        // didn't serve the turn so a fallback / degraded path is
+        // obvious. Slow-lane composite queries dispatched from the
+        // side panel still go through evidence retrieval, so the
+        // badge applies here too.
+        const rerankBadge = renderRerankBadge(body.rerank_backend);
+        if (rerankBadge) {
+            wrap.appendChild(rerankBadge);
+        }
         if (body.abstention) {
             wrap.appendChild(renderAbstention(body.abstention));
             thread.appendChild(wrap);
@@ -308,6 +317,29 @@
 
         thread.appendChild(wrap);
         thread.scrollTop = thread.scrollHeight;
+    }
+
+    /**
+     * Mirror of the helper in chat.js. Surfaces "llm_judge" or
+     * "bm25_only" responses with a small badge so a Cohere outage is
+     * visible during the demo. Returns null on Cohere / null / missing
+     * (the steady-state primary path).
+     */
+    function renderRerankBadge(backend) {
+        if (typeof backend !== "string" || backend === "" || backend === "cohere") {
+            return null;
+        }
+        const badge = document.createElement("div");
+        badge.className = "copilot-rerank-badge";
+        badge.setAttribute("data-backend", backend);
+        if (backend === "llm_judge") {
+            badge.textContent = "rerank: llm-judge fallback";
+        } else if (backend === "bm25_only") {
+            badge.textContent = "rerank: BM25 only — degraded";
+        } else {
+            badge.textContent = "rerank: " + backend;
+        }
+        return badge;
     }
 
     function renderCards(cards, recordIndex) {

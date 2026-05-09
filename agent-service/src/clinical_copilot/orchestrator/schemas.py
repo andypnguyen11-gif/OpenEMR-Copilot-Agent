@@ -11,13 +11,26 @@ outside it.
 
 from __future__ import annotations
 
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from clinical_copilot.documents.schemas.citation import Citation
 from clinical_copilot.tools.records import ToolResult
 from clinical_copilot.verification.abstention import Abstention, ClaimAbstention
+
+RerankBackendLabel = Literal["cohere", "llm_judge", "bm25_only"]
+"""Wire-shape label for the active rerank backend on the slow lane.
+
+* ``cohere`` — Cohere ``rerank-v3.5`` cross-encoder ran (Sunday primary).
+* ``llm_judge`` — Anthropic Haiku judge ran (fallback when
+  ``COHERE_API_KEY`` was absent).
+* ``bm25_only`` — BM25 / hybrid pass-through; no rerank stage ran.
+
+``None`` is reserved for responses that had no retrieval at all (fast
+lane, chart-only, abstention) so the UI badge stays off rather than
+mis-attributing rerank state to a turn that never invoked it.
+"""
 
 
 class _Frozen(BaseModel):
@@ -150,3 +163,12 @@ class AgentResponse(_Frozen):
     abstention: Abstention | None = None
     dropped_claims: list[ClaimAbstention] = Field(default_factory=list)
     session_id: str = Field(default="", max_length=64)
+    rerank_backend: RerankBackendLabel | None = None
+    """Which rerank backend served this response, when retrieval ran.
+
+    ``None`` on every response that didn't invoke the evidence
+    retriever (fast lane, chart-only, abstention). The UI surfaces a
+    fallback / degraded badge when this is ``"llm_judge"`` or
+    ``"bm25_only"`` so a Cohere outage doesn't disappear into the
+    background — see :mod:`public/copilot/chat.js`.
+    """

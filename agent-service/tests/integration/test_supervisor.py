@@ -213,3 +213,73 @@ def test_supervisor_worker_error_records_handoff_with_error(monkeypatch) -> None
     assert response.handoffs[0].error is not None
     assert "nope" in response.handoffs[0].error
     assert response.handoffs[0].output is None
+
+
+def test_supervisor_rerank_backend_surfaces_from_evidence_handoff(monkeypatch) -> None:
+    """The supervisor stamps the evidence-retriever's ``rerank_backend``
+    onto :class:`SupervisorResponse` so the wire shape can echo which
+    backend served the synthesis."""
+
+    _patch_isinstance(monkeypatch)
+    client = _build_client(
+        [
+            _FakeMessage(
+                content=[
+                    _FakeToolUseBlock(
+                        id="t1",
+                        name="dispatch_evidence_retriever",
+                        input={"query": "afib", "k": 3},
+                    ),
+                ]
+            ),
+            _FakeMessage(content=[_FakeTextBlock(text="see USPSTF guidance")]),
+        ]
+    )
+
+    response = supervisor.run(
+        client=client,
+        model="claude-sonnet-4",
+        query="afib management?",
+        intake_extractor=lambda **k: {},
+        evidence_retriever=lambda **k: {
+            "query": k["query"],
+            "chunks": [],
+            "hybrid_enabled": False,
+            "reranked": True,
+            "rerank_backend": "cohere",
+        },
+    )
+    assert response.rerank_backend == "cohere"
+
+
+def test_supervisor_rerank_backend_none_when_only_intake_dispatched(monkeypatch) -> None:
+    """A turn that never calls the evidence retriever leaves
+    ``rerank_backend`` as ``None`` — the UI badge stays off."""
+
+    _patch_isinstance(monkeypatch)
+    client = _build_client(
+        [
+            _FakeMessage(
+                content=[
+                    _FakeToolUseBlock(
+                        id="t1",
+                        name="dispatch_intake_extractor",
+                        input={
+                            "document_path": "/tmp/lab.pdf",
+                            "document_type": "lab_pdf",
+                        },
+                    ),
+                ]
+            ),
+            _FakeMessage(content=[_FakeTextBlock(text="LDL is high")]),
+        ]
+    )
+
+    response = supervisor.run(
+        client=client,
+        model="claude-sonnet-4",
+        query="what does the lab say?",
+        intake_extractor=lambda **k: {"facts": {}, "citations": []},
+        evidence_retriever=lambda **k: {"chunks": []},
+    )
+    assert response.rerank_backend is None
