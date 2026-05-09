@@ -19,6 +19,20 @@ final readonly class AgentResponse
     /**
      * @param array<string, mixed> $body Decoded JSON body. Empty array when
      *                                   the response had no JSON content.
+     *
+     * The slow-lane wire shape (`/api/agent/query`) carries a discriminated
+     * `citation` field on `prose[i]` and a `citations` list on `cards[i]`,
+     * keyed on `source_type` ∈ {`extracted_document`, `guideline`,
+     * `patient_chart`}. Both fields are optional and absent on legacy /
+     * fast-lane responses, so consumers must tolerate `null` / `[]` and
+     * fall back to the canonical `source_id` / `source_ids` strings the
+     * verifier joins on.
+     *
+     * The class intentionally stores the body as-is rather than projecting
+     * it into typed sub-objects: `Citation` is a discriminated union and
+     * structural typing in PHP would force a class hierarchy that consumers
+     * don't need. ``ExtractedFieldHelper::citation()`` exposes the citation
+     * block when individual fields are needed.
      */
     public function __construct(
         public int $statusCode,

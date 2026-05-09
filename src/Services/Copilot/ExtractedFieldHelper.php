@@ -87,6 +87,67 @@ final class ExtractedFieldHelper
     }
 
     /**
+     * Return the citation's `source_type` discriminator (one of
+     * `extracted_document` / `guideline` / `patient_chart`). Returns ''
+     * when the citation is absent or the field is missing — legacy /
+     * fast-lane responses without typed citations get the empty
+     * fallback.
+     */
+    public static function sourceType(mixed $field): string
+    {
+        if (!is_array($field)) {
+            return '';
+        }
+        $citation = $field['citation'] ?? null;
+        if (!is_array($citation)) {
+            return '';
+        }
+        $sourceType = $citation['source_type'] ?? null;
+        return is_string($sourceType) ? $sourceType : '';
+    }
+
+    /**
+     * Return the citation's `field_or_chunk_id` (JSON-pointer path for
+     * extracted documents, chunk_id for guidelines, ResourceType/{id}
+     * for patient-chart resources). Returns '' on legacy responses
+     * captured before the discriminated-union schema landed.
+     */
+    public static function fieldOrChunkId(mixed $field): string
+    {
+        if (!is_array($field)) {
+            return '';
+        }
+        $citation = $field['citation'] ?? null;
+        if (!is_array($citation)) {
+            return '';
+        }
+        $fieldOrChunkId = $citation['field_or_chunk_id'] ?? null;
+        return is_string($fieldOrChunkId) ? $fieldOrChunkId : '';
+    }
+
+    /**
+     * Return the citation block as an associative array, or null when
+     * the field has no citation. Use when the consumer needs the full
+     * shape (bbox, page, source_type, field_or_chunk_id) — typically
+     * the bbox-overlay JS payload, which serializes the whole block
+     * to the page.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function citation(mixed $field): ?array
+    {
+        if (!is_array($field)) {
+            return null;
+        }
+        $citation = $field['citation'] ?? null;
+        if (!is_array($citation)) {
+            return null;
+        }
+        /** @var array<string, mixed> $citation */
+        return $citation;
+    }
+
+    /**
      * Narrow a mixed value to a list of array rows (the typical shape
      * for reported_allergies / current_medications / active_problems
      * / family_history). Non-array entries are dropped silently —
