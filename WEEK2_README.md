@@ -42,6 +42,25 @@ running the Week 1 flow gets the same behaviour as before.
   - `agent-service/tests/fixtures/{lab_pdf,intake_form}/` — committed
     synthetic demo PDFs.
 
+## Eval gate is CI-enforced
+
+The 65-case extraction + retrieval eval gate runs on every push via
+GitLab CI (`.gitlab-ci.yml`) and on every local push via the
+`agent-service` pre-push hook (`.pre-commit-config.yaml`). Both invoke
+`make eval-extraction-gate`, which exits non-zero on any threshold
+breach (`schema_valid = 1.0`, `citation_present ≥ 0.95`,
+`factually_consistent ≥ 0.90`, `safe_refusal = 1.0`,
+`no_phi_in_logs = 1.0`) or a `> 5 pp` regression vs `baseline.json`.
+
+![GitLab pipelines for ClinicalCoPilot — pipeline #3711 PASSED on commit 93e08f2d, with prior failed pipelines visible above to show the gate does block bad commits](docs/week2/ci-pipelines-passing.png)
+
+The retrieval bucket runs Cohere `rerank-v3.5` against the BM25
+candidate set when `COHERE_API_KEY` is set in the CI environment
+(GitLab project variable), with the LLM-judge as the env-var-gated
+fallback. The runner prints the active backend at startup
+(`retrieval rerank backend: cohere`) so the CI log makes the rerank
+path explicit.
+
 ## What is and is not in scope tonight
 
 The Week 2 milestone for tonight is **lab PDF + intake form ingestion
