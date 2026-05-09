@@ -636,6 +636,7 @@ def create_app(
                         retriever=resolved_state.supervisor_corpus_retriever,
                         rerank_client=resolved_state.supervisor_anthropic,
                         rerank_model=resolved_settings.model_fast,
+                        cohere_client=resolved_state.supervisor_cohere_client,
                         orchestrator=resolved_state.orchestrator,
                         claims=claims,
                         session_id=body.session_id,

@@ -1,35 +1,38 @@
-"""LLM-judge rerank for the corpus retriever.
+"""Rerank stage for the corpus retriever.
 
-Phase 3 of the Week 2 early-submission plan: BM25 stays as the
-first-stage lexical retriever; this module is the rerank stage that
-the supervisor's ``evidence_retriever`` worker calls between
+Phase 3 of the Week 2 plan: BM25 stays as the first-stage lexical
+retriever; this module is the rerank stage that the supervisor's
+``evidence_retriever`` worker calls between
 ``CorpusRetriever.retrieve`` and the synthesis step.
 
-A faster cross-encoder (e.g. ``bge-reranker-base``) would beat an
-LLM-judge on cost-per-rerank, but adding sentence-transformers blew
-up the dep tree for a one-week submission. The LLM judge is the
-expedient choice — defensible in the migration doc as "rerank with
-LLM-as-judge", deferrable to a real cross-encoder in the full
-submission.
+Two backends share the same best-effort contract:
 
-Contract
-========
+* :func:`rerank_with_cohere` — Cohere ``rerank-v3.5`` cross-encoder
+  (Sunday primary; promoted from the post-Sunday queue 2026-05-08).
+  ~80 ms p50, well-calibrated relevance scores, ~$2/1k searches.
+* :func:`rerank_with_llm` — Claude Haiku scoring each candidate
+  (env-var-gated fallback when ``COHERE_API_KEY`` is absent or the
+  Cohere call errors). ~600 ms p50.
+
+Contract (both backends)
+========================
 
 * Input: query + at most :data:`MAX_CANDIDATES` :class:`RetrievedChunk`
   objects from the BM25 stage.
-* The judge scores each chunk on a 0..1 relevance scale.
+* Each candidate is scored on a 0..1 relevance scale.
 * Output: chunks re-sorted by rerank score, BM25 score broken out as
   a tie-break key, top-k returned.
-* Failure modes (Anthropic API error, malformed JSON) are logged and
-  fall back to the input order — never raise to the caller. The
-  rerank stage is best-effort.
+* Failure modes (API error, malformed response, empty results) are
+  logged and fall back to the input order — never raise to the caller.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
+from typing import Any, Protocol
 
 import structlog
 from anthropic import Anthropic
@@ -40,6 +43,18 @@ logger = structlog.get_logger(__name__)
 
 DEFAULT_RERANK_MODEL = "claude-haiku-4-5"
 """Cheap, fast model — judges don't need Sonnet-level reasoning."""
+
+DEFAULT_COHERE_RERANK_MODEL = "rerank-v3.5"
+"""Cohere's general-purpose multilingual reranker (current as of
+2026-05). Stays accurate on clinical-guideline text without a domain
+fine-tune; the model name is pinned so a Cohere SDK upgrade can't
+silently change scoring behaviour underneath the eval gate."""
+
+MAX_COHERE_DOC_CHARS = 2000
+"""Per-document cap on the text payload sent to Cohere. The chunker
+emits 200–400 token chunks (~1–1.5k chars), so this is a generous
+ceiling — catches a pathological long chunk without truncating any
+real corpus document."""
 
 MAX_CANDIDATES = 20
 """Cap on candidates the judge sees in one turn. Larger inputs blow
@@ -102,6 +117,7 @@ def rerank_with_llm(
     candidates_capped = candidates[:MAX_CANDIDATES]
     user_payload = _build_user_message(query=query, chunks=candidates_capped)
 
+    t0 = time.perf_counter()
     try:
         response = client.messages.create(
             model=model,
@@ -138,7 +154,16 @@ def rerank_with_llm(
             reranked.append(RerankedChunk(chunk=chunk, rerank_score=score))
 
     reranked.sort(key=lambda r: (r.rerank_score, r.chunk.score), reverse=True)
-    return [r.chunk for r in reranked[:top_k]]
+    result = [r.chunk for r in reranked[:top_k]]
+    logger.info(
+        "corpus.rerank.llm_judge_ok",
+        n_in=len(candidates_capped),
+        n_out=len(result),
+        top_chunk_id=result[0].chunk_id if result else None,
+        top_score=reranked[0].rerank_score if reranked else None,
+        latency_ms=int((time.perf_counter() - t0) * 1000),
+    )
+    return result
 
 
 def _build_user_message(*, query: str, chunks: list[RetrievedChunk]) -> str:
@@ -151,6 +176,130 @@ def _build_user_message(*, query: str, chunks: list[RetrievedChunk]) -> str:
             f"- chunk_id={c.chunk_id} (source={c.source}, title={c.title!r}): {text_excerpt}"
         )
     return "\n".join(lines)
+
+
+class CohereRerankClient(Protocol):
+    """Structural interface over the bit of the Cohere SDK we use.
+
+    Defining a Protocol decouples this module from a hard
+    ``import cohere`` at type-check time and lets the unit test mock
+    the rerank call without pulling the SDK into the test
+    environment. The real client is :class:`cohere.ClientV2`, whose
+    ``rerank`` method matches this signature.
+    """
+
+    def rerank(
+        self,
+        *,
+        query: str,
+        documents: list[str],
+        model: str,
+        top_n: int,
+    ) -> Any: ...
+
+
+def rerank_with_cohere(
+    *,
+    client: CohereRerankClient,
+    query: str,
+    candidates: list[RetrievedChunk],
+    model: str = DEFAULT_COHERE_RERANK_MODEL,
+    top_k: int = 5,
+) -> list[RetrievedChunk]:
+    """Score, sort, and return the top-k chunks via Cohere Rerank.
+
+    Best-effort: any failure (API error, empty response, indices that
+    don't map back to the input) falls back to the input order capped
+    at ``top_k`` so the caller never has to handle rerank-stage
+    exceptions. Mirrors the contract of :func:`rerank_with_llm`.
+    """
+
+    if not candidates:
+        return []
+    if top_k <= 0:
+        return []
+    candidates_capped = candidates[:MAX_CANDIDATES]
+    documents = [_chunk_payload(c) for c in candidates_capped]
+    requested_top_n = min(top_k, len(candidates_capped))
+
+    t0 = time.perf_counter()
+    try:
+        response = client.rerank(
+            query=query,
+            documents=documents,
+            model=model,
+            top_n=requested_top_n,
+        )
+    except Exception as exc:
+        logger.warning(
+            "corpus.rerank.cohere_api_error",
+            error=f"{type(exc).__name__}: {exc}",
+            n_candidates=len(candidates_capped),
+        )
+        return candidates_capped[:top_k]
+
+    results = getattr(response, "results", None)
+    if not results:
+        logger.warning(
+            "corpus.rerank.cohere_empty_results",
+            n_candidates=len(candidates_capped),
+        )
+        return candidates_capped[:top_k]
+
+    ordered: list[RerankedChunk] = []
+    seen_indices: set[int] = set()
+    n = len(candidates_capped)
+    for result in results:
+        index = getattr(result, "index", None)
+        score = getattr(result, "relevance_score", None)
+        if not isinstance(index, int) or index < 0 or index >= n:
+            continue
+        if index in seen_indices:
+            continue
+        if not isinstance(score, (int, float)):
+            continue
+        seen_indices.add(index)
+        ordered.append(
+            RerankedChunk(
+                chunk=candidates_capped[index],
+                rerank_score=max(0.0, min(1.0, float(score))),
+            ),
+        )
+
+    if not ordered:
+        # Every result row was malformed — degrade to BM25 order rather
+        # than silently dropping every chunk.
+        logger.warning(
+            "corpus.rerank.cohere_unusable_results",
+            n_candidates=len(candidates_capped),
+            n_results=len(results),
+        )
+        return candidates_capped[:top_k]
+
+    ordered.sort(key=lambda r: (r.rerank_score, r.chunk.score), reverse=True)
+    result = [r.chunk for r in ordered[:top_k]]
+    logger.info(
+        "corpus.rerank.cohere_ok",
+        n_in=len(candidates_capped),
+        n_out=len(result),
+        top_chunk_id=result[0].chunk_id if result else None,
+        top_score=ordered[0].rerank_score if ordered else None,
+        latency_ms=int((time.perf_counter() - t0) * 1000),
+    )
+    return result
+
+
+def _chunk_payload(chunk: RetrievedChunk) -> str:
+    """Format a chunk for the Cohere rerank request body.
+
+    Includes title + source so the cross-encoder has the same
+    surface signal the LLM judge sees in its prompt; truncates to
+    :data:`MAX_COHERE_DOC_CHARS` so a pathological long chunk can't
+    blow the per-request payload budget.
+    """
+
+    body = chunk.text[:MAX_COHERE_DOC_CHARS]
+    return f"{chunk.title} ({chunk.source})\n{body}"
 
 
 def _parse_scores(text: str) -> dict[str, float] | None:

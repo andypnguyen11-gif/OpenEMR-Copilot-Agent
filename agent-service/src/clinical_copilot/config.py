@@ -87,6 +87,13 @@ class Settings:
     model_slow: str
     model_fast: str
     internal_token: str
+    # Optional in every env. Empty string keeps the existing LLM-judge
+    # rerank path active so a deploy without the key is still
+    # functional (best-effort fallback contract). When non-empty,
+    # ``app_state.build_app_state`` constructs a Cohere client and
+    # the evidence_retriever worker prefers it over the LLM judge —
+    # see ``corpus.rerank.rerank_with_cohere``.
+    cohere_api_key: str = ""
     # Default ``True`` matches the production default and keeps existing
     # test factories that build ``Settings(...)`` directly working
     # without the new kwarg. The route still gates on
@@ -148,6 +155,12 @@ def _load() -> Settings:
         "on",
     }
 
+    # Optional in every env (no _require branch). Empty string keeps the
+    # existing LLM-judge rerank path active so production stays functional
+    # without the key — promoting Cohere to primary requires setting the
+    # env var deliberately.
+    cohere_api_key = _optional("COHERE_API_KEY", "")
+
     if env in {"development", "test"}:
         hmac_secret = _optional("COPILOT_HMAC_SECRET", "dev-insecure-hmac-secret")
         llm_api_key = _optional("ANTHROPIC_API_KEY", "")
@@ -188,6 +201,7 @@ def _load() -> Settings:
         internal_token=internal_token,
         use_supervisor=use_supervisor,
         use_langgraph=use_langgraph,
+        cohere_api_key=cohere_api_key,
     )
 
 

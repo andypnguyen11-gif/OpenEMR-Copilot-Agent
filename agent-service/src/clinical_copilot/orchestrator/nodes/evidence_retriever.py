@@ -25,6 +25,7 @@ from typing import Any, Final
 import structlog
 from anthropic import Anthropic
 
+from clinical_copilot.corpus.rerank import CohereRerankClient
 from clinical_copilot.corpus.retriever import CorpusRetriever
 from clinical_copilot.orchestrator.state import (
     Citation,
@@ -94,14 +95,19 @@ def make_node(
     retriever: CorpusRetriever,
     rerank_client: Anthropic | None = None,
     rerank_model: str | None = None,
+    cohere_client: CohereRerankClient | None = None,
+    cohere_model: str | None = None,
     k: int = DEFAULT_K,
 ) -> Any:
     """Bind retriever / rerank client and return a LangGraph node body.
 
-    The node mutates only ``state["drafts"]`` (additive via the state
-    reducer in :mod:`orchestrator.state`). Errors per sub-query become
-    :class:`Draft` rows with ``abstain_reason=TOOL_FAILURE`` rather
-    than raising — the graph keeps running for sibling sub-queries.
+    Backend selection is delegated to :func:`run_evidence_retriever`:
+    ``cohere_client`` wins when present, otherwise ``rerank_client``,
+    otherwise pure BM25. The node mutates only ``state["drafts"]``
+    (additive via the state reducer in :mod:`orchestrator.state`).
+    Errors per sub-query become :class:`Draft` rows with
+    ``abstain_reason=TOOL_FAILURE`` rather than raising — the graph
+    keeps running for sibling sub-queries.
     """
 
     def node(state: TurnState) -> dict[str, list[Draft]]:
@@ -121,6 +127,8 @@ def make_node(
                     k=k,
                     rerank_client=rerank_client,
                     rerank_model=rerank_model,
+                    cohere_client=cohere_client,
+                    cohere_model=cohere_model,
                 )
             except WorkerError as exc:
                 log.warning(

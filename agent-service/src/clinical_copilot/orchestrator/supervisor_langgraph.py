@@ -63,6 +63,7 @@ from langgraph.graph.state import CompiledStateGraph, StateGraph
 from langgraph.types import Send
 
 from clinical_copilot.auth.session import ClinicianClaims
+from clinical_copilot.corpus.rerank import CohereRerankClient
 from clinical_copilot.corpus.retriever import CorpusRetriever
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.chart_pack import ChartPack
@@ -389,6 +390,8 @@ def build_graph(
     retriever: CorpusRetriever,
     rerank_client: Anthropic | None,
     rerank_model: str | None,
+    cohere_client: CohereRerankClient | None = None,
+    cohere_model: str | None = None,
     orchestrator: Orchestrator,
     claims: ClinicianClaims,
     session_id: str | None,
@@ -430,6 +433,8 @@ def build_graph(
             retriever=retriever,
             rerank_client=rerank_client,
             rerank_model=rerank_model,
+            cohere_client=cohere_client,
+            cohere_model=cohere_model,
         ),
     )
     builder.add_node(
@@ -487,6 +492,8 @@ def run_turn(
     retriever: CorpusRetriever,
     rerank_client: Anthropic | None,
     rerank_model: str | None,
+    cohere_client: CohereRerankClient | None = None,
+    cohere_model: str | None = None,
     orchestrator: Orchestrator,
     claims: ClinicianClaims,
     session_id: str | None,
@@ -510,6 +517,8 @@ def run_turn(
         retriever=retriever,
         rerank_client=rerank_client,
         rerank_model=rerank_model,
+        cohere_client=cohere_client,
+        cohere_model=cohere_model,
         orchestrator=orchestrator,
         claims=claims,
         session_id=session_id,

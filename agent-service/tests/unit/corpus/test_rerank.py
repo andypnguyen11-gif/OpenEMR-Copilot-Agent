@@ -99,3 +99,40 @@ def test_parse_scores_clamps_out_of_range() -> None:
 
 def test_parse_scores_returns_none_on_missing_scores_key() -> None:
     assert _parse_scores('{"foo": "bar"}') is None
+
+
+def test_rerank_emits_success_log() -> None:
+    """Symmetric to the Cohere success-log test — operators
+    tail-grep this event to confirm which backend ran on a request."""
+    from structlog.testing import capture_logs
+
+    chunks = [_chunk("c1", score=0.9), _chunk("c2", score=0.5)]
+    client = _client_with_json(
+        '{"scores": [{"chunk_id": "c1", "score": 0.95}, {"chunk_id": "c2", "score": 0.3}]}'
+    )
+    with capture_logs() as logs:
+        rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    success_logs = [log for log in logs if log.get("event") == "corpus.rerank.llm_judge_ok"]
+    assert len(success_logs) == 1
+    entry = success_logs[0]
+    assert entry["n_in"] == 2
+    assert entry["n_out"] == 2
+    assert entry["top_chunk_id"] == "c1"
+    assert entry["top_score"] == 0.95
+    assert isinstance(entry["latency_ms"], int)
+    assert entry["latency_ms"] >= 0
+
+
+def test_rerank_does_not_log_success_on_api_error() -> None:
+    from structlog.testing import capture_logs
+    from unittest.mock import MagicMock
+
+    chunks = [_chunk("c1"), _chunk("c2")]
+    client = MagicMock()
+    client.messages.create.side_effect = RuntimeError("boom")
+    with capture_logs() as logs:
+        rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    success_logs = [log for log in logs if log.get("event") == "corpus.rerank.llm_judge_ok"]
+    assert success_logs == []
+    error_logs = [log for log in logs if log.get("event") == "corpus.rerank.api_error"]
+    assert len(error_logs) == 1

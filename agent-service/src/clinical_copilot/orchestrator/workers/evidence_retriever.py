@@ -22,8 +22,18 @@ from typing import Any
 
 from anthropic import Anthropic
 
-from clinical_copilot.corpus.rerank import rerank_with_llm
+from clinical_copilot.corpus.rerank import (
+    CohereRerankClient,
+    rerank_with_cohere,
+    rerank_with_llm,
+)
 from clinical_copilot.corpus.retriever import CorpusRetriever, RetrievedChunk
+
+RerankBackend = str
+"""``"cohere"`` | ``"llm-judge"`` | ``"none"`` — recorded on
+:class:`EvidenceRetrieverOutput` so the supervisor's audit row names
+the actual reranker used. Plain ``str`` rather than an Enum keeps
+JSON serialization and tool-result payloads trivial."""
 
 
 class WorkerError(RuntimeError):
@@ -38,6 +48,10 @@ class EvidenceRetrieverOutput:
     chunks: list[dict[str, Any]]
     hybrid_enabled: bool
     reranked: bool
+    # ``"none"`` default keeps any direct constructor / cassette test
+    # working without modification; the worker overrides it per-call
+    # based on which backend actually ran.
+    rerank_backend: RerankBackend = "none"
 
     def to_tool_result(self) -> dict[str, Any]:
         return {
@@ -45,6 +59,7 @@ class EvidenceRetrieverOutput:
             "chunks": self.chunks,
             "hybrid_enabled": self.hybrid_enabled,
             "reranked": self.reranked,
+            "rerank_backend": self.rerank_backend,
         }
 
 
@@ -55,18 +70,27 @@ def run_evidence_retriever(
     k: int = 5,
     rerank_client: Anthropic | None = None,
     rerank_model: str | None = None,
+    cohere_client: CohereRerankClient | None = None,
+    cohere_model: str | None = None,
     candidate_multiplier: int = 3,
 ) -> EvidenceRetrieverOutput:
     """Validate inputs, retrieve candidates, optionally rerank, return.
 
-    When ``rerank_client`` is provided the worker fetches
-    ``k * candidate_multiplier`` candidates from the BM25 stage (capped
-    at the rerank module's ``MAX_CANDIDATES``) and asks an LLM judge to
-    re-score them. The top-k after rerank ships back to the supervisor.
+    Backend selection (in order of preference):
 
-    When ``rerank_client`` is ``None`` the worker behaves as a pure
-    pass-through over BM25 — that's the offline / no-network test path
-    and the documented degradation when the rerank stage is disabled.
+    * ``cohere_client`` — Cohere ``rerank-v3.5`` cross-encoder. Primary
+      when configured (Sunday-target rerank backend per W2-RR).
+    * ``rerank_client`` — Anthropic LLM-judge. Used when only the
+      Anthropic client is wired; also the documented fallback path
+      when the deploy is missing ``COHERE_API_KEY``.
+    * Neither — pure BM25 pass-through; the offline / no-network test
+      path and the documented degradation when the rerank stage is
+      disabled.
+
+    Both rerank backends are best-effort: any backend-internal failure
+    falls back to BM25 order via the rerank module's contract. The
+    selection here only chooses *which* backend runs — it does not
+    cascade across them on failure (the rerank module already does).
     """
 
     if not query or not query.strip():
@@ -74,28 +98,45 @@ def run_evidence_retriever(
     if k <= 0 or k > 50:
         raise WorkerError(f"k must be in (0, 50], got {k}")
 
-    if rerank_client is None:
-        chunks = retriever.retrieve(query=query, k=k)
-        reranked = False
-    else:
+    if cohere_client is not None:
         candidate_k = max(k, k * max(1, candidate_multiplier))
         candidates = retriever.retrieve(query=query, k=candidate_k)
-        kwargs: dict[str, Any] = {
+        cohere_kwargs: dict[str, Any] = {
+            "client": cohere_client,
+            "query": query,
+            "candidates": candidates,
+            "top_k": k,
+        }
+        if cohere_model:
+            cohere_kwargs["model"] = cohere_model
+        chunks = rerank_with_cohere(**cohere_kwargs)
+        reranked = True
+        backend: RerankBackend = "cohere"
+    elif rerank_client is not None:
+        candidate_k = max(k, k * max(1, candidate_multiplier))
+        candidates = retriever.retrieve(query=query, k=candidate_k)
+        llm_kwargs: dict[str, Any] = {
             "client": rerank_client,
             "query": query,
             "candidates": candidates,
             "top_k": k,
         }
         if rerank_model:
-            kwargs["model"] = rerank_model
-        chunks = rerank_with_llm(**kwargs)
+            llm_kwargs["model"] = rerank_model
+        chunks = rerank_with_llm(**llm_kwargs)
         reranked = True
+        backend = "llm-judge"
+    else:
+        chunks = retriever.retrieve(query=query, k=k)
+        reranked = False
+        backend = "none"
 
     return EvidenceRetrieverOutput(
         query=query,
         chunks=[_chunk_to_dict(c) for c in chunks],
         hybrid_enabled=retriever.hybrid_enabled,
         reranked=reranked,
+        rerank_backend=backend,
     )
 
 

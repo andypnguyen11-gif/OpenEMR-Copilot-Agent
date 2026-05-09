@@ -54,7 +54,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -168,6 +168,13 @@ class AppState:
     # plain-Python supervisor). ``None`` whenever the corpus index is
     # unavailable; same fail-soft contract.
     supervisor_corpus_retriever: CorpusRetriever | None = None
+    # Cohere rerank client (W2-RR). ``None`` when ``COHERE_API_KEY`` is
+    # not set in the environment — in that case ``evidence_retriever``
+    # falls back to the LLM-judge rerank using ``supervisor_anthropic``.
+    # Typed as ``Any`` so a deploy without the cohere package never
+    # imports the SDK at module load (lazy import in
+    # ``build_app_state``).
+    supervisor_cohere_client: Any = None
 
 
 def build_app_state(
@@ -331,6 +338,24 @@ def build_app_state(
     supervisor_intake_extractor: IntakeExtractorFn | None = None
     supervisor_evidence_retriever: EvidenceRetrieverFn | None = None
     corpus_retriever: CorpusRetriever | None = None
+    # Cohere rerank client (W2-RR). Lazy-import the SDK inside the
+    # conditional so a deploy that doesn't set ``COHERE_API_KEY`` never
+    # imports the cohere package and never pays the import cost on the
+    # hot path. Best-effort: any construction failure logs and degrades
+    # to the LLM-judge rerank path (the worker handles ``None``).
+    supervisor_cohere_client: Any = None
+    if settings.cohere_api_key:
+        try:
+            import cohere as _cohere  # noqa: PLC0415  (lazy import is intentional)
+
+            supervisor_cohere_client = _cohere.ClientV2(api_key=settings.cohere_api_key)
+            structlog.get_logger(__name__).info("supervisor.cohere_client_loaded")
+        except Exception as exc:
+            structlog.get_logger(__name__).warning(
+                "supervisor.cohere_client_init_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            supervisor_cohere_client = None
     if supervisor_anthropic is not None:
         try:
             corpus_retriever = CorpusRetriever()
@@ -355,15 +380,19 @@ def build_app_state(
             _client = supervisor_anthropic
             _slow_model = settings.model_slow
             _fast_model = settings.model_fast
+            _cohere_client = supervisor_cohere_client
 
             def _evidence_partial(**kwargs: object) -> dict[str, object]:
-                # Always pass rerank_client + rerank_model so
-                # evidence_retriever runs the full BM25 + (dense if
-                # available) + LLM-judge rerank stack on prod queries.
+                # Pass both rerank clients; the worker prefers Cohere
+                # when present and falls back to the LLM-judge when
+                # ``cohere_client`` is ``None``. Either way the rerank
+                # stage runs on top of the full BM25 + (dense if
+                # available) retrieval.
                 return run_evidence_retriever(
                     retriever=_corpus,
                     rerank_client=_client,
                     rerank_model=_fast_model,
+                    cohere_client=_cohere_client,
                     **kwargs,  # type: ignore[arg-type]
                 ).to_tool_result()
 
@@ -427,6 +456,7 @@ def build_app_state(
         supervisor_evidence_retriever=supervisor_evidence_retriever,
         supervisor_model=settings.model_slow if supervisor_anthropic is not None else None,
         supervisor_corpus_retriever=corpus_retriever,
+        supervisor_cohere_client=supervisor_cohere_client,
     )
 
 
