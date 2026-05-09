@@ -54,6 +54,7 @@ record.
 from __future__ import annotations
 
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -62,6 +63,9 @@ from clinical_copilot.audit.log import AuditLogWriteError
 from clinical_copilot.logging import get_logger
 from clinical_copilot.observability import (
     MetricsService,
+    TraceRecord,
+    TracesService,
+    UsageTotals,
     build_outcome,
     traceable_orchestrator_run,
 )
@@ -163,6 +167,7 @@ class Orchestrator:
         verifier: VerificationMiddleware,
         sessions: SessionStore,
         metrics: MetricsService | None = None,
+        traces: TracesService | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
     ) -> None:
         if Lane.SLOW not in lanes:
@@ -176,6 +181,11 @@ class Orchestrator:
         # service, so plumbing ``None`` here just skips the recorder
         # entirely (no DB connection attempt, no log noise).
         self._metrics = metrics
+        # ``traces=None`` follows the same convention. Sibling of
+        # ``metrics`` — both are fail-open observability writers, both
+        # are skipped wholesale on the test path (no constructor change
+        # needed, no log noise).
+        self._traces = traces
         self._max_turns = max_turns
 
     @traceable_orchestrator_run
@@ -194,12 +204,14 @@ class Orchestrator:
         except KeyError as exc:
             raise UnknownLaneError(lane) from exc
         canonical_id, prior_state = self._sessions.get_or_create(claims, session_id)
+        started = time.perf_counter()
         try:
             (
                 response,
                 persisted_messages,
                 persisted_tool_results,
                 tool_calls,
+                usage_totals,
             ) = self._execute(
                 query=query,
                 claims=claims,
@@ -209,6 +221,7 @@ class Orchestrator:
                 lane=lane,
                 bound_patient_name=bound_patient_name,
             )
+            latency_ms = int((time.perf_counter() - started) * 1000)
             # Outcome row is fail-open inside :class:`MetricsService`.
             # Recording before the session update means an error in the
             # session-store path doesn't suppress the metric, and a
@@ -221,6 +234,26 @@ class Orchestrator:
                         abstention=response.abstention,
                         tool_results=response.tool_results,
                         tool_calls=tool_calls,
+                    ),
+                )
+            # Trace row is the sibling fail-open writer. The v1 path
+            # never invokes the corpus retriever, so ``retrieval_hits``
+            # stays NULL — the supervisor branch in :mod:`main` is the
+            # only call site that populates it. ``extraction_confidence``
+            # is also NULL here; it's the document-ingest path's column.
+            if self._traces is not None:
+                self._traces.record(
+                    TraceRecord(
+                        request_id=request_id,
+                        user_id=claims.user_id,
+                        role=claims.role,
+                        lane=lane.value,
+                        latency_ms=latency_ms,
+                        token_in=usage_totals.input_tokens,
+                        token_out=usage_totals.output_tokens,
+                        model_tier=getattr(config.llm, "model", "unknown"),
+                        retrieval_hits=None,
+                        extraction_confidence=None,
                     ),
                 )
             self._sessions.update(
@@ -252,7 +285,7 @@ class Orchestrator:
         config: LaneConfig,
         lane: Lane,
         bound_patient_name: str | None,
-    ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult], int]:
+    ) -> tuple[AgentResponse, list[dict[str, Any]], list[ToolResult], int, UsageTotals]:
         """Run one user turn against the LLM tool-use loop.
 
         Returns ``(response, persisted_messages, persisted_tool_results,
@@ -297,6 +330,7 @@ class Orchestrator:
                 list(prior_state.messages),
                 list(prior_state.tool_results),
                 0,
+                UsageTotals(),
             )
 
         # The static system prompt declares "the session is bound to one
@@ -339,6 +373,7 @@ class Orchestrator:
         working_messages: list[dict[str, Any]] = list(persisted_messages)
         tool_results: list[ToolResult] = list(prior_state.tool_results)
         tool_calls = 0
+        usage_totals = UsageTotals()
         retried = False
 
         for _ in range(self._max_turns):
@@ -373,7 +408,13 @@ class Orchestrator:
                     list(prior_state.messages),
                     list(prior_state.tool_results),
                     tool_calls,
+                    usage_totals,
                 )
+
+            usage_totals = usage_totals + UsageTotals(
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+            )
 
             if turn.tool_uses:
                 dispatched, tool_messages, abstention = self._dispatch_tools(
@@ -397,6 +438,7 @@ class Orchestrator:
                         list(prior_state.messages),
                         list(prior_state.tool_results),
                         tool_calls,
+                        usage_totals,
                     )
                 # Legitimate tool-use round — both message lists track it.
                 persisted_messages.extend(tool_messages)
@@ -428,6 +470,7 @@ class Orchestrator:
                         list(prior_state.messages),
                         list(prior_state.tool_results),
                         tool_calls,
+                        usage_totals,
                     )
                 retried = True
                 # Retry frames go to working_messages only — they must
@@ -461,12 +504,13 @@ class Orchestrator:
                     list(prior_state.messages),
                     list(prior_state.tool_results),
                     tool_calls,
+                    usage_totals,
                 )
 
             # Success path: commit the final assistant text turn into
             # persisted_messages so turn N+1 sees it.
             persisted_messages.append({"role": "assistant", "content": turn.raw_assistant_blocks})
-            return verified, persisted_messages, tool_results, tool_calls
+            return verified, persisted_messages, tool_results, tool_calls, usage_totals
 
         max_turns_response = AgentResponse(
             cards=[],
@@ -482,6 +526,7 @@ class Orchestrator:
             list(prior_state.messages),
             list(prior_state.tool_results),
             tool_calls,
+            usage_totals,
         )
 
     def _dispatch_tools(

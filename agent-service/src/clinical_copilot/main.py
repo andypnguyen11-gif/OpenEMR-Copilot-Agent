@@ -55,6 +55,7 @@ from clinical_copilot.documents.extractor import (
     extract as run_extraction,
 )
 from clinical_copilot.logging import configure_logging, get_logger
+from clinical_copilot.observability import TraceRecord
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
 from clinical_copilot.orchestrator.agent import UnknownLaneError
 from clinical_copilot.orchestrator.chart_pack import (
@@ -425,6 +426,39 @@ def _chart_pack_surface(
     return (cards, tool_results)
 
 
+def _retrieval_hits_from_handoffs(sup: SupervisorResponse) -> int | None:
+    """Sum chunk counts across every evidence_retriever handoff this turn.
+
+    Returns ``None`` when no evidence_retriever handoff fired (chart-only
+    or abstention before retrieval). The trace column is independently
+    nullable from ``extraction_confidence`` — a slow-lane retrieval-only
+    turn writes ``retrieval_hits=N, extraction_confidence=NULL``.
+
+    Two handoff shapes flow through here: the plain-Python supervisor
+    emits ``output["chunks"]`` (full retrieval result), while the
+    LangGraph supervisor's adapter (``_state_handoff_to_dataclass``)
+    projects only ``output["citations"]`` from each draft. Read both —
+    the LangGraph path is the live production path, and reading only
+    ``chunks`` would silently NULL ``retrieval_hits`` on every
+    LangGraph turn even when retrieval ran.
+    """
+
+    total: int | None = None
+    for handoff in sup.handoffs:
+        if handoff.worker != "evidence_retriever":
+            continue
+        if handoff.output is None:
+            continue
+        chunks = handoff.output.get("chunks")
+        if isinstance(chunks, list):
+            total = (total or 0) + len(chunks)
+            continue
+        citations = handoff.output.get("citations")
+        if isinstance(citations, list):
+            total = (total or 0) + len(citations)
+    return total
+
+
 def _supervisor_to_agent_response(
     sup: SupervisorResponse,
     *,
@@ -610,6 +644,37 @@ def create_app(
         # guard + the runtime system block. Resolver is fail-soft —
         # ``None`` here means "no comparator", and the guard is skipped.
         bound_patient_name = resolved_state.patient_name_resolver(claims.patient_id)
+        request_started = time.perf_counter()
+
+        def _record_supervisor_trace(sup: SupervisorResponse) -> None:
+            """Write one ``agent_traces`` row for this supervisor turn.
+
+            Fail-open inside :class:`TracesService.record`. ``token_in`` /
+            ``token_out`` come from the supervisor's own
+            ``client.messages.create`` rollups — the rerank stage's
+            tokens are not yet aggregated here (haiku-bounded; deferred
+            for follow-up). ``retrieval_hits`` is the summed chunk count
+            across every evidence_retriever handoff this turn; ``None``
+            when no retriever ran. ``extraction_confidence`` is always
+            ``None`` here — the document-ingest entry point is the only
+            site that populates it.
+            """
+
+            latency_ms = int((time.perf_counter() - request_started) * 1000)
+            resolved_state.traces_service.record(
+                TraceRecord(
+                    request_id=request_id,
+                    user_id=claims.user_id,
+                    role=claims.role,
+                    lane=body.lane.value,
+                    latency_ms=latency_ms,
+                    token_in=sup.usage_totals.input_tokens,
+                    token_out=sup.usage_totals.output_tokens,
+                    model_tier=resolved_state.supervisor_model or "unknown",
+                    retrieval_hits=_retrieval_hits_from_handoffs(sup),
+                    extraction_confidence=None,
+                ),
+            )
 
         # W2-07 supervisor branch. Slow-lane traffic with the supervisor
         # wiring populated (real Anthropic client + corpus index loaded)
@@ -730,6 +795,7 @@ def create_app(
                         error=f"{type(exc).__name__}: {exc}",
                     )
                 else:
+                    _record_supervisor_trace(sup)
                     return _supervisor_to_agent_response(
                         sup,
                         session_id=canonical_id,
@@ -753,6 +819,7 @@ def create_app(
                     error=f"{type(exc).__name__}: {exc}",
                 )
             else:
+                _record_supervisor_trace(sup)
                 return _supervisor_to_agent_response(
                     sup,
                     session_id=canonical_id,
@@ -1041,14 +1108,38 @@ def create_app(
         # ``GET /api/agent/internal/extracted/{id}`` route below.
         facts_store.write(result.facts)
 
+        # Trace row for the document-ingest path. ``retrieval_hits`` is
+        # NULL — extraction never invokes the corpus retriever.
+        # ``extraction_confidence`` is the mean of per-field confidences
+        # in the dumped facts; ``None`` collapses to NULL when the
+        # extractor emitted nothing numeric to average. Tokens stay 0
+        # for now (extractor token capture is a follow-up); fail-open
+        # inside :meth:`TracesService.record` so a DB hiccup never
+        # surfaces here.
+        facts_dump = result.facts.model_dump(mode="json")
+        resolved_state.traces_service.record(
+            TraceRecord(
+                request_id=uuid.uuid4().hex,
+                user_id=str(uploader_user_id),
+                role="internal",
+                lane="ingest",
+                latency_ms=elapsed_ms,
+                token_in=0,
+                token_out=0,
+                model_tier=resolved_settings.model_slow,
+                retrieval_hits=None,
+                extraction_confidence=_compute_mean_confidence(facts_dump),
+            ),
+        )
+
         return IngestResponse(
             document_id=document_id,
             document_type=document_type,
             patient_id=patient_id,
             facts_url=f"/api/agent/internal/extracted/{document_id}",
-            facts=result.facts.model_dump(mode="json"),
+            facts=facts_dump,
             extraction_ms=elapsed_ms,
-            abstain_summary=_compute_abstain_summary(result.facts.model_dump(mode="json")),
+            abstain_summary=_compute_abstain_summary(facts_dump),
         )
 
     @app.get(
@@ -1105,6 +1196,37 @@ def create_app(
         return validated.model_dump(mode="json")
 
     return app
+
+
+def _compute_mean_confidence(facts: dict[str, Any]) -> float | None:
+    """Mean of every numeric ``confidence`` value in the facts dump.
+
+    Walks the JSON-serialized facts the extractor wrote and averages
+    every ``confidence`` float (per-field on :class:`ExtractedField`,
+    plus the per-page intake fields). Returns ``None`` when the dump
+    contains no numeric confidences — that lands ``NULL`` in
+    ``agent_traces.extraction_confidence``, which is the right column
+    semantics ("we ran an extractor but it produced no usable
+    confidence signal", distinct from a real ``0.0``).
+    """
+
+    values: list[float] = []
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "confidence" and isinstance(value, int | float):
+                    values.append(float(value))
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(facts)
+    if not values:
+        return None
+    return sum(values) / len(values)
 
 
 def _compute_abstain_summary(facts: dict[str, Any]) -> AbstainSummary:

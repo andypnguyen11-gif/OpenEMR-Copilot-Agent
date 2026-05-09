@@ -76,7 +76,7 @@ from clinical_copilot.discrepancy.chart_provider import (
 )
 from clinical_copilot.discrepancy.engine import DiscrepancyEngine
 from clinical_copilot.discrepancy.rules import DEFAULT_PACK_PATHS, DEFAULT_REGISTRY
-from clinical_copilot.observability import MetricsService, configure_tracing
+from clinical_copilot.observability import MetricsService, TracesService, configure_tracing
 from clinical_copilot.orchestrator.agent import Orchestrator
 from clinical_copilot.orchestrator.lanes import Lane, LaneConfig
 from clinical_copilot.orchestrator.llm_gateway import AnthropicLlmGateway, LlmGateway
@@ -138,6 +138,7 @@ class AppState:
     session_store: SessionStore
     discrepancy_cache: DiscrepancyCache
     metrics_service: MetricsService
+    traces_service: TracesService
     audit_reader: AuditLogReader | None
     bridge: AsyncBridge | None
     # The tool registry the v1 Orchestrator already holds privately
@@ -300,6 +301,13 @@ def build_app_state(
     # for not registering itself; that's safer than silently returning
     # zero counts that look like a healthy steady state.
     metrics_service = MetricsService(session_factory=session_factory)
+    # Trace writer is the sibling fail-open observability writer (PR W2-04).
+    # Same ``session_factory`` as the audit and metrics writers so a single
+    # DB outage shows up on all three panels at once. ``None`` factory on
+    # the test path that overrides ``audit`` becomes a logged no-op
+    # writer — the integration tests pass an explicit factory when they
+    # want to assert on the row.
+    traces_service = TracesService(session_factory=session_factory)
 
     # Lane gateways: when ``llm`` is supplied (test path), the same
     # stub drives both lanes — unit tests assert on which prompt /
@@ -455,6 +463,7 @@ def build_app_state(
         verifier=verifier_mw,
         sessions=session_store,
         metrics=metrics_service,
+        traces=traces_service,
     )
 
     return AppState(
@@ -464,6 +473,7 @@ def build_app_state(
         session_store=session_store,
         discrepancy_cache=discrepancy_cache,
         metrics_service=metrics_service,
+        traces_service=traces_service,
         audit_reader=audit_reader,
         bridge=bridge,
         tool_registry=registry,
