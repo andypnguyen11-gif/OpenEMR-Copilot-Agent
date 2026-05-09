@@ -159,6 +159,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"validated {len(cases)} cases + labels", flush=True)
         return 0
 
+    # Surface the rerank backend in the CI log so a regression
+    # against the wrong backend is obvious. Force the lazy load now
+    # so any cohere construction error prints before the per-case
+    # output starts.
+    rerank_backend_label = "cohere" if _get_cohere_client() is not None else "bm25-only"
+    print(f"retrieval rerank backend: {rerank_backend_label}", flush=True)
+
     results: list[tuple[Case, list[RubricOutcome]]] = []
     for case in cases:
         label = load_label(case.label_path)
@@ -305,10 +312,13 @@ def _live_extract_output(case: Case) -> EvalOutput:
 def _retrieve_output(case: Case) -> EvalOutput:
     """Call the corpus retriever for a retrieval-bucket case.
 
-    Uses BM25-only retrieval (no LLM rerank in the gate path so the
-    eval cost stays at zero per retrieval case). The rerank stage is
-    exercised by the supervisor + integration test, not by the gate
-    rubric layer.
+    When ``COHERE_API_KEY`` is set, the runner pulls BM25 top-20 and
+    reranks via Cohere to top-10 — matching the live chat path's
+    rerank quality so the gate measures production retrieval, not
+    raw BM25. When the key is absent, falls back to BM25-only top-10
+    so dev runs without a Cohere key still execute (with reduced
+    accuracy on intent-disambiguation queries like "management of X"
+    vs "screening for X").
     """
 
     if not case.query:
@@ -319,7 +329,23 @@ def _retrieve_output(case: Case) -> EvalOutput:
     from clinical_copilot.evals.extraction.rubrics import RetrievedChunk
 
     retriever = _get_corpus_retriever()
-    chunks = retriever.retrieve(query=case.query, k=10)
+    cohere_client = _get_cohere_client()
+
+    if cohere_client is not None:
+        # Lazy import so a runner invoked without the rerank module on
+        # the path (offline replay tests) doesn't pay the import cost.
+        from clinical_copilot.corpus.rerank import rerank_with_cohere
+
+        candidates = retriever.retrieve(query=case.query, k=20)
+        chunks = rerank_with_cohere(
+            client=cohere_client,
+            query=case.query,
+            candidates=candidates,
+            top_k=10,
+        )
+    else:
+        chunks = retriever.retrieve(query=case.query, k=10)
+
     return EvalOutput(
         retrieved=tuple(
             RetrievedChunk(
@@ -345,6 +371,45 @@ def _get_corpus_retriever() -> CorpusRetriever:  # type: ignore[name-defined]
 
         _corpus_retriever_cache = CorpusRetriever()
     return _corpus_retriever_cache  # type: ignore[return-value]
+
+
+_cohere_client_cache: Any = None
+_cohere_client_loaded: bool = False
+
+
+def _get_cohere_client() -> Any:
+    """Return a cached Cohere ``ClientV2`` or ``None`` when
+    ``COHERE_API_KEY`` is absent / construction failed.
+
+    Built once per runner invocation. ``None`` is the documented
+    fallback that flips ``_retrieve_output`` to BM25-only — same
+    contract as the live chat path's rerank-stage fallback when the
+    key isn't wired.
+    """
+
+    global _cohere_client_cache, _cohere_client_loaded
+    if _cohere_client_loaded:
+        return _cohere_client_cache
+    _cohere_client_loaded = True
+
+    from clinical_copilot.config import get_settings
+
+    settings = get_settings()
+    if not settings.cohere_api_key:
+        return None
+
+    try:
+        import cohere  # noqa: PLC0415  (lazy import is intentional)
+
+        _cohere_client_cache = cohere.ClientV2(api_key=settings.cohere_api_key)
+    except Exception as exc:
+        print(
+            f"warning: cohere client init failed ({type(exc).__name__}: {exc}); "
+            "falling back to BM25-only retrieval",
+            file=sys.stderr,
+        )
+        _cohere_client_cache = None
+    return _cohere_client_cache
 
 
 def _facts_top_level_abstention(facts: dict[str, Any]) -> str | None:
