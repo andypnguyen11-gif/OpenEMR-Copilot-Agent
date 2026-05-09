@@ -13,7 +13,9 @@
         "confidence": 0.93,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "fatigue and palpitations"
+        "raw_text": "fatigue and palpitations",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "chief_complaint"
       },
       "value": "fatigue and palpitations"
     },

@@ -13,7 +13,9 @@
         "confidence": 0.9,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "follow-up"
+        "raw_text": "follow-up",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "chief_complaint"
       },
       "value": "follow-up"
     },

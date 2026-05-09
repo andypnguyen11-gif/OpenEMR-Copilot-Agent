@@ -13,7 +13,9 @@
         "confidence": 0.9,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "checkup"
+        "raw_text": "checkup",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "chief_complaint"
       },
       "value": "checkup"
     },
@@ -30,7 +32,9 @@
         "confidence": 0.95,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "02/14/1990"
+        "raw_text": "02/14/1990",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "date_of_birth"
       },
       "value": "1990-02-14"
     },
@@ -48,7 +52,9 @@
         "confidence": 0.97,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "Avery"
+        "raw_text": "Avery",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "legal_first_name"
       },
       "value": "Avery"
     },
@@ -64,7 +70,9 @@
         "confidence": 0.97,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "Tan"
+        "raw_text": "Tan",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "legal_last_name"
       },
       "value": "Tan"
     },

@@ -42,7 +42,11 @@ from clinical_copilot.documents.fetcher import (
     encode_jpeg_bytes,
     render_document,
 )
-from clinical_copilot.documents.schemas.citation import ExtractedField, SourceCitation
+from clinical_copilot.documents.schemas.citation import (
+    ExtractedField,
+    SourceCitation,
+    build_extracted_citation,
+)
 from clinical_copilot.documents.schemas.fax_tiff import (
     FaxPage,
     FaxPageType,
@@ -433,9 +437,14 @@ def _extract_lab(
             page=page,
             system_prompt=_LAB_SYSTEM_PROMPT,
         )
-        for raw_obs in raw.observations:
+        base_index = len(all_obs)
+        for offset, raw_obs in enumerate(raw.observations):
             all_obs.append(
-                _to_lab_observation(document_id=document_id, raw=raw_obs)
+                _to_lab_observation(
+                    document_id=document_id,
+                    raw=raw_obs,
+                    index=base_index + offset,
+                )
             )
     # Demo merge: simple concat. Dedup by (code, effective_date, value, page)
     # is in the production W2-03 merge module; this demo path expects
@@ -685,9 +694,12 @@ def _call_vlm[T: BaseModel](
 # ---------------------------------------------------------------------------
 
 
-def _to_lab_observation(*, document_id: str, raw: RawLabObservation) -> LabObservation:
+def _to_lab_observation(
+    *, document_id: str, raw: RawLabObservation, index: int
+) -> LabObservation:
     cite = _to_source_citation(document_id=document_id, raw=raw.citation)
     low_conf = raw.confidence < CONFIDENCE_THRESHOLD
+    prefix = f"observations[{index}]"
 
     parsed_date: date | None
     try:
@@ -700,14 +712,14 @@ def _to_lab_observation(*, document_id: str, raw: RawLabObservation) -> LabObser
         parsed_date = None
 
     return LabObservation(
-        code=_field(raw.code, cite, low_conf),
-        display=_field(raw.display, cite, low_conf),
-        value=_field(raw.value, cite, low_conf),
-        unit=_field(raw.unit, cite, low_conf),
-        effective_date=_field(parsed_date, cite, low_conf),
-        reference_low=_optional_field(raw.reference_low, cite, low_conf),
-        reference_high=_optional_field(raw.reference_high, cite, low_conf),
-        flag=_optional_field(raw.flag, cite, low_conf),
+        code=_field(raw.code, cite, low_conf, path=f"{prefix}.code"),
+        display=_field(raw.display, cite, low_conf, path=f"{prefix}.display"),
+        value=_field(raw.value, cite, low_conf, path=f"{prefix}.value"),
+        unit=_field(raw.unit, cite, low_conf, path=f"{prefix}.unit"),
+        effective_date=_field(parsed_date, cite, low_conf, path=f"{prefix}.effective_date"),
+        reference_low=_optional_field(raw.reference_low, cite, low_conf, path=f"{prefix}.reference_low"),
+        reference_high=_optional_field(raw.reference_high, cite, low_conf, path=f"{prefix}.reference_high"),
+        flag=_optional_field(raw.flag, cite, low_conf, path=f"{prefix}.flag"),
     )
 
 
@@ -717,6 +729,7 @@ def _to_intake_facts(*, document_id: str, raw: RawIntakeExtraction) -> IntakeFor
         value=raw.chief_complaint,
         confidence=raw.chief_complaint_confidence,
         citation=raw.chief_complaint_citation,
+        path="chief_complaint",
     )
 
     pain_scale = _build_optional_field(
@@ -724,74 +737,81 @@ def _to_intake_facts(*, document_id: str, raw: RawIntakeExtraction) -> IntakeFor
         value=raw.pain_scale,
         confidence=raw.pain_scale_confidence,
         citation=raw.pain_scale_citation,
+        path="pain_scale",
     )
     tobacco_status = _build_optional_field(
         document_id=document_id,
         value=raw.tobacco_status,
         confidence=raw.tobacco_status_confidence,
         citation=raw.tobacco_status_citation,
+        path="tobacco_status",
     )
     tobacco_pack_years = _build_optional_field(
         document_id=document_id,
         value=raw.tobacco_pack_years,
         confidence=raw.tobacco_pack_years_confidence,
         citation=raw.tobacco_pack_years_citation,
+        path="tobacco_pack_years",
     )
 
     medications: list[ReportedMedication] = []
-    for raw_med in raw.current_medications:
+    for med_index, raw_med in enumerate(raw.current_medications):
         cite = _to_source_citation(document_id=document_id, raw=raw_med.citation)
         low_conf = raw_med.confidence < CONFIDENCE_THRESHOLD
+        med_prefix = f"current_medications[{med_index}]"
         medications.append(
             ReportedMedication(
-                name=_field(raw_med.name, cite, low_conf),
-                dose=_optional_field(raw_med.dose, cite, low_conf),
-                frequency=_optional_field(raw_med.frequency, cite, low_conf),
-                rxnorm=_optional_field(raw_med.rxnorm, cite, low_conf),
-                started_year=_optional_field(raw_med.started_year, cite, low_conf),
-                indication=_optional_field(raw_med.indication, cite, low_conf),
+                name=_field(raw_med.name, cite, low_conf, path=f"{med_prefix}.name"),
+                dose=_optional_field(raw_med.dose, cite, low_conf, path=f"{med_prefix}.dose"),
+                frequency=_optional_field(raw_med.frequency, cite, low_conf, path=f"{med_prefix}.frequency"),
+                rxnorm=_optional_field(raw_med.rxnorm, cite, low_conf, path=f"{med_prefix}.rxnorm"),
+                started_year=_optional_field(raw_med.started_year, cite, low_conf, path=f"{med_prefix}.started_year"),
+                indication=_optional_field(raw_med.indication, cite, low_conf, path=f"{med_prefix}.indication"),
             )
         )
 
     allergies: list[ReportedAllergy] = []
-    for raw_alg in raw.reported_allergies:
+    for alg_index, raw_alg in enumerate(raw.reported_allergies):
         cite = _to_source_citation(document_id=document_id, raw=raw_alg.citation)
         low_conf = raw_alg.confidence < CONFIDENCE_THRESHOLD
+        alg_prefix = f"reported_allergies[{alg_index}]"
         allergies.append(
             ReportedAllergy(
-                substance=_field(raw_alg.substance, cite, low_conf),
-                reaction=_optional_field(raw_alg.reaction, cite, low_conf),
-                severity=_optional_field(raw_alg.severity, cite, low_conf),
-                rxnorm=_optional_field(raw_alg.rxnorm, cite, low_conf),
-                snomed=_optional_field(raw_alg.snomed, cite, low_conf),
+                substance=_field(raw_alg.substance, cite, low_conf, path=f"{alg_prefix}.substance"),
+                reaction=_optional_field(raw_alg.reaction, cite, low_conf, path=f"{alg_prefix}.reaction"),
+                severity=_optional_field(raw_alg.severity, cite, low_conf, path=f"{alg_prefix}.severity"),
+                rxnorm=_optional_field(raw_alg.rxnorm, cite, low_conf, path=f"{alg_prefix}.rxnorm"),
+                snomed=_optional_field(raw_alg.snomed, cite, low_conf, path=f"{alg_prefix}.snomed"),
             )
         )
 
     problems: list[ActiveProblem] = []
-    for raw_prob in raw.active_problems:
+    for prob_index, raw_prob in enumerate(raw.active_problems):
         cite = _to_source_citation(document_id=document_id, raw=raw_prob.citation)
         low_conf = raw_prob.confidence < CONFIDENCE_THRESHOLD
+        prob_prefix = f"active_problems[{prob_index}]"
         problems.append(
             ActiveProblem(
-                condition=_field(raw_prob.condition, cite, low_conf),
-                icd10=_optional_field(raw_prob.icd10, cite, low_conf),
-                snomed=_optional_field(raw_prob.snomed, cite, low_conf),
-                onset_year=_optional_field(raw_prob.onset_year, cite, low_conf),
-                status=_optional_field(raw_prob.status, cite, low_conf),
+                condition=_field(raw_prob.condition, cite, low_conf, path=f"{prob_prefix}.condition"),
+                icd10=_optional_field(raw_prob.icd10, cite, low_conf, path=f"{prob_prefix}.icd10"),
+                snomed=_optional_field(raw_prob.snomed, cite, low_conf, path=f"{prob_prefix}.snomed"),
+                onset_year=_optional_field(raw_prob.onset_year, cite, low_conf, path=f"{prob_prefix}.onset_year"),
+                status=_optional_field(raw_prob.status, cite, low_conf, path=f"{prob_prefix}.status"),
             )
         )
 
     family: list[FamilyHistoryEntry] = []
-    for raw_fh in raw.family_history:
+    for fh_index, raw_fh in enumerate(raw.family_history):
         cite = _to_source_citation(document_id=document_id, raw=raw_fh.citation)
         low_conf = raw_fh.confidence < CONFIDENCE_THRESHOLD
+        fh_prefix = f"family_history[{fh_index}]"
         family.append(
             FamilyHistoryEntry(
-                relation=_field(raw_fh.relation, cite, low_conf),
-                condition=_field(raw_fh.condition, cite, low_conf),
-                onset_age=_optional_field(raw_fh.onset_age, cite, low_conf),
-                status=_optional_field(raw_fh.status, cite, low_conf),
-                snomed=_optional_field(raw_fh.snomed, cite, low_conf),
+                relation=_field(raw_fh.relation, cite, low_conf, path=f"{fh_prefix}.relation"),
+                condition=_field(raw_fh.condition, cite, low_conf, path=f"{fh_prefix}.condition"),
+                onset_age=_optional_field(raw_fh.onset_age, cite, low_conf, path=f"{fh_prefix}.onset_age"),
+                status=_optional_field(raw_fh.status, cite, low_conf, path=f"{fh_prefix}.status"),
+                snomed=_optional_field(raw_fh.snomed, cite, low_conf, path=f"{fh_prefix}.snomed"),
             )
         )
 
@@ -800,12 +820,14 @@ def _to_intake_facts(*, document_id: str, raw: RawIntakeExtraction) -> IntakeFor
         value=raw.legal_first_name,
         confidence=raw.legal_first_name_confidence,
         citation=raw.legal_first_name_citation,
+        path="legal_first_name",
     )
     legal_last_name = _build_optional_field(
         document_id=document_id,
         value=raw.legal_last_name,
         confidence=raw.legal_last_name_confidence,
         citation=raw.legal_last_name_citation,
+        path="legal_last_name",
     )
 
     parsed_dob: date | None
@@ -821,6 +843,7 @@ def _to_intake_facts(*, document_id: str, raw: RawIntakeExtraction) -> IntakeFor
         value=parsed_dob,
         confidence=raw.date_of_birth_confidence,
         citation=raw.date_of_birth_citation,
+        path="date_of_birth",
     )
 
     sex_field = _build_optional_field(
@@ -828,24 +851,28 @@ def _to_intake_facts(*, document_id: str, raw: RawIntakeExtraction) -> IntakeFor
         value=raw.sex_assigned_at_birth,
         confidence=raw.sex_assigned_at_birth_confidence,
         citation=raw.sex_assigned_at_birth_citation,
+        path="sex_assigned_at_birth",
     )
     mrn_field = _build_optional_field(
         document_id=document_id,
         value=raw.medical_record_number,
         confidence=raw.medical_record_number_confidence,
         citation=raw.medical_record_number_citation,
+        path="medical_record_number",
     )
     phone_field = _build_optional_field(
         document_id=document_id,
         value=raw.phone,
         confidence=raw.phone_confidence,
         citation=raw.phone_citation,
+        path="phone",
     )
     email_field = _build_optional_field(
         document_id=document_id,
         value=raw.email,
         confidence=raw.email_confidence,
         citation=raw.email_citation,
+        path="email",
     )
 
     return IntakeFormFacts(
@@ -894,15 +921,27 @@ def _to_source_citation(
             confidence=1.0,  # Per-citation confidence isn't surfaced in the demo;
             # the per-field confidence threshold runs upstream.
             raw_text=raw.raw_text,
+            # Placeholder path — every consumer of the returned base
+            # rebinds field_or_chunk_id via build_extracted_citation
+            # before the citation reaches an ExtractedField, so this
+            # value is never observed downstream. The schema requires
+            # the field at construction; we satisfy that with a
+            # base-citation sentinel.
+            field_or_chunk_id="__base__",
         )
     except ValidationError:
         return None
 
 
 def _field[T](
-    value: T | None, cite: SourceCitation | None, low_conf: bool
+    value: T | None, cite: SourceCitation | None, low_conf: bool, *, path: str
 ) -> ExtractedField[T]:
-    """Required field: missing, low-confidence, or invalid-citation → abstain."""
+    """Required field: missing, low-confidence, or invalid-citation → abstain.
+
+    ``path`` is the schema-walk position (e.g.
+    ``"current_medications[0].name"``); it gets bound onto the per-leaf
+    citation via ``build_extracted_citation``.
+    """
 
     if value is None:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.NO_DATA)
@@ -910,13 +949,19 @@ def _field[T](
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.CITATION_INVALID)
     if low_conf:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.LOW_CONFIDENCE)
-    return ExtractedField[T](value=value, citation=cite)
+    return ExtractedField[T](
+        value=value,
+        citation=build_extracted_citation(path=path, base=cite),
+    )
 
 
 def _optional_field[T](
-    value: T | None, cite: SourceCitation | None, low_conf: bool
+    value: T | None, cite: SourceCitation | None, low_conf: bool, *, path: str
 ) -> ExtractedField[T] | None:
-    """Optional field: missing → None; low-conf or invalid-citation → abstain."""
+    """Optional field: missing → None; low-conf or invalid-citation → abstain.
+
+    ``path`` follows the same convention as :func:`_field`.
+    """
 
     if value is None:
         return None
@@ -924,7 +969,10 @@ def _optional_field[T](
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.CITATION_INVALID)
     if low_conf:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.LOW_CONFIDENCE)
-    return ExtractedField[T](value=value, citation=cite)
+    return ExtractedField[T](
+        value=value,
+        citation=build_extracted_citation(path=path, base=cite),
+    )
 
 
 def _build_field[T](
@@ -933,6 +981,7 @@ def _build_field[T](
     value: T | None,
     confidence: float | None,
     citation: RawCitation | None,
+    path: str,
 ) -> ExtractedField[T]:
     if value is None or citation is None or confidence is None:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.NO_DATA)
@@ -941,7 +990,10 @@ def _build_field[T](
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.CITATION_INVALID)
     if confidence < CONFIDENCE_THRESHOLD:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.LOW_CONFIDENCE)
-    return ExtractedField[T](value=value, citation=cite)
+    return ExtractedField[T](
+        value=value,
+        citation=build_extracted_citation(path=path, base=cite),
+    )
 
 
 def _build_optional_field[T](
@@ -950,6 +1002,7 @@ def _build_optional_field[T](
     value: T | None,
     confidence: float | None,
     citation: RawCitation | None,
+    path: str,
 ) -> ExtractedField[T] | None:
     if value is None or citation is None or confidence is None:
         return None
@@ -958,7 +1011,10 @@ def _build_optional_field[T](
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.CITATION_INVALID)
     if confidence < CONFIDENCE_THRESHOLD:
         return ExtractedField[T](abstain_reason=RuntimeAbstainReason.LOW_CONFIDENCE)
-    return ExtractedField[T](value=value, citation=cite)
+    return ExtractedField[T](
+        value=value,
+        citation=build_extracted_citation(path=path, base=cite),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1063,10 +1119,13 @@ def _extract_fax(
     for index, raw in enumerate(raw_pages):
         cite = _to_source_citation(document_id=document_id, raw=raw.citation)
         low_conf = raw.confidence < CONFIDENCE_THRESHOLD
+        page_prefix = f"pages[{index}]"
         # The page_number is structural (it's the index of the rendered
         # page) and never abstains. We still wrap it in ExtractedField
         # so the schema stays uniform with the other extractors.
-        page_number_field = _field(index + 1, cite, low_conf=False)
+        page_number_field = _field(
+            index + 1, cite, low_conf=False, path=f"{page_prefix}.page_number"
+        )
         try:
             page_type_value = FaxPageType(raw.page_type)
         except ValueError:
@@ -1074,8 +1133,12 @@ def _extract_fax(
             # but enforce here too so a future loosening doesn't break
             # the strongly-typed downstream surface.
             page_type_value = FaxPageType.OTHER
-        page_type_field = _field(page_type_value, cite, low_conf)
-        summary_field = _field(raw.summary, cite, low_conf)
+        page_type_field = _field(
+            page_type_value, cite, low_conf, path=f"{page_prefix}.page_type"
+        )
+        summary_field = _field(
+            raw.summary, cite, low_conf, path=f"{page_prefix}.summary"
+        )
         extracted_pages.append(
             FaxPage(
                 page_number=page_number_field,
@@ -1102,21 +1165,29 @@ def _extract_fax(
     for raw, cite in cover_candidates:
         low_conf = raw.confidence < CONFIDENCE_THRESHOLD
         if patient_name_field is None and raw.patient_name:
-            patient_name_field = _optional_field(raw.patient_name, cite, low_conf)
+            patient_name_field = _optional_field(
+                raw.patient_name, cite, low_conf, path="patient_name"
+            )
         if patient_dob_field is None and raw.patient_dob:
             try:
                 parsed = datetime.strptime(raw.patient_dob, "%Y-%m-%d").date()
-                patient_dob_field = _optional_field(parsed, cite, low_conf)
+                patient_dob_field = _optional_field(
+                    parsed, cite, low_conf, path="patient_dob"
+                )
             except ValueError:
                 patient_dob_field = ExtractedField[date](
                     abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA
                 )
         if sender_name_field is None and raw.sender_name:
-            sender_name_field = _optional_field(raw.sender_name, cite, low_conf)
+            sender_name_field = _optional_field(
+                raw.sender_name, cite, low_conf, path="sender_name"
+            )
         if fax_date_field is None and raw.fax_date:
             try:
                 parsed_fd = datetime.strptime(raw.fax_date, "%Y-%m-%d").date()
-                fax_date_field = _optional_field(parsed_fd, cite, low_conf)
+                fax_date_field = _optional_field(
+                    parsed_fd, cite, low_conf, path="fax_date"
+                )
             except ValueError:
                 fax_date_field = ExtractedField[date](
                     abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA

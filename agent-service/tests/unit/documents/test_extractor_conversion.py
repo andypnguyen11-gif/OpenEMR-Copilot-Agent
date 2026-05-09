@@ -39,7 +39,7 @@ def test_high_confidence_lab_obs_converts_to_extracted_fields() -> None:
         confidence=0.95,
         citation=_raw_cite("Glucose 142 mg/dL"),
     )
-    obs = _to_lab_observation(document_id="doc-1", raw=raw)
+    obs = _to_lab_observation(document_id="doc-1", raw=raw, index=0)
     assert obs.value.value == 142.0
     assert obs.value.citation is not None
     assert obs.value.abstain_reason is None
@@ -56,7 +56,7 @@ def test_low_confidence_lab_obs_drops_required_fields_to_low_confidence() -> Non
         confidence=CONFIDENCE_THRESHOLD - 0.05,
         citation=_raw_cite("Sodium 139 mmol/L"),
     )
-    obs = _to_lab_observation(document_id="doc-1", raw=raw)
+    obs = _to_lab_observation(document_id="doc-1", raw=raw, index=0)
     assert obs.value.value is None
     assert obs.value.abstain_reason is RuntimeAbstainReason.LOW_CONFIDENCE
     assert obs.display.abstain_reason is RuntimeAbstainReason.LOW_CONFIDENCE
@@ -71,7 +71,7 @@ def test_missing_required_lab_field_becomes_no_data() -> None:
         confidence=0.95,
         citation=_raw_cite("Sodium illegible"),
     )
-    obs = _to_lab_observation(document_id="doc-1", raw=raw)
+    obs = _to_lab_observation(document_id="doc-1", raw=raw, index=0)
     assert obs.value.value is None
     assert obs.value.abstain_reason is RuntimeAbstainReason.NO_DATA
 
@@ -85,7 +85,7 @@ def test_unparseable_date_drops_to_no_data() -> None:
         confidence=0.95,
         citation=_raw_cite("Glucose 142"),
     )
-    obs = _to_lab_observation(document_id="doc-1", raw=raw)
+    obs = _to_lab_observation(document_id="doc-1", raw=raw, index=0)
     assert obs.effective_date.abstain_reason is RuntimeAbstainReason.NO_DATA
 
 
@@ -101,7 +101,7 @@ def test_missing_optional_lab_field_is_none_not_abstain() -> None:
         confidence=0.95,
         citation=_raw_cite("Glucose 142"),
     )
-    obs = _to_lab_observation(document_id="doc-1", raw=raw)
+    obs = _to_lab_observation(document_id="doc-1", raw=raw, index=0)
     assert obs.reference_low is None
     assert obs.reference_high is None
     assert obs.flag is None

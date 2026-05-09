@@ -107,20 +107,24 @@ def extract_hl7_adt(
 def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | None]:
     """Same PID layout as ORU; ADT also carries address, phone, race."""
 
-    cite = hl7_cite(document_id, pid)
-
     pid5 = safe_field(pid, 5)
     last, first, _middle = coded_components(pid5)
     name_str = " ".join(part for part in (first.strip().title(), last.strip().title()) if part)
     name_field: ExtractedField[str]
     if name_str:
-        name_field = ExtractedField[str](value=name_str, citation=cite)
+        name_field = ExtractedField[str](
+            value=name_str,
+            citation=hl7_cite(document_id, pid, path="patient_name"),
+        )
     else:
         name_field = ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
 
     parsed_dob = parse_hl7_datetime(safe_field(pid, 7))
     dob_field: ExtractedField[date] | None = (
-        ExtractedField[date](value=parsed_dob, citation=cite)
+        ExtractedField[date](
+            value=parsed_dob,
+            citation=hl7_cite(document_id, pid, path="patient_dob"),
+        )
         if parsed_dob is not None
         else None
     )
@@ -128,12 +132,22 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
     pid3 = safe_field(pid, 3)
     mrn_value, *_ = pid3.split("^") if pid3 else ("",)
     mrn_field: ExtractedField[str] | None = (
-        ExtractedField[str](value=mrn_value, citation=cite) if mrn_value else None
+        ExtractedField[str](
+            value=mrn_value,
+            citation=hl7_cite(document_id, pid, path="patient_mrn"),
+        )
+        if mrn_value
+        else None
     )
 
     sex = safe_field(pid, 8).strip()
     sex_field: ExtractedField[str] | None = (
-        ExtractedField[str](value=sex, citation=cite) if sex else None
+        ExtractedField[str](
+            value=sex,
+            citation=hl7_cite(document_id, pid, path="patient_sex"),
+        )
+        if sex
+        else None
     )
 
     # PID-11 — address (multi-component: line^line2^city^state^zip^country).
@@ -147,7 +161,10 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
         zip_code = address_parts[4] if len(address_parts) > 4 else ""
         printable = ", ".join(p for p in (line, city, state, zip_code) if p)
         if printable:
-            address_field = ExtractedField[str](value=printable, citation=cite)
+            address_field = ExtractedField[str](
+                value=printable,
+                citation=hl7_cite(document_id, pid, path="patient_address"),
+            )
 
     # PID-13 — home phone (multi-component, area code in component 5/6).
     pid13 = safe_field(pid, 13)
@@ -162,10 +179,13 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
             if len(digits_only) >= 7:
                 phone_field = ExtractedField[str](
                     value=f"({area}) {digits_only[:3]}-{digits_only[3:7]}",
-                    citation=cite,
+                    citation=hl7_cite(document_id, pid, path="patient_phone"),
                 )
         elif phone_parts[0]:
-            phone_field = ExtractedField[str](value=phone_parts[0], citation=cite)
+            phone_field = ExtractedField[str](
+                value=phone_parts[0],
+                citation=hl7_cite(document_id, pid, path="patient_phone"),
+            )
 
     # PID-10 — race (coded). Cohort-5 uses HL70005 codes like
     # `2028-9^Asian^HL70005`; we surface the display name.
@@ -174,7 +194,10 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
     if pid10:
         _race_code, race_display, _race_system = coded_components(pid10)
         if race_display:
-            race_field = ExtractedField[str](value=race_display, citation=cite)
+            race_field = ExtractedField[str](
+                value=race_display,
+                citation=hl7_cite(document_id, pid, path="patient_race"),
+            )
 
     return {
         "name": name_field,
@@ -196,11 +219,15 @@ def _extract_evn(document_id: str, evn: Segment | None) -> dict[str, ExtractedFi
 
     if evn is None:
         return {"reason": None}
-    cite = hl7_cite(document_id, evn)
     for idx in (6, 7):
         reason = safe_field(evn, idx).strip()
         if reason and not reason.isdigit():  # skip when a sender used the slot for an actual date
-            return {"reason": ExtractedField[str](value=reason, citation=cite)}
+            return {
+                "reason": ExtractedField[str](
+                    value=reason,
+                    citation=hl7_cite(document_id, evn, path="update_reason"),
+                )
+            }
     return {"reason": None}
 
 
@@ -209,7 +236,6 @@ def _extract_pd1(document_id: str, pd1: Segment | None) -> dict[str, ExtractedFi
 
     if pd1 is None:
         return {"pcp": None, "pcp_npi": None}
-    cite = hl7_cite(document_id, pd1)
     pd1_4 = safe_field(pd1, 4)
     if not pd1_4:
         return {"pcp": None, "pcp_npi": None}
@@ -221,8 +247,22 @@ def _extract_pd1(document_id: str, pd1: Segment | None) -> dict[str, ExtractedFi
     name = " ".join(p for p in (first, last) if p)
 
     return {
-        "pcp": ExtractedField[str](value=name, citation=cite) if name else None,
-        "pcp_npi": ExtractedField[str](value=npi, citation=cite) if npi else None,
+        "pcp": (
+            ExtractedField[str](
+                value=name,
+                citation=hl7_cite(document_id, pd1, path="primary_care_provider"),
+            )
+            if name
+            else None
+        ),
+        "pcp_npi": (
+            ExtractedField[str](
+                value=npi,
+                citation=hl7_cite(document_id, pd1, path="primary_care_provider_npi"),
+            )
+            if npi
+            else None
+        ),
     }
 
 
@@ -231,7 +271,6 @@ def _extract_nk1(document_id: str, nk1: Segment | None) -> dict[str, ExtractedFi
 
     if nk1 is None:
         return {"name": None, "relationship": None, "phone": None}
-    cite = hl7_cite(document_id, nk1)
 
     nk1_2 = safe_field(nk1, 2)
     name_field: ExtractedField[str] | None = None
@@ -239,11 +278,19 @@ def _extract_nk1(document_id: str, nk1: Segment | None) -> dict[str, ExtractedFi
         last, first, _ = coded_components(nk1_2)
         full = " ".join(p for p in (first.strip().title(), last.strip().title()) if p)
         if full:
-            name_field = ExtractedField[str](value=full, citation=cite)
+            name_field = ExtractedField[str](
+                value=full,
+                citation=hl7_cite(document_id, nk1, path="next_of_kin_name"),
+            )
 
     nk1_3 = safe_field(nk1, 3).strip()
     relationship_field: ExtractedField[str] | None = (
-        ExtractedField[str](value=nk1_3, citation=cite) if nk1_3 else None
+        ExtractedField[str](
+            value=nk1_3,
+            citation=hl7_cite(document_id, nk1, path="next_of_kin_relationship"),
+        )
+        if nk1_3
+        else None
     )
 
     nk1_5 = safe_field(nk1, 5)
@@ -257,7 +304,7 @@ def _extract_nk1(document_id: str, nk1: Segment | None) -> dict[str, ExtractedFi
             if len(digits_only) >= 7:
                 phone_field = ExtractedField[str](
                     value=f"({area}) {digits_only[:3]}-{digits_only[3:7]}",
-                    citation=cite,
+                    citation=hl7_cite(document_id, nk1, path="next_of_kin_phone"),
                 )
 
     return {"name": name_field, "relationship": relationship_field, "phone": phone_field}
@@ -275,7 +322,6 @@ def _extract_in1(document_id: str, in1: Segment | None) -> dict[str, ExtractedFi
 
     if in1 is None:
         return {"carrier": None, "plan_id": None, "member_id": None, "group": None}
-    cite = hl7_cite(document_id, in1)
 
     carrier = safe_field(in1, 4).strip()
     plan_id = safe_field(in1, 2).strip()
@@ -283,8 +329,36 @@ def _extract_in1(document_id: str, in1: Segment | None) -> dict[str, ExtractedFi
     member_id = safe_field(in1, 35).strip()
 
     return {
-        "carrier": ExtractedField[str](value=carrier, citation=cite) if carrier else None,
-        "plan_id": ExtractedField[str](value=plan_id, citation=cite) if plan_id else None,
-        "member_id": ExtractedField[str](value=member_id, citation=cite) if member_id else None,
-        "group": ExtractedField[str](value=group, citation=cite) if group else None,
+        "carrier": (
+            ExtractedField[str](
+                value=carrier,
+                citation=hl7_cite(document_id, in1, path="insurance_carrier"),
+            )
+            if carrier
+            else None
+        ),
+        "plan_id": (
+            ExtractedField[str](
+                value=plan_id,
+                citation=hl7_cite(document_id, in1, path="insurance_plan_id"),
+            )
+            if plan_id
+            else None
+        ),
+        "member_id": (
+            ExtractedField[str](
+                value=member_id,
+                citation=hl7_cite(document_id, in1, path="insurance_member_id"),
+            )
+            if member_id
+            else None
+        ),
+        "group": (
+            ExtractedField[str](
+                value=group,
+                citation=hl7_cite(document_id, in1, path="insurance_group_number"),
+            )
+            if group
+            else None
+        ),
     }

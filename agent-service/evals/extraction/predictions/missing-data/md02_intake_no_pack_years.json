@@ -13,7 +13,9 @@
         "confidence": 0.9,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "annual physical"
+        "raw_text": "annual physical",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "chief_complaint"
       },
       "value": "annual physical"
     },
@@ -38,7 +40,9 @@
         "confidence": 0.95,
         "document_id": "eval:doc",
         "page": 1,
-        "raw_text": "Never"
+        "raw_text": "Never",
+        "source_type": "extracted_document",
+        "field_or_chunk_id": "tobacco_status"
       },
       "value": "never"
     }

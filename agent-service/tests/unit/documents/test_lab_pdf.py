@@ -9,13 +9,14 @@ from clinical_copilot.documents.schemas.lab_pdf import LabObservation, LabPdfFac
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 
-def _cite(text: str) -> SourceCitation:
+def _cite(text: str, *, path: str = "observations[0].placeholder") -> SourceCitation:
     return SourceCitation(
         document_id="lab-1",
         page=1,
         bbox=(0.1, 0.1, 0.2, 0.15),
         confidence=0.95,
         raw_text=text,
+        field_or_chunk_id=path,
     )
 
 

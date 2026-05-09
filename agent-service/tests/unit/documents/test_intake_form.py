@@ -14,13 +14,14 @@ from clinical_copilot.documents.schemas.intake_form import (
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 
-def _cite(text: str, page: int = 1) -> SourceCitation:
+def _cite(text: str, page: int = 1, *, path: str = "chief_complaint") -> SourceCitation:
     return SourceCitation(
         document_id="intake-1",
         page=page,
         bbox=(0.1, 0.1, 0.4, 0.15),
         confidence=0.9,
         raw_text=text,
+        field_or_chunk_id=path,
     )
 
 

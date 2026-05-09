@@ -63,17 +63,18 @@ class TestSourceCitation:
         assert rebuilt == original
         assert rebuilt.source_type == "extracted_document"
 
-    def test_field_or_chunk_id_default_is_transitional(self) -> None:
-        # PR 1a -> 1b transitional default; once PR 1b drops it this test
-        # flips to expect a ValidationError for the missing required field.
-        c = SourceCitation(
-            document_id="doc-1",
-            page=1,
-            bbox=(0.0, 0.0, 0.1, 0.1),
-            confidence=0.9,
-            raw_text="x",
-        )
-        assert c.field_or_chunk_id == ""
+    def test_field_or_chunk_id_is_required(self) -> None:
+        # PR 1b dropped the transitional empty-string default; constructing
+        # a SourceCitation without a leaf path is a contract violation now
+        # and must raise rather than silently emit ``field_or_chunk_id=""``.
+        with pytest.raises(ValidationError):
+            SourceCitation(
+                document_id="doc-1",
+                page=1,
+                bbox=(0.0, 0.0, 0.1, 0.1),
+                confidence=0.9,
+                raw_text="x",
+            )
 
     def test_bbox_outside_unit_square_rejected(self) -> None:
         with pytest.raises(ValidationError):

@@ -75,16 +75,7 @@ class SourceCitation(BaseModel):
     bbox: tuple[float, float, float, float]
     confidence: float = Field(ge=0.0, le=1.0)
     raw_text: str
-    field_or_chunk_id: str = Field(
-        default="",
-        description=(
-            "TRANSITIONAL DEFAULT (PR 1a -> 1b): empty string while extractor "
-            "constructor sites still build SourceCitation without threading the "
-            "schema-walk path. PR 1b adds build_extracted_citation(path, ...) "
-            "across extractor.py + 7 adapters and drops this default. Do NOT "
-            "rely on the empty-string fallback in new code."
-        ),
-    )
+    field_or_chunk_id: str
 
     @model_validator(mode="after")
     def _bbox_in_unit_square(self) -> "SourceCitation":
@@ -156,6 +147,22 @@ document vs. retrieval chunk vs. patient chart) is determined at runtime.
 Concrete types are still used at construction sites where the origin is
 known statically (the extractor builds ``SourceCitation`` directly).
 """
+
+
+def build_extracted_citation(*, path: str, base: SourceCitation) -> SourceCitation:
+    """Bind a per-leaf path onto a per-record base ``SourceCitation``.
+
+    Returns a new ``SourceCitation`` with ``field_or_chunk_id`` set to ``path``,
+    preserving every other field from ``base``. The single canonical mechanism
+    for threading the schema-walk path through the extractor's field builders
+    — extractors construct one base citation per record (sharing
+    ``document_id`` / ``page`` / ``bbox`` / ``raw_text`` across all the
+    record's leaves) and call this helper inside ``_field`` / ``_build_field``
+    to specialize the citation per leaf (``current_medications[0].name`` vs.
+    ``current_medications[0].dose``).
+    """
+
+    return base.model_copy(update={"field_or_chunk_id": path})
 
 
 class ExtractedField(BaseModel, Generic[T]):

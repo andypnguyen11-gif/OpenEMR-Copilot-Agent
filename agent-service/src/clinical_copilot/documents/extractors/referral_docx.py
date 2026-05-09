@@ -126,22 +126,24 @@ def extract_referral_docx(
     patient_match = _RE_PATIENT_HEADER.match(patient_para.text)
     assert patient_match is not None  # _find_patient_header just verified this
 
-    patient_cite = _cite(document_id, patient_para)
     patient_name_field: ExtractedField[str] = ExtractedField[str](
         value=patient_match["name"].strip(),
-        citation=patient_cite,
+        citation=_cite(document_id, patient_para, path="patient_name"),
     )
     parsed_dob = _parse_dob(patient_match["dob"])
     patient_dob_field: ExtractedField[date]
     if parsed_dob is not None:
-        patient_dob_field = ExtractedField[date](value=parsed_dob, citation=patient_cite)
+        patient_dob_field = ExtractedField[date](
+            value=parsed_dob,
+            citation=_cite(document_id, patient_para, path="patient_dob"),
+        )
     else:
         patient_dob_field = ExtractedField[date](
             abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA
         )
     patient_mrn_field: ExtractedField[str] | None = ExtractedField[str](
         value=patient_match["mrn"].strip(),
-        citation=patient_cite,
+        citation=_cite(document_id, patient_para, path="patient_mrn"),
     )
 
     # Header block: first paragraph is usually the sender practice
@@ -166,7 +168,7 @@ def extract_referral_docx(
     if sign_off is not None:
         referring_provider_field = ExtractedField[str](
             value=sign_off.text,
-            citation=_cite(document_id, sign_off),
+            citation=_cite(document_id, sign_off, path="referring_provider"),
         )
         # NPI line is usually 1-2 paragraphs after the name.
         for p in body_block:
@@ -175,7 +177,7 @@ def extract_referral_docx(
             if (m := _RE_NPI.search(p.text)) is not None:
                 referring_provider_npi_field = ExtractedField[str](
                     value=m["npi"],
-                    citation=_cite(document_id, p),
+                    citation=_cite(document_id, p, path="referring_provider_npi"),
                 )
                 break
 
@@ -189,19 +191,41 @@ def extract_referral_docx(
         document_id,
         sections.get("reason_for_referral"),
         required=True,
+        path="reason_for_referral",
     )
     history_summary_field = _build_text_field(
-        document_id, sections.get("history_summary"), required=False
+        document_id,
+        sections.get("history_summary"),
+        required=False,
+        path="history_summary",
     )
     requested_action_field = _build_text_field(
-        document_id, sections.get("requested_action"), required=False
+        document_id,
+        sections.get("requested_action"),
+        required=False,
+        path="requested_action",
     )
     allergies_field = _build_text_field(
-        document_id, sections.get("allergies"), required=False
+        document_id,
+        sections.get("allergies"),
+        required=False,
+        path="allergies",
     )
-    pmh_list = _build_list(document_id, sections.get("past_medical_history") or [])
-    meds_list = _build_list(document_id, sections.get("current_medications") or [])
-    labs_list = _build_list(document_id, sections.get("pertinent_labs") or [])
+    pmh_list = _build_list(
+        document_id,
+        sections.get("past_medical_history") or [],
+        path_prefix="past_medical_history",
+    )
+    meds_list = _build_list(
+        document_id,
+        sections.get("current_medications") or [],
+        path_prefix="current_medications",
+    )
+    labs_list = _build_list(
+        document_id,
+        sections.get("pertinent_labs") or [],
+        path_prefix="pertinent_labs",
+    )
 
     return ReferralDocxFacts(
         document_id=document_id,
@@ -231,12 +255,16 @@ def extract_referral_docx(
 # ---------------------------------------------------------------------
 
 
-def _cite(document_id: str, para: _Paragraph) -> SourceCitation:
-    """Build a SourceCitation for a docx paragraph.
+def _cite(document_id: str, para: _Paragraph, *, path: str) -> SourceCitation:
+    """Build a SourceCitation for a docx paragraph, bound to a leaf path.
 
     ``page`` is overloaded to carry the 1-based paragraph index;
     ``bbox`` is degenerate (full unit square) because paragraph-level
-    pixel coordinates do not exist for text-only docx content.
+    pixel coordinates do not exist for text-only docx content. ``path``
+    is the JSON-pointer-style schema-walk position of the leaf this
+    citation belongs to (e.g. ``"reason_for_referral"``,
+    ``"current_medications[3]"``) and is bound onto the citation's
+    ``field_or_chunk_id``.
     """
 
     return SourceCitation(
@@ -245,6 +273,7 @@ def _cite(document_id: str, para: _Paragraph) -> SourceCitation:
         bbox=(0.0, 0.0, 1.0, 1.0),
         confidence=1.0,
         raw_text=para.text,
+        field_or_chunk_id=path,
     )
 
 
@@ -283,7 +312,10 @@ def _extract_letter_date(
             raw = m["long"] or m["short"] or ""
             parsed = _parse_letter_date(raw)
             if parsed is not None:
-                return ExtractedField[date](value=parsed, citation=_cite(document_id, p))
+                return ExtractedField[date](
+                    value=parsed,
+                    citation=_cite(document_id, p, path="letter_date"),
+                )
     return None
 
 
@@ -305,16 +337,19 @@ def _extract_sender_block(
 
     for i, p in enumerate(header_block):
         if i == 0 and not _RE_LETTER_DATE.match(p.text):
-            practice = ExtractedField[str](value=p.text, citation=_cite(document_id, p))
+            practice = ExtractedField[str](
+                value=p.text,
+                citation=_cite(document_id, p, path="referring_practice"),
+            )
         if (m := _RE_PHONE.search(p.text)) is not None and phone is None:
             phone = ExtractedField[str](
                 value=m["phone"].strip(),
-                citation=_cite(document_id, p),
+                citation=_cite(document_id, p, path="referring_phone"),
             )
         if (m := _RE_FAX.search(p.text)) is not None and fax is None:
             fax = ExtractedField[str](
                 value=m["fax"].strip(),
-                citation=_cite(document_id, p),
+                citation=_cite(document_id, p, path="referring_fax"),
             )
     return practice, phone, fax
 
@@ -342,9 +377,15 @@ def _extract_recipient_block(
         if _RE_PHONE.search(text) or _RE_FAX.search(text) or _RE_NPI.search(text):
             continue  # skip the recipient's contact lines
         if recipient_provider is None:
-            recipient_provider = ExtractedField[str](value=text, citation=_cite(document_id, p))
+            recipient_provider = ExtractedField[str](
+                value=text,
+                citation=_cite(document_id, p, path="recipient_provider"),
+            )
         elif recipient_practice is None:
-            recipient_practice = ExtractedField[str](value=text, citation=_cite(document_id, p))
+            recipient_practice = ExtractedField[str](
+                value=text,
+                citation=_cite(document_id, p, path="recipient_practice"),
+            )
             break
     return recipient_provider, recipient_practice
 
@@ -431,31 +472,33 @@ def _build_text_field(
     section: _SectionHit | list[_Paragraph] | None,
     *,
     required: bool,
+    path: str,
 ) -> ExtractedField[str] | None:
     """Build a free-text ExtractedField from a section result.
 
     If the section has inline content, that's the value. Otherwise
     join the items into a single newline-separated string. ``required``
     controls whether absence returns None (optional) or an abstain
-    field (required-but-missing).
+    field (required-but-missing). ``path`` is the schema-walk position
+    of the leaf this field will be bound to (e.g. ``"history_summary"``).
     """
 
     if isinstance(section, _SectionHit) and section.inline_content:
         return ExtractedField[str](
             value=section.inline_content,
-            citation=_cite(document_id, section.header),
+            citation=_cite(document_id, section.header, path=path),
         )
     if isinstance(section, _SectionHit) and section.items:
         joined = "\n".join(item.text for item in section.items)
         return ExtractedField[str](
             value=joined,
-            citation=_cite(document_id, section.header),
+            citation=_cite(document_id, section.header, path=path),
         )
     if isinstance(section, list) and section:
         joined = "\n".join(item.text for item in section)
         return ExtractedField[str](
             value=joined,
-            citation=_cite(document_id, section[0]),
+            citation=_cite(document_id, section[0], path=path),
         )
     if required:
         return ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
@@ -465,8 +508,16 @@ def _build_text_field(
 def _build_list(
     document_id: str,
     items_or_section: _SectionHit | list[_Paragraph],
+    *,
+    path_prefix: str,
 ) -> list[ExtractedField[str]]:
-    """Materialize a list section as a list[ExtractedField[str]]."""
+    """Materialize a list section as a list[ExtractedField[str]].
+
+    ``path_prefix`` is the schema-walk position of the list itself
+    (e.g. ``"current_medications"``); each item's citation gets the
+    indexed path ``f"{path_prefix}[{idx}]"`` (matching how the schema's
+    ``list[ExtractedField[str]]`` JSON-pointer-walks to each leaf).
+    """
 
     items = (
         items_or_section.items
@@ -474,6 +525,9 @@ def _build_list(
         else items_or_section
     )
     return [
-        ExtractedField[str](value=item.text, citation=_cite(document_id, item))
-        for item in items
+        ExtractedField[str](
+            value=item.text,
+            citation=_cite(document_id, item, path=f"{path_prefix}[{idx}]"),
+        )
+        for idx, item in enumerate(items)
     ]

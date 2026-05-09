@@ -122,7 +122,9 @@ def _extract_patient_sheet(document_id: str, ws: Worksheet) -> WorkbookPatientIn
         if attr is None:
             continue
 
-        cite = _cite(document_id, ws, value_cell)
+        # WorkbookPatientInfo nests under WorkbookXlsxFacts.patient, so
+        # every leaf path is prefixed with "patient." (e.g. "patient.name").
+        cite = _cite(document_id, ws, value_cell, path=f"patient.{attr}")
         if attr in _DATE_FIELDS:
             parsed = _parse_date(value_cell.value)
             if parsed is None:
@@ -174,17 +176,31 @@ def _extract_medications_sheet(document_id: str, ws: Worksheet) -> list[Workbook
         if generic_str == "":
             continue
 
+        med_index = len(out)
+        med_prefix = f"medications[{med_index}]"
         out.append(
             WorkbookMedication(
                 generic=ExtractedField[str](
                     value=generic_str,
-                    citation=_cite(document_id, ws, generic_cell),
+                    citation=_cite(
+                        document_id, ws, generic_cell, path=f"{med_prefix}.generic"
+                    ),
                 ),
-                brand=_optional_str_from_row(document_id, ws, row, headers, "brand"),
-                strength=_optional_str_from_row(document_id, ws, row, headers, "strength"),
-                sig=_optional_str_from_row(document_id, ws, row, headers, "sig"),
-                indication=_optional_str_from_row(document_id, ws, row, headers, "indication"),
-                prescriber=_optional_str_from_row(document_id, ws, row, headers, "prescriber"),
+                brand=_optional_str_from_row(
+                    document_id, ws, row, headers, "brand", path=f"{med_prefix}.brand"
+                ),
+                strength=_optional_str_from_row(
+                    document_id, ws, row, headers, "strength", path=f"{med_prefix}.strength"
+                ),
+                sig=_optional_str_from_row(
+                    document_id, ws, row, headers, "sig", path=f"{med_prefix}.sig"
+                ),
+                indication=_optional_str_from_row(
+                    document_id, ws, row, headers, "indication", path=f"{med_prefix}.indication"
+                ),
+                prescriber=_optional_str_from_row(
+                    document_id, ws, row, headers, "prescriber", path=f"{med_prefix}.prescriber"
+                ),
             )
         )
 
@@ -233,10 +249,12 @@ def _extract_labs_trend_sheet(document_id: str, ws: Worksheet) -> list[WorkbookL
         if test_str == "":
             continue
 
-        loinc_field = _optional_str_from_row(document_id, ws, row, meta_indices, "loinc")
-        unit_field = _optional_str_from_row(document_id, ws, row, meta_indices, "units")
-        ref_field = _optional_str_from_row(document_id, ws, row, meta_indices, "referencerange")
-
+        # The leftmost meta cells (loinc/unit/reference_range) are shared
+        # across every (test, date) reading we'll emit from this row, but
+        # each reading is a separate WorkbookLabReading at its own index
+        # in the lab_readings list — so we have to defer building those
+        # ExtractedFields until we know the index, otherwise multiple
+        # readings would alias the same path.
         for date_idx, reading_date in date_columns:
             if date_idx >= len(row):
                 continue
@@ -248,18 +266,40 @@ def _extract_labs_trend_sheet(document_id: str, ws: Worksheet) -> list[WorkbookL
             except (TypeError, ValueError):
                 continue
 
-            cite = _cite(document_id, ws, value_cell)
+            reading_index = len(out)
+            reading_prefix = f"lab_readings[{reading_index}]"
             out.append(
                 WorkbookLabReading(
                     test=ExtractedField[str](
                         value=test_str,
-                        citation=_cite(document_id, ws, test_cell),
+                        citation=_cite(
+                            document_id, ws, test_cell, path=f"{reading_prefix}.test"
+                        ),
                     ),
-                    value=ExtractedField[float](value=value_float, citation=cite),
-                    reading_date=ExtractedField[date](value=reading_date, citation=cite),
-                    loinc=loinc_field,
-                    unit=unit_field,
-                    reference_range=ref_field,
+                    value=ExtractedField[float](
+                        value=value_float,
+                        citation=_cite(
+                            document_id, ws, value_cell, path=f"{reading_prefix}.value"
+                        ),
+                    ),
+                    reading_date=ExtractedField[date](
+                        value=reading_date,
+                        citation=_cite(
+                            document_id, ws, value_cell, path=f"{reading_prefix}.reading_date"
+                        ),
+                    ),
+                    loinc=_optional_str_from_row(
+                        document_id, ws, row, meta_indices, "loinc",
+                        path=f"{reading_prefix}.loinc",
+                    ),
+                    unit=_optional_str_from_row(
+                        document_id, ws, row, meta_indices, "units",
+                        path=f"{reading_prefix}.unit",
+                    ),
+                    reference_range=_optional_str_from_row(
+                        document_id, ws, row, meta_indices, "referencerange",
+                        path=f"{reading_prefix}.reference_range",
+                    ),
                 )
             )
 
@@ -287,14 +327,32 @@ def _extract_care_gaps_sheet(document_id: str, ws: Worksheet) -> list[WorkbookCa
         if measure_str == "" or status_str == "":
             continue
 
-        last_done_field = _optional_date_from_row(document_id, ws, row, headers, "lastdone")
-        due_date_field = _optional_date_from_row(document_id, ws, row, headers, "duedate")
-        notes_field = _optional_str_from_row(document_id, ws, row, headers, "notes")
+        gap_index = len(out)
+        gap_prefix = f"care_gaps[{gap_index}]"
+        last_done_field = _optional_date_from_row(
+            document_id, ws, row, headers, "lastdone", path=f"{gap_prefix}.last_done"
+        )
+        due_date_field = _optional_date_from_row(
+            document_id, ws, row, headers, "duedate", path=f"{gap_prefix}.due_date"
+        )
+        notes_field = _optional_str_from_row(
+            document_id, ws, row, headers, "notes", path=f"{gap_prefix}.notes"
+        )
 
         out.append(
             WorkbookCareGap(
-                measure=ExtractedField[str](value=measure_str, citation=_cite(document_id, ws, measure_cell)),
-                status=ExtractedField[str](value=status_str, citation=_cite(document_id, ws, status_cell)),
+                measure=ExtractedField[str](
+                    value=measure_str,
+                    citation=_cite(
+                        document_id, ws, measure_cell, path=f"{gap_prefix}.measure"
+                    ),
+                ),
+                status=ExtractedField[str](
+                    value=status_str,
+                    citation=_cite(
+                        document_id, ws, status_cell, path=f"{gap_prefix}.status"
+                    ),
+                ),
                 last_done=last_done_field,
                 due_date=due_date_field,
                 notes=notes_field,
@@ -337,10 +395,15 @@ def _build_header_index(ws: Worksheet) -> dict[str, int]:
     return out
 
 
-def _cite(document_id: str, ws: Worksheet, cell: Cell) -> SourceCitation:
-    """SourceCitation for a workbook cell. The ``page`` slot encodes
-    the 1-indexed sheet number; ``raw_text`` carries the
-    ``Sheet!Cell`` reference for the review-page click-to-source UX.
+def _cite(document_id: str, ws: Worksheet, cell: Cell, *, path: str) -> SourceCitation:
+    """SourceCitation for a workbook cell, bound to a leaf path.
+
+    The ``page`` slot encodes the 1-indexed sheet number; ``raw_text``
+    carries the ``Sheet!Cell`` reference for the review-page click-to-
+    source UX. ``path`` is the JSON-pointer-style schema-walk position
+    of the leaf this citation belongs to (e.g. ``"patient.name"``,
+    ``"medications[2].sig"``) and is bound onto the citation's
+    ``field_or_chunk_id``.
     """
 
     sheet_index = ws.parent.sheetnames.index(ws.title) + 1
@@ -350,6 +413,7 @@ def _cite(document_id: str, ws: Worksheet, cell: Cell) -> SourceCitation:
         bbox=(0.0, 0.0, 1.0, 1.0),
         confidence=1.0,
         raw_text=f"{ws.title}!{cell.coordinate}",
+        field_or_chunk_id=path,
     )
 
 
@@ -359,7 +423,12 @@ def _optional_str_from_row(
     row: tuple[Cell, ...],
     headers: dict[str, int],
     key: str,
+    *,
+    path: str,
 ) -> ExtractedField[str] | None:
+    """``path`` is the schema-walk position of the leaf the returned
+    field will be assigned to (e.g. ``"medications[0].brand"``)."""
+
     idx = headers.get(key)
     if idx is None or idx >= len(row):
         return None
@@ -369,7 +438,10 @@ def _optional_str_from_row(
     text = str(cell.value).strip()
     if text == "":
         return None
-    return ExtractedField[str](value=text, citation=_cite(document_id, ws, cell))
+    return ExtractedField[str](
+        value=text,
+        citation=_cite(document_id, ws, cell, path=path),
+    )
 
 
 def _optional_date_from_row(
@@ -378,7 +450,11 @@ def _optional_date_from_row(
     row: tuple[Cell, ...],
     headers: dict[str, int],
     key: str,
+    *,
+    path: str,
 ) -> ExtractedField[date] | None:
+    """``path`` follows the same convention as :func:`_optional_str_from_row`."""
+
     idx = headers.get(key)
     if idx is None or idx >= len(row):
         return None
@@ -388,7 +464,10 @@ def _optional_date_from_row(
     parsed = _parse_date(cell.value)
     if parsed is None:
         return ExtractedField[date](abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA)
-    return ExtractedField[date](value=parsed, citation=_cite(document_id, ws, cell))
+    return ExtractedField[date](
+        value=parsed,
+        citation=_cite(document_id, ws, cell, path=path),
+    )
 
 
 def _parse_date(raw: object) -> date | None:

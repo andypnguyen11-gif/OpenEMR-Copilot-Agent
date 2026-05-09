@@ -15,7 +15,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "LP1"
+            "raw_text": "LP1",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[0].code"
           },
           "value": "LP1"
         },
@@ -31,7 +33,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "Sodium"
+            "raw_text": "Sodium",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[0].display"
           },
           "value": "Sodium"
         },
@@ -47,7 +51,9 @@
             "confidence": 0.99,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "2026-04-02"
+            "raw_text": "2026-04-02",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[0].effective_date"
           },
           "value": "2026-04-02"
         },
@@ -66,7 +72,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "mmol/L"
+            "raw_text": "mmol/L",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[0].unit"
           },
           "value": "mmol/L"
         },
@@ -82,7 +90,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "140.0"
+            "raw_text": "140.0",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[0].value"
           },
           "value": 140.0
         }
@@ -100,7 +110,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "LP2"
+            "raw_text": "LP2",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[1].code"
           },
           "value": "LP2"
         },
@@ -116,7 +128,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "Potassium"
+            "raw_text": "Potassium",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[1].display"
           },
           "value": "Potassium"
         },
@@ -132,7 +146,9 @@
             "confidence": 0.99,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "2026-04-02"
+            "raw_text": "2026-04-02",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[1].effective_date"
           },
           "value": "2026-04-02"
         },
@@ -151,7 +167,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "mmol/L"
+            "raw_text": "mmol/L",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[1].unit"
           },
           "value": "mmol/L"
         },
@@ -167,7 +185,9 @@
             "confidence": 0.95,
             "document_id": "eval:doc",
             "page": 1,
-            "raw_text": "4.1"
+            "raw_text": "4.1",
+            "source_type": "extracted_document",
+            "field_or_chunk_id": "observations[1].value"
           },
           "value": 4.1
         }

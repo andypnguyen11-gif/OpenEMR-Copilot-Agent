@@ -75,7 +75,8 @@ def extract_hl7_oru(
     patient_fields = _extract_pid(document_id, pid)
     order_fields = _extract_obr(document_id, obr) if obr is not None else _empty_order_fields()
     observations = [
-        _extract_obx(document_id, obx) for obx in obx_rows
+        _extract_obx(document_id, obx, index=index)
+        for index, obx in enumerate(obx_rows)
     ]
 
     return Hl7OruFacts(
@@ -106,15 +107,16 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
       - PID-8: administrative sex
     """
 
-    cite = hl7_cite(document_id, pid)
-
     # PID-5 — patient name.
     pid5 = safe_field(pid, 5)
     last, first, _middle = coded_components(pid5)
     name_str = " ".join(part for part in (first.strip().title(), last.strip().title()) if part)
     name_field: ExtractedField[str]
     if name_str:
-        name_field = ExtractedField[str](value=name_str, citation=cite)
+        name_field = ExtractedField[str](
+            value=name_str,
+            citation=hl7_cite(document_id, pid, path="patient_name"),
+        )
     else:
         name_field = ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
 
@@ -123,7 +125,10 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
     parsed_dob = parse_hl7_datetime(dob_raw)
     dob_field: ExtractedField[date] | None = None
     if parsed_dob is not None:
-        dob_field = ExtractedField[date](value=parsed_dob, citation=cite)
+        dob_field = ExtractedField[date](
+            value=parsed_dob,
+            citation=hl7_cite(document_id, pid, path="patient_dob"),
+        )
 
     # PID-3 — MRN. The cohort-5 layout puts the MRN in component 0,
     # followed by `^^^MRN^MR` to mark it as a medical record number.
@@ -131,13 +136,19 @@ def _extract_pid(document_id: str, pid: Segment) -> dict[str, ExtractedField | N
     mrn_value, *_ = pid3.split("^") if pid3 else ("",)
     mrn_field: ExtractedField[str] | None = None
     if mrn_value:
-        mrn_field = ExtractedField[str](value=mrn_value, citation=cite)
+        mrn_field = ExtractedField[str](
+            value=mrn_value,
+            citation=hl7_cite(document_id, pid, path="patient_mrn"),
+        )
 
     # PID-8 — sex.
     sex = safe_field(pid, 8).strip()
     sex_field: ExtractedField[str] | None = None
     if sex:
-        sex_field = ExtractedField[str](value=sex, citation=cite)
+        sex_field = ExtractedField[str](
+            value=sex,
+            citation=hl7_cite(document_id, pid, path="patient_sex"),
+        )
 
     return {"name": name_field, "dob": dob_field, "mrn": mrn_field, "sex": sex_field}
 
@@ -153,20 +164,28 @@ def _extract_obr(document_id: str, obr: Segment) -> dict[str, ExtractedField | N
       - OBR-16: ordering provider (`NPI^LAST^FIRST^MIDDLE^^^^^NPI`)
     """
 
-    cite = hl7_cite(document_id, obr)
     out: dict[str, ExtractedField | None] = _empty_order_fields()
 
     obr4 = safe_field(obr, 4)
     code, display, coding_system = coded_components(obr4)
     if display:
-        out["panel"] = ExtractedField[str](value=display, citation=cite)
+        out["panel"] = ExtractedField[str](
+            value=display,
+            citation=hl7_cite(document_id, obr, path="order_panel"),
+        )
     if code and coding_system.upper() == "LN":
-        out["loinc"] = ExtractedField[str](value=code, citation=cite)
+        out["loinc"] = ExtractedField[str](
+            value=code,
+            citation=hl7_cite(document_id, obr, path="order_loinc"),
+        )
 
     obr7 = safe_field(obr, 7)
     parsed = parse_hl7_datetime(obr7)
     if parsed is not None:
-        out["collected_at"] = ExtractedField[date](value=parsed, citation=cite)
+        out["collected_at"] = ExtractedField[date](
+            value=parsed,
+            citation=hl7_cite(document_id, obr, path="specimen_collected_at"),
+        )
 
     obr16 = safe_field(obr, 16)
     if obr16:
@@ -177,12 +196,15 @@ def _extract_obr(document_id: str, obr: Segment) -> dict[str, ExtractedField | N
             first_p = parts[2].strip().title()
             display_name = " ".join(p for p in (first_p, last_p) if p)
             if display_name:
-                out["provider"] = ExtractedField[str](value=display_name, citation=cite)
+                out["provider"] = ExtractedField[str](
+                    value=display_name,
+                    citation=hl7_cite(document_id, obr, path="ordering_provider"),
+                )
 
     return out
 
 
-def _extract_obx(document_id: str, obx: Segment) -> LabObservation:
+def _extract_obx(document_id: str, obx: Segment, *, index: int) -> LabObservation:
     """OBX layout (HL7 v2.5.1):
       - OBX-3: observation identifier (`code^display^codingSystem`)
       - OBX-5: observation value (numeric for NM type)
@@ -190,19 +212,29 @@ def _extract_obx(document_id: str, obx: Segment) -> LabObservation:
       - OBX-7: reference range (text — may be `<200`, `>=40`, `40-100`, etc.)
       - OBX-8: abnormal flags
       - OBX-14: observation date/time
+
+    ``index`` is the 0-based position in ``Hl7OruFacts.observations`` and
+    is woven into each leaf citation's ``field_or_chunk_id`` (e.g.
+    ``observations[2].value``).
     """
 
-    cite = hl7_cite(document_id, obx)
+    prefix = f"observations[{index}]"
 
     code, display, _coding_system = coded_components(safe_field(obx, 3))
     code_str = code or display
     code_field = (
-        ExtractedField[str](value=code_str, citation=cite)
+        ExtractedField[str](
+            value=code_str,
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.code"),
+        )
         if code_str
         else ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
     )
     display_field = (
-        ExtractedField[str](value=display, citation=cite)
+        ExtractedField[str](
+            value=display,
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.display"),
+        )
         if display
         else ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
     )
@@ -210,14 +242,20 @@ def _extract_obx(document_id: str, obx: Segment) -> LabObservation:
     raw_value = safe_field(obx, 5).strip()
     value_field: ExtractedField[float]
     try:
-        value_field = ExtractedField[float](value=float(raw_value), citation=cite)
+        value_field = ExtractedField[float](
+            value=float(raw_value),
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.value"),
+        )
     except (TypeError, ValueError):
         # Non-numeric OBX values (textual results, etc.) get an abstain.
         value_field = ExtractedField[float](abstain_reason=RuntimeAbstainReason.OUT_OF_SCHEMA)
 
     unit = safe_field(obx, 6).strip()
     unit_field = (
-        ExtractedField[str](value=unit, citation=cite)
+        ExtractedField[str](
+            value=unit,
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.unit"),
+        )
         if unit
         else ExtractedField[str](abstain_reason=RuntimeAbstainReason.NO_DATA)
     )
@@ -226,7 +264,10 @@ def _extract_obx(document_id: str, obx: Segment) -> LabObservation:
     parsed_dt = parse_hl7_datetime(obx14)
     effective_field: ExtractedField[date]
     if parsed_dt is not None:
-        effective_field = ExtractedField[date](value=parsed_dt, citation=cite)
+        effective_field = ExtractedField[date](
+            value=parsed_dt,
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.effective_date"),
+        )
     else:
         effective_field = ExtractedField[date](abstain_reason=RuntimeAbstainReason.NO_DATA)
 
@@ -240,7 +281,10 @@ def _extract_obx(document_id: str, obx: Segment) -> LabObservation:
     flag = safe_field(obx, 8).strip()
     flag_field: ExtractedField[str] | None = None
     if flag:
-        flag_field = ExtractedField[str](value=flag, citation=cite)
+        flag_field = ExtractedField[str](
+            value=flag,
+            citation=hl7_cite(document_id, obx, path=f"{prefix}.flag"),
+        )
 
     return LabObservation(
         code=code_field,

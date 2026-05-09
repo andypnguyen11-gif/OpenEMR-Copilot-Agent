@@ -69,10 +69,16 @@ def find_all_segments(segments: list[Segment], name: str) -> list[Segment]:
     return [s for s in segments if s.name == name]
 
 
-def cite(document_id: str, segment: Segment) -> SourceCitation:
-    """SourceCitation for one segment. ``page`` overloaded to encode
-    the 1-based segment number; ``raw_text`` carries the verbatim
-    segment (capped at 240 chars so a long OBX still fits)."""
+def cite(document_id: str, segment: Segment, *, path: str) -> SourceCitation:
+    """SourceCitation for one segment, bound to a schema-walk path.
+
+    ``page`` overloads the citation slot to encode the 1-based segment
+    number; ``raw_text`` carries the verbatim segment (capped at 240
+    chars so a long OBX still fits). ``path`` is the JSON-pointer-style
+    schema-walk position of the leaf this citation belongs to (e.g.
+    ``"patient_name"``, ``"observations[2].value"``) and is bound onto
+    the citation's ``field_or_chunk_id``.
+    """
 
     return SourceCitation(
         document_id=document_id,
@@ -80,6 +86,7 @@ def cite(document_id: str, segment: Segment) -> SourceCitation:
         bbox=(0.0, 0.0, 1.0, 1.0),
         confidence=1.0,
         raw_text=segment.raw[:240],
+        field_or_chunk_id=path,
     )
 
 
