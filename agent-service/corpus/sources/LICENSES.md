@@ -17,6 +17,7 @@ or under permissive licensing:
 | National Institutes of Health (NIH) / NIDDK | Federal works, public domain (17 U.S.C. § 105). |
 | National Institutes of Health (NIH) / NIAAA | Federal works, public domain (17 U.S.C. § 105). |
 | American Heart Association (AHA) — short adapted excerpts | Cited under fair-use for non-commercial educational demo; canonical text remains AHA's. |
+| American Diabetes Association (ADA) Standards of Care — short adapted excerpts | Cited under fair-use for non-commercial educational demo; canonical text remains ADA's, published in *Diabetes Care* (Supplement 1, annual). |
 
 The corpus is rebuilt from these markdown files via
 `python -m clinical_copilot.corpus.index`. The build emits a

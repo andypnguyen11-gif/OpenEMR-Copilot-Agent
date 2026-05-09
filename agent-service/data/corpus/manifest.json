@@ -1,8 +1,9 @@
 {
   "version": 1,
-  "doc_count": 30,
-  "chunk_count": 262,
+  "doc_count": 33,
+  "chunk_count": 298,
   "permitted_sources": [
+    "ADA",
     "AHA",
     "CDC",
     "NIH/NHLBI",
@@ -13,6 +14,24 @@
   "dense_built": false,
   "embedding_dim": null,
   "documents": [
+    {
+      "doc_id": "ada/prediabetes_standards_of_care",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1",
+      "date": "2024-01-01",
+      "topics": [
+        "prediabetes",
+        "diabetes prevention",
+        "ADA Standards of Care",
+        "lifestyle intervention",
+        "metformin",
+        "weight loss",
+        "A1c",
+        "gestational diabetes"
+      ],
+      "sha256": "8393714c98fa6a38"
+    },
     {
       "doc_id": "aha/acei_monitoring",
       "title": "ACE inhibitor and ARB monitoring \u2014 potassium, creatinine, and adverse effects (AHA)",
@@ -199,6 +218,23 @@
         "ferrous sulfate"
       ],
       "sha256": "008946e273cff8a3"
+    },
+    {
+      "doc_id": "cdc/national_diabetes_prevention_program",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/",
+      "date": "2024-04-01",
+      "topics": [
+        "prediabetes",
+        "diabetes prevention",
+        "lifestyle intervention",
+        "weight loss",
+        "physical activity",
+        "DPP",
+        "metformin"
+      ],
+      "sha256": "43086ef921a4536e"
     },
     {
       "doc_id": "cdc/tobacco_cessation",
@@ -424,6 +460,24 @@
       "sha256": "50465ab233b69ad5"
     },
     {
+      "doc_id": "nih/prediabetes_prevention",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes",
+      "date": "2024-05-01",
+      "topics": [
+        "prediabetes",
+        "diabetes prevention",
+        "metformin",
+        "lifestyle intervention",
+        "weight loss",
+        "A1c",
+        "fasting glucose",
+        "gestational diabetes"
+      ],
+      "sha256": "d488f9a8fdc624e2"
+    },
+    {
       "doc_id": "uspstf/aspirin_primary_prevention",
       "title": "Aspirin use to prevent cardiovascular disease \u2014 primary prevention (USPSTF)",
       "source": "USPSTF",
@@ -539,6 +593,118 @@
     }
   ],
   "chunks": [
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#0",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "The American Diabetes Association Standards of Care addresses prevention or delay of type 2 diabetes in adults with prediabetes (hemoglobin A1c 5.7 to 6.4 percent, fasting plasma glucose 100 to 125 mg/dL, or 2-hour plasma glucose 140 to 199 mg/dL on oral glucose tolerance testing). First-line management is structured intensive behavioral lifestyle change. Pharmacotherapy with metformin is an adjunctive option in selected higher-risk patients.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#1",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "First-line management is structured intensive behavioral lifestyle change. Pharmacotherapy with metformin is an adjunctive option in selected higher-risk patients. The recommended lifestyle program targets a minimum 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#2",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Pharmacotherapy with metformin is an adjunctive option in selected higher-risk patients. The recommended lifestyle program targets a minimum 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity. Patients should be referred to an intensive behavioral lifestyle intervention program modeled on the Diabetes Prevention Program \u2014 for example, a CDC-recognized National Diabetes Prevention Program.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#3",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "The recommended lifestyle program targets a minimum 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity. Patients should be referred to an intensive behavioral lifestyle intervention program modeled on the Diabetes Prevention Program \u2014 for example, a CDC-recognized National Diabetes Prevention Program. Dietary patterns associated with reduced diabetes risk include Mediterranean, DASH, and plant-forward eating patterns; the specific pattern can be individualized to patient preferences.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#4",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Patients should be referred to an intensive behavioral lifestyle intervention program modeled on the Diabetes Prevention Program \u2014 for example, a CDC-recognized National Diabetes Prevention Program. Dietary patterns associated with reduced diabetes risk include Mediterranean, DASH, and plant-forward eating patterns; the specific pattern can be individualized to patient preferences. Reduced consumption of sugar-sweetened beverages and processed foods is consistently emphasized.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#5",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Dietary patterns associated with reduced diabetes risk include Mediterranean, DASH, and plant-forward eating patterns; the specific pattern can be individualized to patient preferences. Reduced consumption of sugar-sweetened beverages and processed foods is consistently emphasized. Metformin therapy for diabetes prevention should be considered in adults with prediabetes, particularly those with body mass index 35 kg/m\u00b2 or greater, those younger than 60 years of age, and women with prior gestational diabetes.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#6",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Reduced consumption of sugar-sweetened beverages and processed foods is consistently emphasized. Metformin therapy for diabetes prevention should be considered in adults with prediabetes, particularly those with body mass index 35 kg/m\u00b2 or greater, those younger than 60 years of age, and women with prior gestational diabetes. The recommendation reflects evidence that the relative risk reduction with metformin is greatest in these groups, while the absolute benefit in older lower-risk adults is modest.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#7",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Metformin therapy for diabetes prevention should be considered in adults with prediabetes, particularly those with body mass index 35 kg/m\u00b2 or greater, those younger than 60 years of age, and women with prior gestational diabetes. The recommendation reflects evidence that the relative risk reduction with metformin is greatest in these groups, while the absolute benefit in older lower-risk adults is modest. Long-term metformin use is associated with biochemical vitamin B12 deficiency; periodic measurement of B12 is recommended, particularly in patients with anemia or peripheral neuropathy.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#8",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "The recommendation reflects evidence that the relative risk reduction with metformin is greatest in these groups, while the absolute benefit in older lower-risk adults is modest. Long-term metformin use is associated with biochemical vitamin B12 deficiency; periodic measurement of B12 is recommended, particularly in patients with anemia or peripheral neuropathy. Patients with prediabetes should have annual monitoring with hemoglobin A1c or fasting plasma glucose.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#9",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Long-term metformin use is associated with biochemical vitamin B12 deficiency; periodic measurement of B12 is recommended, particularly in patients with anemia or peripheral neuropathy. Patients with prediabetes should have annual monitoring with hemoglobin A1c or fasting plasma glucose. Cardiovascular risk factors should be assessed and treated to standard targets; prediabetes itself is associated with increased cardiovascular risk independent of progression to diabetes.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#10",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Patients with prediabetes should have annual monitoring with hemoglobin A1c or fasting plasma glucose. Cardiovascular risk factors should be assessed and treated to standard targets; prediabetes itself is associated with increased cardiovascular risk independent of progression to diabetes. Statin therapy decisions follow general atherosclerotic cardiovascular disease risk assessment.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#11",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Cardiovascular risk factors should be assessed and treated to standard targets; prediabetes itself is associated with increased cardiovascular risk independent of progression to diabetes. Statin therapy decisions follow general atherosclerotic cardiovascular disease risk assessment. Hypertension and dyslipidemia management proceed under the relevant cardiovascular guidelines, not under diabetes-specific glycemic targets, until type 2 diabetes is established.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#12",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Statin therapy decisions follow general atherosclerotic cardiovascular disease risk assessment. Hypertension and dyslipidemia management proceed under the relevant cardiovascular guidelines, not under diabetes-specific glycemic targets, until type 2 diabetes is established. Women with a history of gestational diabetes warrant lifelong screening for diabetes every 1 to 3 years given approximately 50 percent lifetime risk of progression to type 2 diabetes.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
+    {
+      "chunk_id": "ada/prediabetes_standards_of_care#13",
+      "source_doc_id": "ada/prediabetes_standards_of_care",
+      "text": "Hypertension and dyslipidemia management proceed under the relevant cardiovascular guidelines, not under diabetes-specific glycemic targets, until type 2 diabetes is established. Women with a history of gestational diabetes warrant lifelong screening for diabetes every 1 to 3 years given approximately 50 percent lifetime risk of progression to type 2 diabetes. Lifestyle intervention and metformin are both reasonable preventive options in this group; metformin has supportive evidence specifically in postpartum women with prior gestational diabetes.",
+      "title": "Prevention or delay of type 2 diabetes \u2014 first-line management of prediabetes (adapted from ADA Standards of Care)",
+      "source": "ADA",
+      "source_url": "https://diabetesjournals.org/care/issue/47/Supplement_1"
+    },
     {
       "chunk_id": "aha/acei_monitoring#0",
       "source_doc_id": "aha/acei_monitoring",
@@ -1290,6 +1456,86 @@
       "title": "Iron-deficiency anemia in adults \u2014 laboratory diagnosis and oral iron therapy (CDC)",
       "source": "CDC",
       "source_url": "https://www.cdc.gov/nutrition/micronutrient-malnutrition/iron-deficiency.html"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#0",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "The CDC-led National Diabetes Prevention Program (National DPP) is a structured year-long lifestyle change program for adults with prediabetes or at high risk for type 2 diabetes. Eligibility is established by any one of: a hemoglobin A1c of 5.7 to 6.4 percent, a fasting plasma glucose of 100 to 125 mg/dL, a 2-hour plasma glucose of 140 to 199 mg/dL on oral glucose tolerance testing, or a previously positive screening risk score. A history of gestational diabetes also qualifies a patient for enrollment without requiring a current abnormal glucose value.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#1",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "Eligibility is established by any one of: a hemoglobin A1c of 5.7 to 6.4 percent, a fasting plasma glucose of 100 to 125 mg/dL, a 2-hour plasma glucose of 140 to 199 mg/dL on oral glucose tolerance testing, or a previously positive screening risk score. A history of gestational diabetes also qualifies a patient for enrollment without requiring a current abnormal glucose value. The two primary behavioral targets of the program are a 5 to 7 percent reduction in body weight and at least 150 minutes per week of moderate-intensity physical activity (for example, brisk walking).",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#2",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "A history of gestational diabetes also qualifies a patient for enrollment without requiring a current abnormal glucose value. The two primary behavioral targets of the program are a 5 to 7 percent reduction in body weight and at least 150 minutes per week of moderate-intensity physical activity (for example, brisk walking). The curriculum is delivered by a trained lifestyle coach over a 12-month period: weekly or biweekly sessions for the first 6 months focused on dietary change, physical activity, and behavioral self-management, followed by monthly maintenance sessions for the remainder of the year.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#3",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "The two primary behavioral targets of the program are a 5 to 7 percent reduction in body weight and at least 150 minutes per week of moderate-intensity physical activity (for example, brisk walking). The curriculum is delivered by a trained lifestyle coach over a 12-month period: weekly or biweekly sessions for the first 6 months focused on dietary change, physical activity, and behavioral self-management, followed by monthly maintenance sessions for the remainder of the year. Programs may be in-person, distance learning, online, or combination delivery, and all CDC-recognized programs follow the same evidence-based curriculum.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#4",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "The curriculum is delivered by a trained lifestyle coach over a 12-month period: weekly or biweekly sessions for the first 6 months focused on dietary change, physical activity, and behavioral self-management, followed by monthly maintenance sessions for the remainder of the year. Programs may be in-person, distance learning, online, or combination delivery, and all CDC-recognized programs follow the same evidence-based curriculum. Outcome data from the original Diabetes Prevention Program trial (referenced by the CDC for program design) showed a 58 percent reduction in incidence of type 2 diabetes among participants in the lifestyle arm compared with placebo, with the relative risk reduction exceeding 70 percent in adults aged 60 years or older.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#5",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "Programs may be in-person, distance learning, online, or combination delivery, and all CDC-recognized programs follow the same evidence-based curriculum. Outcome data from the original Diabetes Prevention Program trial (referenced by the CDC for program design) showed a 58 percent reduction in incidence of type 2 diabetes among participants in the lifestyle arm compared with placebo, with the relative risk reduction exceeding 70 percent in adults aged 60 years or older. The Medicare Diabetes Prevention Program (MDPP) covers participation as a preventive benefit for eligible Medicare beneficiaries.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#6",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "Outcome data from the original Diabetes Prevention Program trial (referenced by the CDC for program design) showed a 58 percent reduction in incidence of type 2 diabetes among participants in the lifestyle arm compared with placebo, with the relative risk reduction exceeding 70 percent in adults aged 60 years or older. The Medicare Diabetes Prevention Program (MDPP) covers participation as a preventive benefit for eligible Medicare beneficiaries. Patients can locate a CDC-recognized program through the program's online registry.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#7",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "The Medicare Diabetes Prevention Program (MDPP) covers participation as a preventive benefit for eligible Medicare beneficiaries. Patients can locate a CDC-recognized program through the program's online registry. Pharmacotherapy is not part of the CDC National DPP curriculum itself.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#8",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "Patients can locate a CDC-recognized program through the program's online registry. Pharmacotherapy is not part of the CDC National DPP curriculum itself. Metformin for diabetes prevention is addressed in clinical guideline sources (NIH/NIDDK and ADA Standards of Care); the National DPP focus is exclusively on supervised lifestyle change with measurable weight and activity targets.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
+    },
+    {
+      "chunk_id": "cdc/national_diabetes_prevention_program#9",
+      "source_doc_id": "cdc/national_diabetes_prevention_program",
+      "text": "Pharmacotherapy is not part of the CDC National DPP curriculum itself. Metformin for diabetes prevention is addressed in clinical guideline sources (NIH/NIDDK and ADA Standards of Care); the National DPP focus is exclusively on supervised lifestyle change with measurable weight and activity targets. Clinicians may refer patients to a recognized DPP independent of any pharmacotherapy decision.",
+      "title": "National Diabetes Prevention Program \u2014 lifestyle intervention for prediabetes (CDC)",
+      "source": "CDC",
+      "source_url": "https://www.cdc.gov/diabetes-prevention/about/"
     },
     {
       "chunk_id": "cdc/tobacco_cessation#0",
@@ -2282,6 +2528,102 @@
       "title": "Metformin monitoring \u2014 renal function, B12, and lactic acidosis risk (NIH/NIDDK)",
       "source": "NIH/NIDDK",
       "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/insulin-medicines-treatments"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#0",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Adults with prediabetes \u2014 defined by a hemoglobin A1c of 5.7 to 6.4 percent, a fasting plasma glucose of 100 to 125 mg/dL, or a 2-hour plasma glucose of 140 to 199 mg/dL on oral glucose tolerance testing \u2014 are at substantially elevated risk of progression to type 2 diabetes. Approximately one in three U.S. adults has prediabetes, and without intervention a substantial proportion progress to type 2 diabetes within five years. The cornerstone of management is structured lifestyle change, with metformin considered as an adjunct in selected higher-risk patients.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#1",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Approximately one in three U.S. adults has prediabetes, and without intervention a substantial proportion progress to type 2 diabetes within five years. The cornerstone of management is structured lifestyle change, with metformin considered as an adjunct in selected higher-risk patients. The lifestyle-change targets are a 5 to 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#2",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "The cornerstone of management is structured lifestyle change, with metformin considered as an adjunct in selected higher-risk patients. The lifestyle-change targets are a 5 to 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity. These targets are most reliably achieved within a structured intensive behavioral counseling program such as a CDC-recognized National Diabetes Prevention Program.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#3",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "The lifestyle-change targets are a 5 to 7 percent loss of baseline body weight and at least 150 minutes per week of moderate-intensity physical activity. These targets are most reliably achieved within a structured intensive behavioral counseling program such as a CDC-recognized National Diabetes Prevention Program. Dietary recommendations emphasize reduced caloric and saturated-fat intake with increased fiber, with no single specific macronutrient pattern required.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#4",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "These targets are most reliably achieved within a structured intensive behavioral counseling program such as a CDC-recognized National Diabetes Prevention Program. Dietary recommendations emphasize reduced caloric and saturated-fat intake with increased fiber, with no single specific macronutrient pattern required. Self-monitoring of weight and physical activity, regular contact with a lifestyle coach, and goal-setting are central behavioral components.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#5",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Dietary recommendations emphasize reduced caloric and saturated-fat intake with increased fiber, with no single specific macronutrient pattern required. Self-monitoring of weight and physical activity, regular contact with a lifestyle coach, and goal-setting are central behavioral components. Metformin may be considered for type 2 diabetes prevention in adults with prediabetes, with the strongest supporting evidence in three groups: adults under 60 years of age, adults with body mass index of 35 kg/m\u00b2 or greater, and women with a history of gestational diabetes.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#6",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Self-monitoring of weight and physical activity, regular contact with a lifestyle coach, and goal-setting are central behavioral components. Metformin may be considered for type 2 diabetes prevention in adults with prediabetes, with the strongest supporting evidence in three groups: adults under 60 years of age, adults with body mass index of 35 kg/m\u00b2 or greater, and women with a history of gestational diabetes. Use of metformin for prediabetes is off-label in the United States.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#7",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Metformin may be considered for type 2 diabetes prevention in adults with prediabetes, with the strongest supporting evidence in three groups: adults under 60 years of age, adults with body mass index of 35 kg/m\u00b2 or greater, and women with a history of gestational diabetes. Use of metformin for prediabetes is off-label in the United States. Typical dosing is 850 mg once daily titrated to 850 mg twice daily as tolerated, with patient counseling on gastrointestinal side effects and the recommendation for periodic vitamin B12 monitoring on long-term therapy.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#8",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Use of metformin for prediabetes is off-label in the United States. Typical dosing is 850 mg once daily titrated to 850 mg twice daily as tolerated, with patient counseling on gastrointestinal side effects and the recommendation for periodic vitamin B12 monitoring on long-term therapy. Metformin is not initiated when estimated glomerular filtration rate is below 45 mL/min/1.73 m\u00b2 and is contraindicated below 30 mL/min/1.73 m\u00b2.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#9",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Typical dosing is 850 mg once daily titrated to 850 mg twice daily as tolerated, with patient counseling on gastrointestinal side effects and the recommendation for periodic vitamin B12 monitoring on long-term therapy. Metformin is not initiated when estimated glomerular filtration rate is below 45 mL/min/1.73 m\u00b2 and is contraindicated below 30 mL/min/1.73 m\u00b2. Patients with prediabetes should be re-screened for diabetes annually with hemoglobin A1c or fasting plasma glucose.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#10",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Metformin is not initiated when estimated glomerular filtration rate is below 45 mL/min/1.73 m\u00b2 and is contraindicated below 30 mL/min/1.73 m\u00b2. Patients with prediabetes should be re-screened for diabetes annually with hemoglobin A1c or fasting plasma glucose. Cardiovascular risk factor screening \u2014 blood pressure, lipid panel, smoking status, and weight \u2014 should be performed at the same visit, as the same lifestyle interventions reduce cardiovascular risk independent of glycemic progression.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
+    },
+    {
+      "chunk_id": "nih/prediabetes_prevention#11",
+      "source_doc_id": "nih/prediabetes_prevention",
+      "text": "Patients with prediabetes should be re-screened for diabetes annually with hemoglobin A1c or fasting plasma glucose. Cardiovascular risk factor screening \u2014 blood pressure, lipid panel, smoking status, and weight \u2014 should be performed at the same visit, as the same lifestyle interventions reduce cardiovascular risk independent of glycemic progression. Patients who progress to a fasting plasma glucose of 126 mg/dL or higher on two occasions or an A1c of 6.5 percent or higher have crossed the threshold to type 2 diabetes and require management under that diagnosis.",
+      "title": "Preventing type 2 diabetes \u2014 lifestyle intervention and metformin in prediabetes (NIH/NIDDK)",
+      "source": "NIH/NIDDK",
+      "source_url": "https://www.niddk.nih.gov/health-information/diabetes/overview/preventing-type-2-diabetes"
     },
     {
       "chunk_id": "uspstf/aspirin_primary_prevention#0",
