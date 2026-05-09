@@ -17,6 +17,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
+import pytest
+
 from clinical_copilot.corpus.rerank import (
     MAX_COHERE_DOC_CHARS,
     _chunk_payload,
@@ -156,11 +158,35 @@ def test_chunk_payload_includes_title_and_source() -> None:
     assert "body text" in payload
 
 
-def test_rerank_emits_success_log() -> None:
+class _CapturingLogger:
+    """Stand-in for ``rerank.logger`` that records events directly.
+
+    Replaces ``structlog.testing.capture_logs`` because the agent-service
+    configures structlog with ``cache_logger_on_first_use=True``
+    (``clinical_copilot/logging.py``) — once another test in the same
+    pytest process boots app state, rerank.py's module-level logger gets
+    bound to the configured chain and ``capture_logs`` can no longer
+    intercept it. Monkeypatching the module attribute is order-independent.
+    """
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def info(self, event: str, **kwargs: object) -> None:
+        self.events.append({"event": event, "level": "info", **kwargs})
+
+    def warning(self, event: str, **kwargs: object) -> None:
+        self.events.append({"event": event, "level": "warning", **kwargs})
+
+
+def test_rerank_emits_success_log(monkeypatch: pytest.MonkeyPatch) -> None:
     """Operators verify Cohere ran by tail-grep'ing for this event;
     the assertion pins the field shape so a refactor can't silently
     drop ``rerank_backend`` observability."""
-    from structlog.testing import capture_logs
+    from clinical_copilot.corpus import rerank as rerank_module
+
+    capturing = _CapturingLogger()
+    monkeypatch.setattr(rerank_module, "logger", capturing)
 
     chunks = [_chunk("c1"), _chunk("c2")]
     client = _client_with_results(
@@ -169,9 +195,8 @@ def test_rerank_emits_success_log() -> None:
             _FakeResult(index=0, relevance_score=0.4),
         ],
     )
-    with capture_logs() as logs:
-        rerank_with_cohere(client=client, query="x", candidates=chunks, top_k=2)
-    success_logs = [log for log in logs if log.get("event") == "corpus.rerank.cohere_ok"]
+    rerank_with_cohere(client=client, query="x", candidates=chunks, top_k=2)
+    success_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.cohere_ok"]
     assert len(success_logs) == 1
     entry = success_logs[0]
     assert entry["n_in"] == 2
@@ -182,15 +207,17 @@ def test_rerank_emits_success_log() -> None:
     assert entry["latency_ms"] >= 0
 
 
-def test_rerank_does_not_log_success_on_api_error() -> None:
-    from structlog.testing import capture_logs
+def test_rerank_does_not_log_success_on_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from clinical_copilot.corpus import rerank as rerank_module
+
+    capturing = _CapturingLogger()
+    monkeypatch.setattr(rerank_module, "logger", capturing)
 
     chunks = [_chunk("c1"), _chunk("c2")]
     client = MagicMock()
     client.rerank.side_effect = RuntimeError("boom")
-    with capture_logs() as logs:
-        rerank_with_cohere(client=client, query="x", candidates=chunks, top_k=2)
-    success_logs = [log for log in logs if log.get("event") == "corpus.rerank.cohere_ok"]
+    rerank_with_cohere(client=client, query="x", candidates=chunks, top_k=2)
+    success_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.cohere_ok"]
     assert success_logs == []
-    error_logs = [log for log in logs if log.get("event") == "corpus.rerank.cohere_api_error"]
+    error_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.cohere_api_error"]
     assert len(error_logs) == 1
