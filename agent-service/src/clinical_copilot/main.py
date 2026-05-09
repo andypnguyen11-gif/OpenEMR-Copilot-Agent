@@ -273,11 +273,19 @@ def _first_citation_source_id(
     synthesized prose at a real citation. The lookup runs in two
     passes:
 
-    1. **Worker-handoff citations.** ``evidence_retriever`` chunks
-       expose their citation as ``output["chunks"][i]["chunk_id"]``;
-       ``intake_extractor`` flattens citations into
-       ``output["citations"][i]["source_doc_id"]``. Walk both shapes
-       and return the first non-empty id we see.
+    1. **Worker-handoff citations.** Two upstream shapes are
+       recognized:
+
+       * Plain-Python supervisor — ``evidence_retriever`` chunks expose
+         their citation as ``output["chunks"][i]["chunk_id"]``;
+         ``intake_extractor`` flattens citations into
+         ``output["citations"][i]["source_doc_id"]``.
+       * LangGraph supervisor — ``output["citations"][i]`` carries the
+         :class:`orchestrator.state.Citation` shape, with
+         ``corpus_id`` for guideline anchors and ``source_id`` for
+         chart anchors. Either is a valid wire-level source id.
+
+       Walk all shapes and return the first non-empty id we see.
 
     2. **Chart-pack source_id substring match.** When a chart pack is
        supplied AND the synthesized text contains a chart-pack
@@ -304,10 +312,16 @@ def _first_citation_source_id(
         citations = output.get("citations")
         if isinstance(citations, list):
             for citation in citations:
-                if isinstance(citation, dict):
-                    source_doc_id = citation.get("source_doc_id")
-                    if isinstance(source_doc_id, str) and source_doc_id:
-                        return source_doc_id
+                if not isinstance(citation, dict):
+                    continue
+                # Plain-Python intake_extractor shape first, then the
+                # LangGraph Citation shape (corpus_id for guideline
+                # anchors, source_id for chart anchors). Order matters
+                # only when both shapes coexist, which is unusual.
+                for key in ("source_doc_id", "corpus_id", "source_id"):
+                    value = citation.get(key)
+                    if isinstance(value, str) and value:
+                        return value
 
     if chart_pack is not None and synthesized_text:
         # Substring match against the chart-pack source_ids. The

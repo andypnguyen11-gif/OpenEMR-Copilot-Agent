@@ -311,3 +311,148 @@ def test_empty_planner_plan_collapses_to_no_data_via_verification() -> None:
     )
 
     assert response.abstention_reason == RuntimeAbstainReason.NO_DATA.value
+
+
+# ---------------------------------------------------- handoff-anchor regression
+
+
+def test_guideline_handoffs_surface_chunk_anchor_for_adapter() -> None:
+    """Regression: LangGraph supervisor must populate handoffs with the
+    citation metadata the wire adapter needs.
+
+    Bug: supervisor_langgraph.py returned ``handoffs=()`` regardless of
+    the LangGraph state's actual handoffs. The wire adapter
+    (``_supervisor_to_agent_response``) then could not anchor the
+    synthesized prose unless it happened to substring-match a chart-pack
+    record, and silently rewrote the response to NO_DATA. Reproduced on
+    prod 2026-05-09 (request_id 9253100ddddf...): supervisor synthesized
+    1056 chars of grounded guideline prose, adapter discarded it.
+    """
+
+    planner_client = _make_anthropic_returning(
+        [
+            _planner_message(
+                sub_queries=[{"text": "ADA recs?", "claim_type": "guideline"}],
+            ),
+        ],
+    )
+    synth_client = _make_anthropic_returning(
+        [_text_message("The guideline recommends annual screening [c1].")],
+    )
+    critic_client = _make_anthropic_returning([_critic_verdict_message(accept=True)])
+    retriever = _make_retriever_returning([_retrieved_chunk(chunk_id="c1")])
+
+    response = run_turn(
+        user_query="What does ADA recommend?",
+        request_id="req_handoff_repro",
+        patient_id="p1",
+        bound_patient_name=None,
+        planner_client=planner_client,
+        planner_model="haiku",
+        synthesizer_client=synth_client,
+        synthesizer_model="sonnet",
+        critic_client=critic_client,
+        critic_model="haiku",
+        retriever=retriever,
+        rerank_client=None,
+        rerank_model=None,
+        orchestrator=_make_orchestrator_returning(_agent_response_stub()),
+        claims=_claims_stub(),
+        session_id=None,
+        lane=__import__(
+            "clinical_copilot.orchestrator.lanes",
+            fromlist=["Lane"],
+        ).Lane.SLOW,
+        chart_pack=None,
+    )
+
+    assert response.abstention_reason is None
+    assert response.synthesized_text  # non-empty
+    assert len(response.handoffs) >= 1, (
+        "LangGraph supervisor returned empty handoffs; the wire adapter "
+        "cannot anchor synthesized prose without them"
+    )
+
+    def _has_anchor(handoff_output: object) -> bool:
+        if not isinstance(handoff_output, dict):
+            return False
+        chunks = handoff_output.get("chunks") or []
+        if any(isinstance(c, dict) and c.get("chunk_id") for c in chunks):
+            return True
+        citations = handoff_output.get("citations") or []
+        return any(
+            isinstance(c, dict)
+            and (
+                c.get("source_doc_id")
+                or c.get("corpus_id")
+                or c.get("source_id")
+            )
+            for c in citations
+        )
+
+    assert any(_has_anchor(h.output) for h in response.handoffs), (
+        "Handoffs present but no recognizable citation anchor in any output"
+    )
+
+
+def test_guideline_wire_response_anchors_with_no_chart_pack() -> None:
+    """End-to-end regression: LangGraph supervisor → wire adapter must
+    surface synthesized prose, not NO_DATA, when no chart_pack is
+    supplied. Before the fix the adapter discarded the answer because
+    pass 2 (chart-substring match) could not run and pass 1 saw empty
+    handoffs.
+    """
+
+    from clinical_copilot.main import _supervisor_to_agent_response
+
+    planner_client = _make_anthropic_returning(
+        [
+            _planner_message(
+                sub_queries=[{"text": "ADA recs?", "claim_type": "guideline"}],
+            ),
+        ],
+    )
+    synth_client = _make_anthropic_returning(
+        [_text_message("The guideline recommends annual screening [c1].")],
+    )
+    critic_client = _make_anthropic_returning([_critic_verdict_message(accept=True)])
+    retriever = _make_retriever_returning([_retrieved_chunk(chunk_id="c1")])
+
+    sup_response = run_turn(
+        user_query="What does ADA recommend?",
+        request_id="req_anchor_e2e",
+        patient_id="p1",
+        bound_patient_name=None,
+        planner_client=planner_client,
+        planner_model="haiku",
+        synthesizer_client=synth_client,
+        synthesizer_model="sonnet",
+        critic_client=critic_client,
+        critic_model="haiku",
+        retriever=retriever,
+        rerank_client=None,
+        rerank_model=None,
+        orchestrator=_make_orchestrator_returning(_agent_response_stub()),
+        claims=_claims_stub(),
+        session_id=None,
+        lane=__import__(
+            "clinical_copilot.orchestrator.lanes",
+            fromlist=["Lane"],
+        ).Lane.SLOW,
+        chart_pack=None,
+    )
+
+    wire = _supervisor_to_agent_response(
+        sup_response,
+        session_id="session_test",
+        chart_pack=None,
+    )
+
+    assert wire.abstention is None, (
+        f"Expected non-abstention; got {wire.abstention}. "
+        "The adapter discarded the synthesized prose because no anchor "
+        "was found in handoffs and no chart_pack was available."
+    )
+    assert len(wire.prose) >= 1
+    assert wire.prose[0].source_id, "anchor source_id must be populated"
+    assert wire.prose[0].text, "synthesized prose must be preserved"

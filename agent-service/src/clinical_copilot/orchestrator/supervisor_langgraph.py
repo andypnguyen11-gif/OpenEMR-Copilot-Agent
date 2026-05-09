@@ -94,7 +94,9 @@ from clinical_copilot.orchestrator.state import (
     initial_state,
 )
 from clinical_copilot.orchestrator.supervisor import (
+    Handoff,
     SupervisorResponse,
+    WorkerName,
 )
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
@@ -270,6 +272,41 @@ def _draft_to_handoff(draft: Draft) -> dict[str, Any]:
         "abstain_reason": draft.abstain_reason,
         "citations": [c.model_dump(exclude_none=True) for c in draft.citations],
     }
+
+
+_HANDOFF_WORKERS: Final[frozenset[str]] = frozenset(
+    {"intake_extractor", "evidence_retriever"},
+)
+
+
+def _state_handoff_to_dataclass(payload: dict[str, Any]) -> Handoff | None:
+    """Project a state-dict handoff (from :func:`_draft_to_handoff`) into
+    the plain-Python :class:`Handoff` dataclass the legacy adapter walks.
+
+    Returns ``None`` for handoffs the wire adapter cannot anchor on:
+      * unknown / chart-only workers (CHART_TOOLS goes through v1_single,
+        not the adapter);
+      * payloads with no citations (the resolver would skip them anyway).
+    """
+
+    worker_value = payload.get("worker")
+    if worker_value not in _HANDOFF_WORKERS:
+        return None
+    citations = payload.get("citations") or []
+    if not isinstance(citations, list) or not citations:
+        return None
+    return Handoff(
+        worker=cast(WorkerName, worker_value),
+        tool_use_id="",
+        arguments={},
+        # The adapter's pass-1 walks output.chunks[].chunk_id and
+        # output.citations[].source_doc_id. The LangGraph Citation model
+        # uses source_id / corpus_id; the adapter (Fix A) recognizes
+        # both shapes, so the projected list passes through unchanged.
+        output={"citations": citations},
+        error=payload.get("abstain_reason"),
+        latency_ms=0,
+    )
 
 
 # --------------------------------------------------------------- verification
@@ -560,13 +597,25 @@ def run_turn(
     )
 
     # Build a SupervisorResponse so :func:`_supervisor_to_agent_response`
-    # in main.py works unchanged. Handoffs from the LangGraph path are
-    # synthetic (we don't have the same per-tool latency the plain-Python
-    # supervisor records) so we project a minimal shape that the
-    # existing adapter tolerates.
+    # in main.py works unchanged. Project the LangGraph state's handoffs
+    # into the plain-Python Handoff dataclass so the wire adapter can
+    # anchor synthesized prose via pass-1 (worker-handoff citations).
+    # Skipping this projection silently rewrote responses to NO_DATA on
+    # any chart-thin patient + guideline question — caught on prod
+    # 2026-05-09 (request_id 9253100ddddf...) where 1056 chars of
+    # grounded prose were discarded because no anchor was found.
+    projected_handoffs: tuple[Handoff, ...] = ()
+    if isinstance(handoffs_payload, list):
+        projected = [
+            _state_handoff_to_dataclass(p)
+            for p in handoffs_payload
+            if isinstance(p, dict)
+        ]
+        projected_handoffs = tuple(h for h in projected if h is not None)
+
     return SupervisorResponse(
         synthesized_text=text,
-        handoffs=(),  # plain-Python Handoff tuples are heavy; legacy adapter is tolerant of empty
+        handoffs=projected_handoffs,
         abstention_reason=abstain if isinstance(abstain, str) else None,
         iterations=iterations,
         rerank_backend=backend if isinstance(backend, str) and backend else None,
