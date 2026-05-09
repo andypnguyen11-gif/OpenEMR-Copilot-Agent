@@ -4,17 +4,46 @@ A ``SourceCitation`` is the formal handle the verification layer uses to
 re-resolve a field back to the document region the VLM claimed it came
 from. An ``ExtractedField[T]`` couples a value with its citation, or
 with an abstention reason if no value could be produced.
+
+Three citation types share a discriminator on ``source_type``:
+``SourceCitation`` (extracted documents — page+bbox), ``GuidelineCitation``
+(retrieval chunks — chunk_id+source_url), ``PatientChartCitation`` (FHIR
+resources — resource_type+resource_id). The ``Citation`` union below is the
+type used wherever a wire-shape carries a citation regardless of origin.
+
+Discriminator-value style: bare ``Literal["..."]`` rather than
+``Literal[CitationSourceType.X]``. The StrEnum is exported for callers but
+not embedded in the type-system discriminator — Pydantic v2 has known
+edge cases resolving enum-valued discriminators across union members
+defined in the same module, and the bare-string form is functionally
+identical at the JSON wire level. ``CitationSourceType`` stays the
+canonical name set so downstream code can use ``CitationSourceType.GUIDELINE``
+without hardcoding ``"guideline"``.
 """
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from enum import StrEnum
+from typing import Annotated, Generic, Literal, TypeVar, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 T = TypeVar("T")
+
+
+class CitationSourceType(StrEnum):
+    """Canonical names for the three citation discriminators.
+
+    The string values are the wire form. Use the enum members in code
+    (``CitationSourceType.GUIDELINE``); the class ``Literal[...]``
+    discriminators on the citation models accept the same string values.
+    """
+
+    EXTRACTED_DOCUMENT = "extracted_document"
+    GUIDELINE = "guideline"
+    PATIENT_CHART = "patient_chart"
 
 
 class SourceCitation(BaseModel):
@@ -31,15 +60,31 @@ class SourceCitation(BaseModel):
     ``raw_text`` is the verbatim string the VLM claims sits inside
     ``bbox``. The OCR check (PRD2 §8.2) compares it against what
     Tesseract reads from the rendered region.
+
+    ``field_or_chunk_id`` is a JSON-pointer-style path identifying the
+    extracted-record leaf this citation belongs to (e.g.
+    ``observations[0].value``, ``medications[2].dose``). For extracted
+    documents this is the schema-walk path, set by the extractor.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    source_type: Literal["extracted_document"] = "extracted_document"
     document_id: str
     page: int = Field(ge=1)
     bbox: tuple[float, float, float, float]
     confidence: float = Field(ge=0.0, le=1.0)
     raw_text: str
+    field_or_chunk_id: str = Field(
+        default="",
+        description=(
+            "TRANSITIONAL DEFAULT (PR 1a -> 1b): empty string while extractor "
+            "constructor sites still build SourceCitation without threading the "
+            "schema-walk path. PR 1b adds build_extracted_citation(path, ...) "
+            "across extractor.py + 7 adapters and drops this default. Do NOT "
+            "rely on the empty-string fallback in new code."
+        ),
+    )
 
     @model_validator(mode="after")
     def _bbox_in_unit_square(self) -> "SourceCitation":
@@ -50,6 +95,67 @@ class SourceCitation(BaseModel):
         if x1 <= x0 or y1 <= y0:
             raise ValueError(f"bbox is degenerate (x1<=x0 or y1<=y0): {self.bbox}")
         return self
+
+
+class GuidelineCitation(BaseModel):
+    """Pointer to a retrieval chunk from the guideline corpus.
+
+    ``chunk_id`` is the corpus-internal id of the indexed chunk;
+    ``source_doc_id`` is the parent document id. ``source_url`` is the
+    public URL when the corpus has one (NIH guideline PDFs etc.); None for
+    private/unsourced material.
+
+    ``field_or_chunk_id`` mirrors ``chunk_id`` to satisfy the discriminated-
+    union contract — the wire-shape carries one canonical id field per
+    citation type.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_type: Literal["guideline"] = "guideline"
+    field_or_chunk_id: str
+    source_doc_id: str
+    chunk_id: str
+    source_url: str | None = None
+    confidence: float = Field(ge=0.0, le=1.0)
+    raw_text: str
+
+
+class PatientChartCitation(BaseModel):
+    """Pointer to a FHIR resource in the patient's chart pack.
+
+    ``resource_type`` and ``resource_id`` together address the resource
+    (e.g. ``Observation/123``). ``field_or_chunk_id`` mirrors
+    ``f"{resource_type}/{resource_id}"`` for the discriminated-union contract.
+
+    ``display_summary`` is a ONE-LINE LABEL (e.g. ``"Glucose 142 mg/dL on
+    2026-04-15"``) — NEVER the verbatim FHIR resource text. The full resource
+    is re-fetched on demand via ``resource_type/resource_id``. Storing the
+    verbatim resource here would create a PHI redaction surface and duplicate
+    data the UI does not render. Producers building this type must pipe a
+    short, human-readable summary; never raw resource JSON.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_type: Literal["patient_chart"] = "patient_chart"
+    field_or_chunk_id: str
+    resource_type: str
+    resource_id: str
+    display_summary: str | None = None
+
+
+Citation = Annotated[
+    Union[SourceCitation, GuidelineCitation, PatientChartCitation],
+    Field(discriminator="source_type"),
+]
+"""Discriminated-union of the three citation types, keyed on ``source_type``.
+
+Use this wherever a wire-shape carries a citation whose origin (extracted
+document vs. retrieval chunk vs. patient chart) is determined at runtime.
+Concrete types are still used at construction sites where the origin is
+known statically (the extractor builds ``SourceCitation`` directly).
+"""
 
 
 class ExtractedField(BaseModel, Generic[T]):
