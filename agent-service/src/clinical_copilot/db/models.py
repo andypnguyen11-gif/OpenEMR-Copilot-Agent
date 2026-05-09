@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from clinical_copilot.db.base import Base
@@ -50,6 +50,15 @@ class AgentTrace(Base):
     token_in: Mapped[int] = mapped_column(Integer)
     token_out: Mapped[int] = mapped_column(Integer)
     model_tier: Mapped[str] = mapped_column(String(32))
+    # Nullable per-shape fields (PR W2-04). ``retrieval_hits`` is the
+    # chunk count the evidence retriever returned; ``NULL`` on
+    # chart-only / fast-lane turns. ``extraction_confidence`` is the
+    # mean per-field confidence from the document extractor; ``NULL``
+    # on retrieval-only turns. NULL semantics are independent per
+    # column so one row can describe whichever shape of work the
+    # request did.
+    retrieval_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
