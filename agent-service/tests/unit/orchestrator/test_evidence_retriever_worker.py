@@ -61,8 +61,10 @@ def _patch_rerank_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, MagicMock]
     """Replace both rerank functions with mocks so we can assert which
     one ran without invoking either real backend."""
 
+    from clinical_copilot.observability.traces import UsageTotals
+
     cohere_mock = MagicMock(return_value=[_chunk("c1")])
-    llm_mock = MagicMock(return_value=[_chunk("c2")])
+    llm_mock = MagicMock(return_value=([_chunk("c2")], UsageTotals(input_tokens=12, output_tokens=4)))
     monkeypatch.setattr(rerank_module, "rerank_with_cohere", cohere_mock)
     monkeypatch.setattr(rerank_module, "rerank_with_llm", llm_mock)
     monkeypatch.setattr(worker_module, "rerank_with_cohere", cohere_mock)

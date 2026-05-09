@@ -294,7 +294,7 @@ def test_judge_timeout_cap_forces_abstain_with_judge_timeout() -> None:
     )
     client = _SlowAnthropic(sleep_seconds=0.2)
 
-    verdict = judge(
+    verdict, _usage = judge(
         client=client,  # type: ignore[arg-type]
         model="m",
         draft=draft,

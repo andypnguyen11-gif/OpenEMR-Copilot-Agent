@@ -36,6 +36,7 @@ from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolParam, ToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from clinical_copilot.observability.traces import UsageTotals
 from clinical_copilot.orchestrator.state import (
     CLAIM_TYPE_TO_WORKER,
     ClaimType,
@@ -143,12 +144,14 @@ def plan(
     user_query: str,
     max_tokens: int = DEFAULT_MAX_TOKENS,
     request_id: str | None = None,
-) -> list[SubQuery]:
-    """Run one planner Anthropic round-trip and return typed SubQuery list.
+) -> tuple[list[SubQuery], UsageTotals]:
+    """Run one planner Anthropic round-trip and return ``(sub_queries, usage)``.
 
     Pure of state mutation — :func:`make_node` wraps this for LangGraph.
     Exposed separately so unit tests can hit the parser path with a
     mock Anthropic client without going through the LangGraph runtime.
+    Usage totals are zero on every fail-soft path (no tool_use, invalid
+    JSON, schema mismatch) so the caller can fold unconditionally.
     """
 
     log = logger.bind(request_id=request_id, query_len=len(user_query))
@@ -165,6 +168,7 @@ def plan(
         tool_choice={"type": "tool", "name": PLANNER_TOOL_NAME},
         messages=messages,
     )
+    usage = _usage_from_message(response)
 
     tool_use = next(
         (b for b in response.content if isinstance(b, ToolUseBlock)),
@@ -172,7 +176,7 @@ def plan(
     )
     if tool_use is None:
         log.warning("planner.no_tool_use", reason="no_tool_use_block")
-        return []
+        return [], usage
 
     raw_input = tool_use.input
     # ``Anthropic`` SDK gives us a parsed dict already; coerce defensively
@@ -182,13 +186,13 @@ def plan(
             raw_input = json.loads(raw_input)
         except json.JSONDecodeError as exc:
             log.warning("planner.tool_input_invalid_json", error=str(exc))
-            return []
+            return [], usage
 
     try:
         parsed = PlannerOutput.model_validate(raw_input)
     except ValidationError as exc:
         log.warning("planner.tool_input_validation_failed", error=str(exc))
-        return []
+        return [], usage
 
     sub_queries: list[SubQuery] = [
         SubQuery(
@@ -205,7 +209,17 @@ def plan(
         count=len(sub_queries),
         claim_types=[sq.claim_type.value for sq in sub_queries],
     )
-    return sub_queries
+    return sub_queries, usage
+
+
+def _usage_from_message(message: Message) -> UsageTotals:
+    """Pull tokens off the Anthropic response. Defensive zero default."""
+
+    usage = getattr(message, "usage", None)
+    return UsageTotals(
+        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+    )
 
 
 def make_node(
@@ -225,12 +239,12 @@ def make_node(
     def node(state: TurnState) -> dict[str, Any]:
         session = state.get("session", {})
         request_id = session.get("request_id")
-        sub_queries = plan(
+        sub_queries, usage = plan(
             client=client,
             model=model,
             user_query=state.get("user_query", ""),
             request_id=request_id,
         )
-        return {"sub_queries": sub_queries}
+        return {"sub_queries": sub_queries, "usage_totals": usage}
 
     return node

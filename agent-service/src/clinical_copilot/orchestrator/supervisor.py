@@ -43,6 +43,7 @@ import structlog
 from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolParam, ToolUseBlock
 
+from clinical_copilot.observability.traces import UsageTotals
 from clinical_copilot.orchestrator.chart_pack import ChartPack
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
@@ -96,6 +97,14 @@ class SupervisorResponse:
     Python supervisor fills this from the most recent
     ``dispatch_evidence_retriever`` handoff; the LangGraph supervisor
     fills it from the evidence-retriever node's state mutation."""
+
+    usage_totals: UsageTotals = UsageTotals()
+    """Per-request token totals summed across every Anthropic call this
+    turn. Defaults to ``UsageTotals(0, 0)`` so cassette / mock-based
+    tests don't have to populate it. Production fills from each
+    ``client.messages.create`` call's ``response.usage``; the rerank
+    stage's tokens are not yet captured here (haiku-bounded and
+    intentionally outside this aggregator's reach for early submission)."""
 
 
 # Worker callables — opaque to the supervisor. They take **kwargs from
@@ -276,6 +285,7 @@ def run(
     """
 
     handoffs: list[Handoff] = []
+    usage_totals = UsageTotals()
     user_content = _compose_user_content(query=query, chart_pack=chart_pack)
     messages: list[MessageParam] = [{"role": "user", "content": user_content}]
     tools = _tool_schemas()
@@ -297,6 +307,7 @@ def run(
             tools=tools,
             messages=messages,
         )
+        usage_totals = usage_totals + _usage_from_message(response)
 
         tool_use_blocks = [b for b in response.content if isinstance(b, ToolUseBlock)]
         if not tool_use_blocks:
@@ -316,6 +327,7 @@ def run(
                 handoffs=tuple(handoffs),
                 iterations=iteration,
                 rerank_backend=backend,
+                usage_totals=usage_totals,
             )
 
         # Append the assistant's tool-use turn before sending tool_result.
@@ -331,6 +343,7 @@ def run(
             )
             handoffs.append(handoff)
             tool_results.append(tool_result)
+            usage_totals = usage_totals + _usage_from_handoff(handoff)
 
         messages.append({"role": "user", "content": tool_results})
 
@@ -342,6 +355,42 @@ def run(
         abstention_reason=RuntimeAbstainReason.TOOL_FAILURE.value,
         iterations=iteration,
         rerank_backend=_latest_rerank_backend(handoffs),
+        usage_totals=usage_totals,
+    )
+
+
+def _usage_from_message(message: Message) -> UsageTotals:
+    """Extract per-call token counts from an Anthropic ``Message``.
+
+    ``response.usage`` is the SDK's per-call rollup. Default-zero on the
+    rare path where the SDK omits the field — better than crashing the
+    response build for a missing observability number.
+    """
+
+    usage = getattr(message, "usage", None)
+    return UsageTotals(
+        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+    )
+
+
+def _usage_from_handoff(handoff: Handoff) -> UsageTotals:
+    """Pull a worker's reported tokens off its handoff output payload.
+
+    The evidence_retriever worker stamps a ``usage_totals`` dict on its
+    tool-result (rerank LLM-judge calls; Cohere returns zero). Other
+    workers / unknown shapes / errors return ``UsageTotals(0, 0)`` so
+    the caller can fold unconditionally.
+    """
+
+    if handoff.output is None:
+        return UsageTotals()
+    usage = handoff.output.get("usage_totals")
+    if not isinstance(usage, dict):
+        return UsageTotals()
+    return UsageTotals(
+        input_tokens=int(usage.get("input_tokens", 0) or 0),
+        output_tokens=int(usage.get("output_tokens", 0) or 0),
     )
 
 

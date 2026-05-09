@@ -29,6 +29,7 @@ from clinical_copilot.corpus.rerank import (
 )
 from clinical_copilot.corpus.retriever import CorpusRetriever, RetrievedChunk
 from clinical_copilot.documents.schemas.citation import GuidelineCitation
+from clinical_copilot.observability.traces import UsageTotals
 
 RerankBackend = str
 """``"cohere"`` | ``"llm_judge"`` | ``"bm25_only"`` — recorded on
@@ -58,6 +59,11 @@ class EvidenceRetrieverOutput:
     # per-call based on which backend actually ran. Underscore spelling
     # matches the wire shape on :class:`AgentResponse.rerank_backend`.
     rerank_backend: RerankBackend = "bm25_only"
+    # Token totals from the rerank stage (LLM-judge backend only —
+    # Cohere rerank uses a separate API and returns ``UsageTotals(0, 0)``
+    # here). Surfaced on the tool-result payload so the supervisor can
+    # fold it into the run-wide ``UsageTotals`` for the trace row.
+    usage_totals: UsageTotals = UsageTotals()
 
     def to_tool_result(self) -> dict[str, Any]:
         return {
@@ -66,6 +72,10 @@ class EvidenceRetrieverOutput:
             "hybrid_enabled": self.hybrid_enabled,
             "reranked": self.reranked,
             "rerank_backend": self.rerank_backend,
+            "usage_totals": {
+                "input_tokens": self.usage_totals.input_tokens,
+                "output_tokens": self.usage_totals.output_tokens,
+            },
         }
 
 
@@ -104,6 +114,7 @@ def run_evidence_retriever(
     if k <= 0 or k > 50:
         raise WorkerError(f"k must be in (0, 50], got {k}")
 
+    rerank_usage = UsageTotals()
     if cohere_client is not None:
         candidate_k = max(k, k * max(1, candidate_multiplier))
         candidates = retriever.retrieve(query=query, k=candidate_k)
@@ -129,7 +140,7 @@ def run_evidence_retriever(
         }
         if rerank_model:
             llm_kwargs["model"] = rerank_model
-        chunks = rerank_with_llm(**llm_kwargs)
+        chunks, rerank_usage = rerank_with_llm(**llm_kwargs)
         reranked = True
         backend = "llm_judge"
     else:
@@ -143,6 +154,7 @@ def run_evidence_retriever(
         hybrid_enabled=retriever.hybrid_enabled,
         reranked=reranked,
         rerank_backend=backend,
+        usage_totals=rerank_usage,
     )
 
 

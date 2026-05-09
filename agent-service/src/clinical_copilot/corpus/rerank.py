@@ -38,6 +38,7 @@ import structlog
 from anthropic import Anthropic
 
 from clinical_copilot.corpus.retriever import RetrievedChunk
+from clinical_copilot.observability.traces import UsageTotals
 
 logger = structlog.get_logger(__name__)
 
@@ -102,18 +103,22 @@ def rerank_with_llm(
     candidates: list[RetrievedChunk],
     model: str = DEFAULT_RERANK_MODEL,
     top_k: int = 5,
-) -> list[RetrievedChunk]:
-    """Score, sort, and return the top-k chunks.
+) -> tuple[list[RetrievedChunk], UsageTotals]:
+    """Score, sort, and return the top-k chunks plus per-call usage.
 
     Best-effort: any failure (API error, malformed JSON, missing
     chunk_ids) falls back to the input order capped at ``top_k`` so
-    the caller never has to handle rerank-stage exceptions.
+    the caller never has to handle rerank-stage exceptions. Returns
+    ``(chunks, UsageTotals)``; usage is zero on the early-return paths
+    where no Anthropic call ran (or the call raised before ``response``
+    was bound) so the caller can fold the result into a running total
+    unconditionally.
     """
 
     if not candidates:
-        return []
+        return [], UsageTotals()
     if top_k <= 0:
-        return []
+        return [], UsageTotals()
     candidates_capped = candidates[:MAX_CANDIDATES]
     user_payload = _build_user_message(query=query, chunks=candidates_capped)
 
@@ -131,7 +136,9 @@ def rerank_with_llm(
             error=f"{type(exc).__name__}: {exc}",
             n_candidates=len(candidates_capped),
         )
-        return candidates_capped[:top_k]
+        return candidates_capped[:top_k], UsageTotals()
+
+    usage = _usage_from_message(response)
 
     text = "".join(
         getattr(block, "text", "")
@@ -141,7 +148,7 @@ def rerank_with_llm(
     scores_by_id = _parse_scores(text)
     if scores_by_id is None:
         logger.warning("corpus.rerank.parse_failed", text_len=len(text))
-        return candidates_capped[:top_k]
+        return candidates_capped[:top_k], usage
 
     reranked: list[RerankedChunk] = []
     for chunk in candidates_capped:
@@ -163,7 +170,21 @@ def rerank_with_llm(
         top_score=reranked[0].rerank_score if reranked else None,
         latency_ms=int((time.perf_counter() - t0) * 1000),
     )
-    return result
+    return result, usage
+
+
+def _usage_from_message(message: Any) -> UsageTotals:
+    """Pull ``response.usage`` off an Anthropic ``Message`` shape.
+
+    Defensive: zero on missing fields so this never crashes the rerank
+    stage's best-effort contract for an absent usage rollup.
+    """
+
+    usage = getattr(message, "usage", None)
+    return UsageTotals(
+        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+    )
 
 
 def _build_user_message(*, query: str, chunks: list[RetrievedChunk]) -> str:

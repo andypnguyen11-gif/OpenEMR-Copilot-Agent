@@ -28,6 +28,7 @@ from anthropic import Anthropic
 from anthropic.types import Message, MessageParam, ToolParam, ToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from clinical_copilot.observability.traces import UsageTotals
 from clinical_copilot.orchestrator.state import (
     ClaimType,
     CriticVerdict,
@@ -254,7 +255,7 @@ def _run_judge(
     draft: Draft,
     sub_query: SubQuery,
     max_tokens: int,
-) -> Verdict:
+) -> tuple[Verdict, UsageTotals]:
     messages: list[MessageParam] = [
         {"role": "user", "content": _format_judge_user_message(draft=draft, sub_query=sub_query)},
     ]
@@ -266,17 +267,21 @@ def _run_judge(
         tool_choice={"type": "tool", "name": JUDGE_TOOL_NAME},
         messages=messages,
     )
+    usage = _usage_from_message(response)
 
     tool_use = next(
         (b for b in response.content if isinstance(b, ToolUseBlock)),
         None,
     )
     if tool_use is None:
-        return Verdict(
-            sub_query_id=draft.sub_query_id,
-            verdict=CriticVerdict.REJECT,
-            rejection_reason=RejectionReason.JUDGE_REJECTED,
-            rationale="judge returned no tool_use",
+        return (
+            Verdict(
+                sub_query_id=draft.sub_query_id,
+                verdict=CriticVerdict.REJECT,
+                rejection_reason=RejectionReason.JUDGE_REJECTED,
+                rationale="judge returned no tool_use",
+            ),
+            usage,
         )
 
     raw = tool_use.input
@@ -289,25 +294,44 @@ def _run_judge(
     try:
         parsed = JudgeOutput.model_validate(raw)
     except ValidationError as exc:
-        return Verdict(
-            sub_query_id=draft.sub_query_id,
-            verdict=CriticVerdict.REJECT,
-            rejection_reason=RejectionReason.JUDGE_REJECTED,
-            rationale=f"judge output invalid: {exc.error_count()} errors",
+        return (
+            Verdict(
+                sub_query_id=draft.sub_query_id,
+                verdict=CriticVerdict.REJECT,
+                rejection_reason=RejectionReason.JUDGE_REJECTED,
+                rationale=f"judge output invalid: {exc.error_count()} errors",
+            ),
+            usage,
         )
 
     if parsed.verdict is CriticVerdict.ACCEPT:
-        return Verdict(
-            sub_query_id=draft.sub_query_id,
-            verdict=CriticVerdict.ACCEPT,
-            rationale=parsed.rationale,
+        return (
+            Verdict(
+                sub_query_id=draft.sub_query_id,
+                verdict=CriticVerdict.ACCEPT,
+                rationale=parsed.rationale,
+            ),
+            usage,
         )
 
-    return Verdict(
-        sub_query_id=draft.sub_query_id,
-        verdict=CriticVerdict.REJECT,
-        rejection_reason=parsed.rejection_reason or RejectionReason.JUDGE_REJECTED,
-        rationale=parsed.rationale,
+    return (
+        Verdict(
+            sub_query_id=draft.sub_query_id,
+            verdict=CriticVerdict.REJECT,
+            rejection_reason=parsed.rejection_reason or RejectionReason.JUDGE_REJECTED,
+            rationale=parsed.rationale,
+        ),
+        usage,
+    )
+
+
+def _usage_from_message(message: Message) -> UsageTotals:
+    """Pull tokens off the Anthropic response. Defensive zero default."""
+
+    usage = getattr(message, "usage", None)
+    return UsageTotals(
+        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
     )
 
 
@@ -324,7 +348,7 @@ def judge(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     request_id: str | None = None,
     run_llm_judge: bool = False,
-) -> Verdict:
+) -> tuple[Verdict, UsageTotals]:
     """Judge one draft. Deterministic checks first; LLM judge with
     timeout if those pass and ``run_llm_judge`` is True.
 
@@ -361,7 +385,7 @@ def judge(
                 else None
             ),
         )
-        return deterministic
+        return deterministic, UsageTotals()
 
     if not run_llm_judge:
         # Deterministic checks passed and LLM judge is gated off. Treat
@@ -370,9 +394,12 @@ def judge(
         # verbs in non-retrieval drafts; that's substantively the
         # critic contract for early submission.
         log.info("critic.deterministic_accept_no_llm_judge")
-        return Verdict(
-            sub_query_id=draft.sub_query_id,
-            verdict=CriticVerdict.ACCEPT,
+        return (
+            Verdict(
+                sub_query_id=draft.sub_query_id,
+                verdict=CriticVerdict.ACCEPT,
+            ),
+            UsageTotals(),
         )
 
     # LLM judge in a worker thread so we can enforce the timeout
@@ -388,14 +415,17 @@ def judge(
             max_tokens=max_tokens,
         )
         try:
-            verdict = future.result(timeout=timeout_seconds)
+            verdict, usage = future.result(timeout=timeout_seconds)
         except FuturesTimeoutError:
             log.warning("critic.judge_timeout", timeout_seconds=timeout_seconds)
-            return Verdict(
-                sub_query_id=draft.sub_query_id,
-                verdict=CriticVerdict.REJECT,
-                rejection_reason=RejectionReason.JUDGE_TIMEOUT,
-                rationale=f"judge exceeded {timeout_seconds}s",
+            return (
+                Verdict(
+                    sub_query_id=draft.sub_query_id,
+                    verdict=CriticVerdict.REJECT,
+                    rejection_reason=RejectionReason.JUDGE_TIMEOUT,
+                    rationale=f"judge exceeded {timeout_seconds}s",
+                ),
+                UsageTotals(),
             )
 
     log.info(
@@ -405,7 +435,7 @@ def judge(
             verdict.rejection_reason.value if verdict.rejection_reason else None
         ),
     )
-    return verdict
+    return verdict, usage
 
 
 def make_node(
@@ -432,6 +462,7 @@ def make_node(
         request_id = session.get("request_id")
 
         verdicts: list[Verdict] = []
+        usage_totals = UsageTotals()
         for draft in drafts:
             sub_query = sq_by_id.get(draft.sub_query_id)
             if sub_query is None:
@@ -447,15 +478,15 @@ def make_node(
                     ),
                 )
                 continue
-            verdicts.append(
-                judge(
-                    client=client,
-                    model=model,
-                    draft=draft,
-                    sub_query=sub_query,
-                    request_id=request_id,
-                ),
+            verdict, usage = judge(
+                client=client,
+                model=model,
+                draft=draft,
+                sub_query=sub_query,
+                request_id=request_id,
             )
-        return {"verdicts": verdicts}
+            verdicts.append(verdict)
+            usage_totals = usage_totals + usage
+        return {"verdicts": verdicts, "usage_totals": usage_totals}
 
     return node

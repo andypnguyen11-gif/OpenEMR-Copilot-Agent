@@ -85,7 +85,7 @@ def test_plan_decomposes_composite_query_into_two_sub_queries() -> None:
         },
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="claude-haiku-4-5-20251001",
         user_query="What's her A1c and what does ADA recommend?",
@@ -111,7 +111,7 @@ def test_plan_routing_map_picks_target_worker_not_llm() -> None:
         },
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="m",
         user_query="three things",
@@ -135,7 +135,7 @@ def test_plan_decomposes_single_claim_into_one_element_list() -> None:
         },
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="m",
         user_query="What's her current A1c?",
@@ -161,7 +161,7 @@ def test_plan_returns_empty_list_on_malformed_output() -> None:
         },
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="m",
         user_query="weird",
@@ -185,7 +185,7 @@ def test_plan_returns_empty_list_when_no_tool_use() -> None:
         usage={"input_tokens": 0, "output_tokens": 0},
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="m",
         user_query="hi",
@@ -208,7 +208,7 @@ def test_plan_assigns_unique_ids_per_sub_query() -> None:
         },
     )
 
-    sub_queries = plan(
+    sub_queries, _usage = plan(
         client=_client_returning(message),
         model="m",
         user_query="multi",

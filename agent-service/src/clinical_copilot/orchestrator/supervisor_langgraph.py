@@ -93,6 +93,7 @@ from clinical_copilot.orchestrator.state import (
     Worker,
     initial_state,
 )
+from clinical_copilot.observability.traces import UsageTotals
 from clinical_copilot.orchestrator.supervisor import (
     Handoff,
     SupervisorResponse,
@@ -236,6 +237,7 @@ def _make_synthesizer_node(
             system=SYNTHESIZER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
+        usage = _usage_from_message(response)
         text = "".join(
             getattr(b, "text", "") for b in response.content if getattr(b, "type", "") == "text"
         )
@@ -247,6 +249,7 @@ def _make_synthesizer_node(
                     "handoffs": [],
                     "iterations": 0,
                 },
+                "usage_totals": usage,
             }
 
         return {
@@ -256,9 +259,20 @@ def _make_synthesizer_node(
                 "handoffs": [_draft_to_handoff(d) for d in drafts],
                 "iterations": 1,
             },
+            "usage_totals": usage,
         }
 
     return node
+
+
+def _usage_from_message(message: Any) -> UsageTotals:
+    """Pull tokens off the Anthropic response. Defensive zero default."""
+
+    usage = getattr(message, "usage", None)
+    return UsageTotals(
+        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+    )
 
 
 def _draft_to_handoff(draft: Draft) -> dict[str, Any]:
@@ -570,11 +584,16 @@ def run_turn(
         patient_name=bound_patient_name,
         history=[],
     )
-    state = initial_state(user_query=user_query, session=session)
+    # Bind to ``initial`` (not ``state``) so any later read like
+    # ``state.get(...)`` would NameError instead of silently returning
+    # zero/empty values from the pre-graph snapshot. Bug 2026-05-09:
+    # ``run_turn`` was reading ``state.get("usage_totals")`` after
+    # ``final_state = graph.invoke(state)`` and zeroing every trace row.
+    initial = initial_state(user_query=user_query, session=session)
 
     log = logger.bind(request_id=request_id, query_len=len(user_query))
     log.info("supervisor_lg.invoke")
-    final_state: TurnState = graph.invoke(state)  # type: ignore[assignment]
+    final_state: TurnState = graph.invoke(initial)  # type: ignore[assignment]
 
     final = final_state.get("final_response") or {}
     if "model_dump" in dir(final):
@@ -613,12 +632,16 @@ def run_turn(
         ]
         projected_handoffs = tuple(h for h in projected if h is not None)
 
+    usage_totals = final_state.get("usage_totals") or UsageTotals()
+    if not isinstance(usage_totals, UsageTotals):
+        usage_totals = UsageTotals()
     return SupervisorResponse(
         synthesized_text=text,
         handoffs=projected_handoffs,
         abstention_reason=abstain if isinstance(abstain, str) else None,
         iterations=iterations,
         rerank_backend=backend if isinstance(backend, str) and backend else None,
+        usage_totals=usage_totals,
     )
 
 

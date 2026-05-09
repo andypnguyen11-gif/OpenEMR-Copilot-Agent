@@ -70,12 +70,20 @@ class LlmTurn:
     ``tool_uses`` is the list of any ``tool_use`` blocks. ``stop_reason``
     is the SDK's reason — ``end_turn`` means the model is done,
     ``tool_use`` means it expects tool results before continuing.
+
+    ``input_tokens`` / ``output_tokens`` are the SDK's per-turn usage
+    figures (``response.usage``). They default to ``0`` so stub gateways
+    in tests don't have to populate them; production reads them off
+    every Anthropic call so the orchestrator can sum the loop into one
+    :class:`UsageTotals` for the trace row.
     """
 
     stop_reason: str
     text: str
     tool_uses: list[ToolUse] = field(default_factory=list)
     raw_assistant_blocks: list[dict[str, Any]] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class LlmGateway(Protocol):
@@ -178,9 +186,15 @@ class AnthropicLlmGateway:
                     }
                 )
 
+        usage = getattr(response, "usage", None)
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
         return LlmTurn(
             stop_reason=str(getattr(response, "stop_reason", "")),
             text="".join(text_parts),
             tool_uses=tool_uses,
             raw_assistant_blocks=raw_blocks,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )

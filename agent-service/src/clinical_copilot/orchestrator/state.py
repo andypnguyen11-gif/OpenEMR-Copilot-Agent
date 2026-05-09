@@ -29,6 +29,26 @@ from typing import Annotated, Any, Final, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from clinical_copilot.observability.traces import UsageTotals
+
+
+def _add_usage(left: UsageTotals | None, right: UsageTotals | None) -> UsageTotals:
+    """Reducer for the ``usage_totals`` state key.
+
+    LangGraph reducers are called with ``(prior_value, node_partial)``;
+    a node that doesn't write the key produces ``None`` on either side.
+    Default-zero on missing-input branches so the graph can survive a
+    node that omits the field without erasing previously folded totals.
+    """
+
+    if left is None and right is None:
+        return UsageTotals()
+    if left is None:
+        return right or UsageTotals()
+    if right is None:
+        return left
+    return left + right
+
 # --------------------------------------------------------------- enums
 
 
@@ -215,6 +235,14 @@ class TurnState(TypedDict, total=False):
     stays off. Single-writer key — only the evidence_retriever node
     mutates it — so no reducer is needed."""
 
+    usage_totals: Annotated[UsageTotals, _add_usage]
+    """Per-request token totals folded across every node that calls
+    Anthropic — planner, critic (LLM-judge path), synthesizer, and the
+    evidence_retriever's rerank stage. Reducer is :func:`_add_usage`
+    (component-wise sum); each node returns its own
+    :class:`UsageTotals` partial and the graph runtime folds them.
+    Read in :func:`run_turn` when constructing :class:`SupervisorResponse`."""
+
 
 def initial_state(*, user_query: str, session: SessionInfo) -> TurnState:
     """Build a fresh :class:`TurnState` for a single turn.
@@ -233,4 +261,5 @@ def initial_state(*, user_query: str, session: SessionInfo) -> TurnState:
         retry_counts={},
         final_response=None,
         rerank_backend=None,
+        usage_totals=UsageTotals(),
     )

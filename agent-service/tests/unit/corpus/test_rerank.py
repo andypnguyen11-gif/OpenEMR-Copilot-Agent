@@ -55,7 +55,7 @@ def test_rerank_resorts_by_judge_scores() -> None:
         ' {"chunk_id": "c2", "score": 0.95},'
         ' {"chunk_id": "c3", "score": 0.6}]}'
     )
-    out = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=3)
+    out, _usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=3)
     assert [c.chunk_id for c in out] == ["c2", "c3", "c1"]
 
 
@@ -66,14 +66,14 @@ def test_rerank_top_k_truncates() -> None:
         + ",".join(f'{{"chunk_id": "c{i}", "score": {1.0 - i * 0.1}}}' for i in range(5))
         + "]}"
     )
-    out = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    out, _usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
     assert [c.chunk_id for c in out] == ["c0", "c1"]
 
 
 def test_rerank_falls_back_on_malformed_json() -> None:
     chunks = [_chunk("c1"), _chunk("c2")]
     client = _client_with_json("definitely not json")
-    out = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    out, _usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
     assert [c.chunk_id for c in out] == ["c1", "c2"]
 
 
@@ -81,14 +81,20 @@ def test_rerank_falls_back_on_api_error() -> None:
     chunks = [_chunk("c1"), _chunk("c2")]
     client = MagicMock()
     client.messages.create.side_effect = RuntimeError("boom")
-    out = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    out, usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
     assert [c.chunk_id for c in out] == ["c1", "c2"]
+    # API-error path returned before ``response`` was bound — usage is
+    # zero so the caller's running total is undisturbed.
+    assert usage.input_tokens == 0
+    assert usage.output_tokens == 0
 
 
 def test_rerank_empty_candidates() -> None:
     client = MagicMock()
-    out = rerank_with_llm(client=client, query="x", candidates=[], top_k=5)
+    out, usage = rerank_with_llm(client=client, query="x", candidates=[], top_k=5)
     assert out == []
+    assert usage.input_tokens == 0
+    assert usage.output_tokens == 0
     client.messages.create.assert_not_called()
 
 
@@ -136,7 +142,7 @@ def test_rerank_emits_success_log(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _client_with_json(
         '{"scores": [{"chunk_id": "c1", "score": 0.95}, {"chunk_id": "c2", "score": 0.3}]}'
     )
-    rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    _out, _usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
     success_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.llm_judge_ok"]
     assert len(success_logs) == 1
     entry = success_logs[0]
@@ -157,7 +163,7 @@ def test_rerank_does_not_log_success_on_api_error(monkeypatch: pytest.MonkeyPatc
     chunks = [_chunk("c1"), _chunk("c2")]
     client = MagicMock()
     client.messages.create.side_effect = RuntimeError("boom")
-    rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
+    _out, _usage = rerank_with_llm(client=client, query="x", candidates=chunks, top_k=2)
     success_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.llm_judge_ok"]
     assert success_logs == []
     error_logs = [e for e in capturing.events if e["event"] == "corpus.rerank.api_error"]

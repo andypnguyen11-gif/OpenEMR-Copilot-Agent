@@ -34,6 +34,7 @@ from clinical_copilot.orchestrator.state import (
     TurnState,
     Worker,
 )
+from clinical_copilot.observability.traces import UsageTotals
 from clinical_copilot.orchestrator.workers.evidence_retriever import (
     EvidenceRetrieverOutput,
     WorkerError,
@@ -127,6 +128,7 @@ def make_node(
         # final sub-query from blanking the field if an earlier one
         # succeeded.
         backend_label: str | None = None
+        usage_totals = UsageTotals()
         for sub_query in targeted:
             try:
                 output = run_evidence_retriever(
@@ -156,8 +158,9 @@ def make_node(
                 continue
             drafts.append(_output_to_draft(sub_query=sub_query, output=output))
             backend_label = output.rerank_backend
+            usage_totals = usage_totals + output.usage_totals
 
-        update: dict[str, Any] = {"drafts": drafts}
+        update: dict[str, Any] = {"drafts": drafts, "usage_totals": usage_totals}
         if backend_label is not None:
             # ``corpus.rerank.backend_used`` mirrors the same event the
             # plain-Python supervisor logs on ``supervisor.synth`` — kept
