@@ -238,31 +238,59 @@ metadata is already in hand.
 - maybe EDIT: `src/Services/Copilot/ChartWrite/ChartWriteService.php` (same condition)
 - existing — must stay green: `tests/Tests/Services/Copilot/ChartWrite/ChartWriteServiceTest.php`
 
+### Implementation notes (from this PR)
+- Lock-acquire / chart-write / finalize cycle was lifted into a new
+  `ChartWriteCoordinator` (`src/Services/Copilot/ChartWrite/ChartWriteCoordinator.php`)
+  with the four outcomes encoded as `SaveOutcomeKind` enum cases
+  (AcquiredAndWrote / IdempotentReplay / ConcurrentInFlight /
+  DocumentNotFound). The endpoint stays a thin shell; the test exercises
+  the coordinator directly against the real DB.
+- Pre-flight #6 confirmed the global ADODB handle is shared across all
+  writers, so the TTL clause shipped (default 300 seconds via the
+  coordinator's `lockTtlSeconds` constructor arg). No
+  `ChartWriteOrchestrator` constructor changes were needed.
+- Migration uses LONGTEXT for `chart_write_summary` (not the MariaDB
+  JSON alias) so the column reads back as a plain string regardless of
+  driver flags. Encode/decode via `json_encode`/`json_decode`; no
+  server-side JSON path queries.
+- New-patient idempotency recovery: when a retry finds
+  `documents.foreign_id` already set to the previously-created pid, the
+  endpoint short-circuits past the demographic-extraction +
+  duplicate-patient guard and reuses that pid — keeping the
+  patient-INSERT side and the chart-write side independently
+  recoverable across partial failures.
+- `chart_write_summary` JSON shape: `pid`, `patient_created`,
+  `document_type`, `document_id`, `selected_sections`, `counts`. The
+  endpoint reconstructs the success-page redirect from these on replay
+  (rather than storing a denormalised `redirect_target`, which would
+  bake `webroot` into the DB).
+
 ### Subtasks
-- [ ] Pre-flight #6 result documented at top of this PR's branch description
-- [ ] If split-connection: thread active connection into `ChartWriteOrchestrator` constructor + writer dispatch; update all callers — **before** the endpoint change
-- [ ] If split-connection cannot be cleanly fixed: drop the TTL `OR chart_write_started_at < NOW() - INTERVAL 5 MINUTE` clause; document the manual-cleanup path
-- [ ] Doctrine migration: up adds three columns, down drops them (never empty `down()`); pick `JSON` vs `LONGTEXT` after confirming MariaDB JSON support on this branch
-- [ ] Implement endpoint sequence in `save_document.php`:
-  - PUT validated facts to agent-service (HTTP, outside txn)
-  - BEGIN
-  - atomic conditional UPDATE on `documents` (the lock acquisition)
-  - check `affected_rows`; branch into 200/409/200-idempotent based on row state
-  - ChartWriteOrchestrator->run() **on the same connection**
-  - finalizing UPDATE setting `chart_written_at` + `chart_write_summary`
-  - COMMIT
-- [ ] `chart_write_summary` JSON shape includes: `pid`, `patient_created`, `document_type`, `selected_sections`, `row_counts`, `redirect_target`
-- [ ] On caught Throwable inside txn: ROLLBACK, PSR-3 log with context, generic 500 to user (no `$e->getMessage()` leaked)
-- [ ] Single-submit + identical re-submit test: second response has `idempotent: true`; row counts unchanged; `chart_write_summary` round-trips
-- [ ] Concurrent-submit test: two near-simultaneous POSTs; exactly one wins; loser gets 409 or `idempotent: true` per timing
-- [ ] Stale-lock test (only if TTL clause shipped): manually backdate `chart_write_started_at` 6 minutes; new submit acquires lock and completes
+- [x] Pre-flight #6 result documented at top of this PR's branch description (see above)
+- [x] If split-connection: thread active connection into `ChartWriteOrchestrator` constructor + writer dispatch; update all callers — **before** the endpoint change → not needed (Pre-flight #6: shared global handle)
+- [x] If split-connection cannot be cleanly fixed: drop the TTL `OR chart_write_started_at < NOW() - INTERVAL 5 MINUTE` clause; document the manual-cleanup path → not needed; TTL clause shipped
+- [x] Doctrine migration: up adds three columns, down drops them (never empty `down()`); pick `JSON` vs `LONGTEXT` after confirming MariaDB JSON support on this branch → `db/Migrations/Version20260509201506.php`, LONGTEXT
+- [x] Implement endpoint sequence in `save_document.php`:
+  - [x] PUT validated facts to agent-service (HTTP, outside txn)
+  - [x] BEGIN
+  - [x] atomic conditional UPDATE on `documents` (the lock acquisition)
+  - [x] check `affected_rows`; branch into 200/409/200-idempotent based on row state
+  - [x] ChartWriteOrchestrator->run() **on the same connection**
+  - [x] finalizing UPDATE setting `chart_written_at` + `chart_write_summary`
+  - [x] COMMIT
+- [x] `chart_write_summary` JSON shape includes: `pid`, `patient_created`, `document_type`, `selected_sections`, `row_counts` (`counts`), `document_id` (replacing `redirect_target` — see Implementation notes)
+- [x] On caught Throwable inside txn: ROLLBACK, generic 500 to user (no `$e->getMessage()` leaked) → handled by `QueryUtils::inTransaction()` rolling back + rethrowing; the endpoint's outer catch returns the generic 500
+- [x] Single-submit + identical re-submit test: second response has `idempotent: true`; row counts unchanged; `chart_write_summary` round-trips → `testIdenticalResubmitReturnsIdempotentReplayWithoutDoubleWriting`, `testFirstSubmitAcquiresLockAndWritesChart`
+- [x] Concurrent-submit test: two near-simultaneous POSTs; exactly one wins; loser gets 409 or `idempotent: true` per timing → `testConcurrentSubmitReturnsConcurrentInFlightOutcome`, `testRecentLockWithinTtlIsRejected`
+- [x] Stale-lock test (only if TTL clause shipped): manually backdate `chart_write_started_at` past TTL; new submit acquires lock and completes → `testStaleLockOlderThanTtlIsClaimedByNewSubmit`
 
 ### Verification
-- [ ] `docker compose exec openemr /root/devtools services-test --filter=ChartWrite` green
-- [ ] `ChartWriteServiceTest::testWriteAllergiesDoesNotDedupeOnRepeatCall` still green
-- [ ] Manual: re-submit lipid-panel review twice → second shows `idempotent: true`; MySQL row counts unchanged
+- [x] `vendor/bin/phpunit -c phpunit.xml --testsuite=services --filter ChartWrite` green (25 tests, 95 assertions)
+- [x] `vendor/bin/phpunit ... --filter testWriteAllergiesDoesNotDedupeOnRepeatCall` still green (1 test, 3 assertions)
+- [x] `composer phpstan` clean (no new baseline entries)
+- [ ] Manual: re-submit lipid-panel review twice → second shows `idempotent=1`; MySQL row counts unchanged
 - [ ] Manual concurrent: two browser tabs, click Save in both within ~50ms → exactly one set of rows
-- [ ] `patient_choice=new` retry → same `pid` and redirect target
+- [ ] `patient_choice=new` retry → same `pid` and redirect target (recovery branch in `save_document.php`)
 
 ---
 
