@@ -702,11 +702,18 @@ def create_app(
             # Fail-closed: an audit write failure inside a tool denial
             # path means the trail couldn't persist. We must not return
             # a successful response — surfacing 500 prevents an
-            # unattributed PHI access from completing.
+            # unattributed PHI access from completing. Use
+            # ``error_message=str(exc)`` rather than ``exception=...``
+            # because structlog's ``ConsoleRenderer`` pops a key
+            # literally named ``exception`` and emits a UserWarning
+            # ("Remove format_exc_info from your processor chain") even
+            # when format_exc_info isn't actually configured —
+            # ``filterwarnings=error`` then promotes that to a
+            # TypeError that bypasses this handler entirely.
             get_logger(__name__).error(
                 "agent_service.audit_write_failed",
                 request_id=request_id,
-                exception=str(exc),
+                error_message=str(exc),
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

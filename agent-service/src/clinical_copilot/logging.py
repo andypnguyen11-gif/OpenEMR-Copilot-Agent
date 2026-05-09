@@ -35,14 +35,23 @@ def configure_logging(level: str, *, json_logs: bool) -> None:
         structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
     ]
 
-    renderer: Any = (
-        structlog.processors.JSONRenderer()
-        if json_logs
-        else structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty())
-    )
+    renderer: Any
+    if json_logs:
+        # JSONRenderer needs the exc_info tuple flattened to a string
+        # before the renderer runs.
+        shared_processors.append(structlog.processors.format_exc_info)
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        # ConsoleRenderer formats exceptions itself; including
+        # format_exc_info ahead of it triggers a structlog UserWarning
+        # ("Remove format_exc_info from your processor chain if you
+        # want pretty exceptions") which pytest's filterwarnings=error
+        # promotes to a hard exception that escapes route handlers and
+        # masks the real error type. Conditional inclusion is the
+        # documented structlog idiom.
+        renderer = structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty())
 
     structlog.configure(
         processors=[*shared_processors, renderer],
