@@ -11,6 +11,11 @@ from clinical_copilot.observability.metrics import (
     OutcomeRecord,
     build_outcome,
 )
+from clinical_copilot.observability.traces import (
+    TraceRecord,
+    TracesService,
+    UsageTotals,
+)
 from clinical_copilot.observability.tracing import (
     configure_tracing,
     traceable_llm_complete,
@@ -21,6 +26,9 @@ from clinical_copilot.observability.tracing import (
 __all__ = [
     "MetricsService",
     "OutcomeRecord",
+    "TraceRecord",
+    "TracesService",
+    "UsageTotals",
     "build_outcome",
     "configure_tracing",
     "traceable_llm_complete",
