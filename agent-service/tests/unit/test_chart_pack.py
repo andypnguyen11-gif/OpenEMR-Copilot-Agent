@@ -469,3 +469,39 @@ def test_record_without_source_id_is_dropped_silently() -> None:
 
     sources = [r.source_id for r in pack.records if r.topic == "labs"]
     assert sources == ["Observation/1"]
+
+
+# --------------------------------------------------- ChartPackRecord.to_citation
+
+
+def test_to_citation_builds_patient_chart_citation_for_well_formed_source_id() -> None:
+    record = ChartPackRecord(
+        source_id="Observation/123",
+        resource_type="Observation",
+        topic="labs",
+        summary="TSH 6.73 mIU/L (observed_on=2026-04-05)",
+        record=_lab("Observation/123", "TSH", "6.73", "2026-04-05"),
+    )
+    citation = record.to_citation()
+    assert citation.source_type == "patient_chart"
+    assert citation.field_or_chunk_id == "Observation/123"
+    assert citation.resource_type == "Observation"
+    assert citation.resource_id == "123"
+    assert citation.display_summary == "TSH 6.73 mIU/L (observed_on=2026-04-05)"
+
+
+def test_to_citation_falls_back_to_full_source_id_when_no_slash_present() -> None:
+    """Defensive: a source_id missing the canonical "Type/{id}" separator
+    still produces a non-empty resource_id rather than crashing the
+    response build for a malformed chart-pack producer output."""
+
+    record = ChartPackRecord(
+        source_id="MedicationRequest42",  # no slash
+        resource_type="MedicationRequest",
+        topic="meds",
+        summary="levothyroxine",
+        record=_med("MedicationRequest42", "levothyroxine", "2026-04-10"),
+    )
+    citation = record.to_citation()
+    assert citation.resource_id == "MedicationRequest42"
+    assert citation.field_or_chunk_id == "MedicationRequest42"

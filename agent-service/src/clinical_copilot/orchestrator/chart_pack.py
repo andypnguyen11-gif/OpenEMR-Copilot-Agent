@@ -63,6 +63,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 import structlog
 
+from clinical_copilot.documents.schemas.citation import PatientChartCitation
 from clinical_copilot.tools.base import (
     FhirAuthorizationDeniedError,
     UnauthorizedToolCallError,
@@ -190,6 +191,28 @@ class ChartPackRecord:
     """The original Pydantic record returned by the tool. Held so the
     response adapter can pass it through as ``tool_results[*].records``
     — the chat UI's per-record summary renderer reads from it."""
+
+    def to_citation(self) -> "PatientChartCitation":
+        """Build the wire-shape :class:`PatientChartCitation` for this record.
+
+        ``field_or_chunk_id`` mirrors :attr:`source_id` (already in
+        ``ResourceType/{id}`` shape — the canonical FHIR reference
+        syntax used by the discriminated-union contract). ``summary``
+        is the one-line human-readable rendering — never the verbatim
+        FHIR resource text, which would create a PHI redaction surface.
+        """
+
+        # source_id has shape "ResourceType/{id}" by chart-pack
+        # producer contract; partition once so a malformed id (no
+        # slash) still parses to a non-empty resource_id rather than
+        # raising during a clinician-facing response build.
+        _, _, resource_id = self.source_id.partition("/")
+        return PatientChartCitation(
+            field_or_chunk_id=self.source_id,
+            resource_type=self.resource_type,
+            resource_id=resource_id or self.source_id,
+            display_summary=self.summary,
+        )
 
 
 @dataclass(frozen=True, slots=True)

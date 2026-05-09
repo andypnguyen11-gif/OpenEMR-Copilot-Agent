@@ -28,6 +28,7 @@ from clinical_copilot.corpus.rerank import (
     rerank_with_llm,
 )
 from clinical_copilot.corpus.retriever import CorpusRetriever, RetrievedChunk
+from clinical_copilot.documents.schemas.citation import GuidelineCitation
 
 RerankBackend = str
 """``"cohere"`` | ``"llm-judge"`` | ``"none"`` — recorded on
@@ -141,9 +142,25 @@ def run_evidence_retriever(
 
 
 def _chunk_to_dict(c: RetrievedChunk) -> dict[str, Any]:
-    """Project a :class:`RetrievedChunk` to the supervisor's tool-result
-    shape with a citation block matching SourceCitation conventions."""
+    """Project a :class:`RetrievedChunk` to the supervisor's tool-result shape.
 
+    The ``citation`` block is the ``GuidelineCitation`` discriminated-union
+    member, serialized via ``model_dump`` so the wire shape parses back as
+    ``GuidelineCitation`` on the consumer side. ``score`` is clamped to
+    ``[0, 1]`` for the ``confidence`` field — BM25 raw scores are unbounded
+    (Cohere rerank scores are already in range; LLM-judge scores are bounded
+    by the judge prompt). Out-of-range scores would otherwise crash the
+    response build for an out-of-band confidence number.
+    """
+
+    citation = GuidelineCitation(
+        field_or_chunk_id=c.chunk_id,
+        source_doc_id=c.source_doc_id,
+        chunk_id=c.chunk_id,
+        source_url=c.source_url or None,
+        confidence=max(0.0, min(1.0, c.score)),
+        raw_text=c.text,
+    )
     return {
         "chunk_id": c.chunk_id,
         "source_doc_id": c.source_doc_id,
@@ -152,10 +169,5 @@ def _chunk_to_dict(c: RetrievedChunk) -> dict[str, Any]:
         "source_url": c.source_url,
         "text": c.text,
         "score": c.score,
-        "citation": {
-            "source": c.source,
-            "source_url": c.source_url,
-            "source_doc_id": c.source_doc_id,
-            "chunk_id": c.chunk_id,
-        },
+        "citation": citation.model_dump(mode="json"),
     }

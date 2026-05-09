@@ -139,3 +139,51 @@ def test_default_rerank_backend_is_none() -> None:
     assert out.rerank_backend == "none"
     payload: dict[str, Any] = out.to_tool_result()
     assert payload["rerank_backend"] == "none"
+
+
+# ----------------------------------------------------- chunk-dict citation shape
+
+
+def test_chunk_dict_citation_parses_as_guideline_citation(
+    retriever: _FakeRetriever,
+) -> None:
+    """The ``citation`` block on each chunk dict round-trips through
+    ``GuidelineCitation.model_validate`` — the wire-shape carries a
+    typed citation discriminated on ``source_type="guideline"``."""
+
+    from clinical_copilot.documents.schemas.citation import GuidelineCitation
+
+    output = run_evidence_retriever(retriever=retriever, query="afib", k=2)
+    assert len(output.chunks) == 2
+    for chunk in output.chunks:
+        citation_dict = chunk["citation"]
+        rebuilt = GuidelineCitation.model_validate(citation_dict)
+        assert rebuilt.source_type == "guideline"
+        assert rebuilt.chunk_id == chunk["chunk_id"]
+        assert rebuilt.field_or_chunk_id == chunk["chunk_id"]
+        assert rebuilt.source_doc_id == chunk["source_doc_id"]
+        assert 0.0 <= rebuilt.confidence <= 1.0
+
+
+def test_chunk_dict_citation_clamps_out_of_range_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BM25 raw scores are unbounded; the citation's ``confidence``
+    field is ``[0, 1]``-validated. An out-of-range score must be
+    clamped, not crash the response build."""
+
+    from clinical_copilot.documents.schemas.citation import GuidelineCitation
+
+    over = RetrievedChunk(
+        chunk_id="c-over", source_doc_id="s", title="t", source="src",
+        source_url="https://example.test", text="...", score=42.0,
+    )
+    under = RetrievedChunk(
+        chunk_id="c-under", source_doc_id="s", title="t", source="src",
+        source_url="https://example.test", text="...", score=-1.0,
+    )
+    fake = _FakeRetriever([over, under])
+    output = run_evidence_retriever(retriever=fake, query="x", k=2)
+    cits = [GuidelineCitation.model_validate(c["citation"]) for c in output.chunks]
+    assert cits[0].confidence == 1.0
+    assert cits[1].confidence == 0.0

@@ -161,13 +161,26 @@ def test_supervisor_chart_only_question_anchors_at_chart_pack_source_id(
     assert response.status_code == 200
     body = response.json()
     assert body["abstention"] is None
-    # Anchor came from the chart pack, not a worker handoff.
+    # Anchor came from the chart pack, not a worker handoff. The prose
+    # carries the typed PatientChartCitation alongside the source_id —
+    # source_id stays the verifier's join key; citation is display
+    # metadata the response adapter populates from the matching
+    # ChartPackRecord.to_citation().
     assert body["prose"] == [
         {
             "text": sup_text,
             "source_id": "Condition/p101-cond-1",
             "source_field": None,
             "expected_value": None,
+            "citation": {
+                "source_type": "patient_chart",
+                "field_or_chunk_id": "Condition/p101-cond-1",
+                "resource_type": "Condition",
+                "resource_id": "p101-cond-1",
+                "display_summary": (
+                    "Type 2 diabetes mellitus (onset=2019-04-12, status=active)"
+                ),
+            },
         },
     ]
     # Cards are filtered to topics whose source_ids appear in the

@@ -15,6 +15,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from clinical_copilot.documents.schemas.citation import Citation
 from clinical_copilot.tools.records import ToolResult
 from clinical_copilot.verification.abstention import Abstention, ClaimAbstention
 
@@ -47,11 +48,21 @@ class Card(_Frozen):
     ``tool_results``. The verification middleware joins these the same
     way it joins ``CitedClaim.source_id`` — a card pointing at a missing
     record is as much a verification failure as prose pointing at one.
+
+    ``citations`` is OPTIONAL display metadata, populated when the
+    producer (chart pack, retrieval, extraction) has typed source
+    information. It runs in parallel with ``source_ids`` — same sources,
+    richer payload (resource_type, summary, bbox). The verification
+    middleware joins on ``source_ids`` strings, never on ``citations``;
+    PHP renders ``citations`` when present and falls back to
+    ``source_ids`` when absent. Empty list on responses where the
+    producer cannot supply citations (legacy, fast-lane).
     """
 
     title: str = Field(min_length=1)
     kind: str = Field(min_length=1)
     source_ids: list[str]
+    citations: list[Citation] = Field(default_factory=list)
 
 
 class CitedClaim(_Frozen):
@@ -65,12 +76,21 @@ class CitedClaim(_Frozen):
     Setting only one is rejected at parse time — a half-specified
     assertion would silently skip field-check (``field_check.py`` short-
     circuits when either is None), so the schema refuses to accept it.
+
+    ``citation`` is OPTIONAL display metadata, paired with ``source_id``.
+    The verification middleware joins on ``source_id`` (canonical key)
+    regardless of whether ``citation`` is set. Producers should set
+    ``citation`` whenever they have typed source information; PHP
+    renders the citation when present and falls back to ``source_id``
+    when absent. ``None`` on legacy / fast-lane responses where the
+    producer has no typed source to attach.
     """
 
     text: str = Field(min_length=1)
     source_id: str = Field(min_length=1)
     source_field: str | None = None
     expected_value: str | None = None
+    citation: Citation | None = None
 
     @model_validator(mode="after")
     def _field_assertion_must_be_complete(self) -> Self:

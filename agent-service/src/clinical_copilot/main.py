@@ -46,6 +46,7 @@ from clinical_copilot.auth.role import Role
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.discrepancy.background import BackgroundRunner
 from clinical_copilot.documents import store as facts_store
+from clinical_copilot.documents.schemas.citation import Citation
 from clinical_copilot.documents.extractor import (
     DocumentType,
     ExtractorError,
@@ -390,6 +391,7 @@ def _chart_pack_surface(
                 title=title,
                 kind=kind,
                 source_ids=[item.source_id for item in bucket],
+                citations=[item.to_citation() for item in bucket],
             ),
         )
         tool_name = TOPIC_TO_TOOL[topic]
@@ -468,12 +470,35 @@ def _supervisor_to_agent_response(
         chart_pack,
         synthesized_text=text,
     )
+    anchor_citation = _resolve_anchor_citation(anchor, chart_pack=chart_pack)
     return AgentResponse(
         cards=cards,
-        prose=[CitedClaim(text=text, source_id=anchor)],
+        prose=[CitedClaim(text=text, source_id=anchor, citation=anchor_citation)],
         tool_results=tool_results,
         session_id=session_id,
     )
+
+
+def _resolve_anchor_citation(
+    anchor: str,
+    *,
+    chart_pack: ChartPack | None,
+) -> Citation | None:
+    """Look up a typed :class:`Citation` for a ``CitedClaim``'s anchor.
+
+    Returns ``None`` when the anchor is from a source we cannot type
+    yet (currently retrieval chunks pass through ``tool_results`` and
+    are not resolved here — that lives in the consumers that already
+    walk ``tool_results.records``). Chart-pack-anchored claims get a
+    :class:`PatientChartCitation` built from the matching record.
+    """
+
+    if chart_pack is None:
+        return None
+    for record in chart_pack.records:
+        if record.source_id == anchor:
+            return record.to_citation()
+    return None
 
 
 def create_app(

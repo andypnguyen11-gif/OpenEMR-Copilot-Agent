@@ -288,13 +288,19 @@ def test_query_route_uses_supervisor_when_flagged(audit: _RecordingAudit, monkey
     body = response.json()
     assert body["abstention"] is None
     # Synthesized text from the supervisor lands as a single CitedClaim
-    # anchored at the first handoff's chunk_id.
+    # anchored at the first handoff's chunk_id. ``citation`` is None
+    # here because the anchor is a guideline chunk, not a chart record;
+    # the response adapter only resolves PatientChartCitations from the
+    # chart pack today (guideline citations live on tool_results.records
+    # and are surfaced to the UI through that path, not on the cited
+    # claim itself).
     assert body["prose"] == [
         {
             "text": "Annual low-dose CT recommended (USPSTF Grade B).",
             "source_id": "uspstf-lung-2023#chunk-2",
             "source_field": None,
             "expected_value": None,
+            "citation": None,
         },
     ]
     # No cards: the supervisor's prose only cites the corpus chunk
