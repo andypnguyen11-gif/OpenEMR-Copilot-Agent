@@ -66,8 +66,11 @@
     (3/1). `corpus/retriever.py:62–146` runs **BM25 + dense via
     `OpenAIEmbedder` and fuses with RRF (`k=60`)** when the dense
     artifact and embedder are available; falls back to BM25-only when
-    not. **LLM-judge reranker** in `corpus/rerank.py` re-scores the
-    top-20.
+    not. **Cohere `rerank-v3.5` reranker** in `corpus/rerank.py`
+    re-scores the top-20 when `COHERE_API_KEY` is configured; the
+    LLM-judge implementation (`rerank_with_llm`) stays as the
+    env-var-gated fallback when the key is absent or the Cohere call
+    errors.
   - **Supervisor + workers** (`orchestrator/supervisor.py`,
     `orchestrator/workers/{intake_extractor,evidence_retriever}.py`).
     Plain Python via Anthropic `tool_use` dispatch — supervisor exposes
@@ -123,12 +126,14 @@
     plan in TASKS2.md → "W2-05" — pytesseract wrap, bbox + 5%-margin
     OCR, fuzzy-match against `raw_text`, manifest-membership check
     for corpus citations, 10-fixture false-reject set.
-  - **Cross-encoder rerank** for the corpus (§7 retrieval pipeline,
-    MR W2-RR — *scoped, queued post-Sunday*). Today's reranker is an
-    LLM-judge in `corpus/rerank.py` (the file's header documents the
-    trade-off). The post-Sunday plan is the Cohere `rerank-v3.5` API
-    behind a `COHERE_API_KEY` env var with the LLM-judge as
-    fall-back. Full plan in TASKS2.md → "W2-RR".
+  - **Cohere `rerank-v3.5` rerank backend** for the corpus
+    (§7 retrieval pipeline, MR W2-RR — *promoted to Sunday-blocking
+    on 2026-05-08; lands before submit*). Cohere is the primary
+    reranker behind `COHERE_API_KEY`; the existing LLM-judge in
+    `corpus/rerank.py` becomes the env-var-gated fallback so the
+    rerank stage stays best-effort if the key is absent or the
+    Cohere call errors. Full plan in TASKS2.md → "W2-RR — Cohere
+    rerank backend".
   - **Eval buckets beyond extraction + retrieval**: as of 2026-05-08
     the manifest is 65 cases across five buckets — extraction (28),
     retrieval (23), citations (6), missing-data (4), refusals (4).
@@ -764,9 +769,13 @@
 
   > **Status (2026-05-08).** The corpus is built and indexed; the
   > retriever supports **BM25 + dense (via `OpenAIEmbedder`) fused with
-  > RRF (`k=60`)** — see `corpus/retriever.py:62–146` — and an
-  > **LLM-judge reranker** in `corpus/rerank.py` re-scores the top-20.
-  > The corpus is now **30 Markdown sources** (~262 chunks) under
+  > RRF (`k=60`)** — see `corpus/retriever.py:62–146` — and a rerank
+  > stage in `corpus/rerank.py`. **Cohere `rerank-v3.5`** is the
+  > Sunday-target primary reranker (MR W2-RR landing before submit);
+  > the existing **LLM-judge implementation** stays as the
+  > env-var-gated fallback when `COHERE_API_KEY` is absent or the
+  > Cohere call errors. The corpus is now **30 Markdown sources**
+  > (~262 chunks) under
   > `agent-service/corpus/sources/{uspstf,cdc,nih,aha}/`, each a
   > *synthetic excerpt adapted from public guidance* per
   > `corpus/sources/LICENSES.md` — not the canonical text and not for
@@ -775,10 +784,11 @@
   > cohort-5-week-2-assets-v2 set. The dense path is gated on the
   > `dense.pkl` artifact + `OPENAI_API_KEY` and falls back cleanly to
   > BM25-only when absent (the demo runs BM25-only on Railway today).
-  > **Cross-encoder rerank** (Cohere / Jina API or local
-  > `bge-reranker`) is deferred — the LLM-judge is the
-  > Sunday-submission substitute. The retriever is **wired into the
-  > live `/api/agent/query` slow-lane path** through the supervisor's
+  > Local cross-encoder alternatives (`bge-reranker-base` via
+  > `sentence-transformers`) and the Jina rerank API remain documented
+  > as cheap follow-ons in TASKS2.md → "W2-RR" but are not the
+  > Sunday backend. The retriever is **wired into the live
+  > `/api/agent/query` slow-lane path** through the supervisor's
   > `evidence_retriever` worker (`main.py:541–632`). It is also
   > reachable via the `clinical_copilot.scripts.retrieve_evidence`
   > CLI and the eval harness.
@@ -1419,20 +1429,22 @@
   > **Status (2026-05-08).** The shipped W2 demo covers MRs W2-01
   > (schemas + abstain enum), W2-03 (lab_pdf VLM extractor), W2-04
   > (intake_form extractor), W2-06 (corpus + **hybrid retriever
-  > (BM25 + dense + RRF) + LLM-judge rerank** — wired into the live
-  > `/api/agent/query` slow-lane path through the supervisor's
-  > `evidence_retriever` worker), W2-07 (**plain-Python supervisor
-  > + 2 workers** wired into the live query path at
-  > `main.py:541–632`, gated on `use_supervisor`; LangGraph rewrite
-  > with planner / critic is the next live deliverable), W2-MM
-  > (multimodal expansion), W2-CW (chart-write path), and W2-11
-  > (**65-case extraction eval gate + pre-push hook + GitLab CI**).
-  > The remaining MRs (W2-02 Documents bridge, W2-05 OCR check,
-  > W2-08 reconciliation extension, W2-09 RBAC tests over documents,
-  > W2-10 abstention rendering, W2-12 PHI redaction, W2-RR
-  > cross-encoder rerank backend) are deferred to the post-Sunday
-  > queue — see TASKS2.md for the per-MR landing status and the
-  > "Submission timeline" subsection for shipped-when commit hashes.
+  > (BM25 + dense + RRF) with the rerank stage in `corpus/rerank.py`
+  > — Cohere `rerank-v3.5` as the Sunday primary, LLM-judge as
+  > fallback** — wired into the live `/api/agent/query` slow-lane
+  > path through the supervisor's `evidence_retriever` worker),
+  > W2-07 (**plain-Python supervisor + 2 workers** wired into the
+  > live query path at `main.py:541–632`, gated on `use_supervisor`;
+  > LangGraph rewrite with planner / critic is the next live
+  > deliverable), W2-MM (multimodal expansion), W2-CW (chart-write
+  > path), W2-RR (Cohere rerank backend — promoted to Sunday-blocking
+  > 2026-05-08), and W2-11 (**65-case extraction eval gate +
+  > pre-push hook + GitLab CI**). The remaining MRs (W2-02 Documents
+  > bridge, W2-05 OCR check, W2-08 reconciliation extension, W2-09
+  > RBAC tests over documents, W2-10 abstention rendering, W2-12 PHI
+  > redaction) are deferred to the post-Sunday queue — see TASKS2.md
+  > for the per-MR landing status and the "Submission timeline"
+  > subsection for shipped-when commit hashes.
 
   Each Week 2 MR must include the test classes below. The matrix is the
   source of truth that TASKS.md draws from per-MR. *Eval-suite cases* are

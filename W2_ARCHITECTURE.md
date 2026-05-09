@@ -25,7 +25,7 @@ section is the architecture delta against this document's own §1–§16.
 | Extracted-fact JSON store (file-backed; not Postgres) | `clinical_copilot/documents/store.py` |
 | Synchronous ingest route (calls `run_extraction()` directly — not the supervisor's `intake_extractor` worker) | `POST /api/agent/internal/ingest` + `GET /api/agent/internal/extracted/{id}` in `main.py:491–567` |
 | **Hybrid corpus retriever (BM25 + dense via `OpenAIEmbedder`, RRF-fused with `k=60`)** | `clinical_copilot/corpus/{chunker,index,retriever,embedder,scrub,records}.py`; fusion at `corpus/retriever.py:62–146` |
-| **LLM-judge reranker (top-20 re-scored via Claude Haiku)** | `clinical_copilot/corpus/rerank.py` |
+| **Cohere `rerank-v3.5` reranker (top-20 re-scored; LLM-judge via Claude Haiku stays as the env-var-gated fallback when `COHERE_API_KEY` is absent or the Cohere call errors)** | `clinical_copilot/corpus/rerank.py` |
 | Corpus sources (30 docs / ~262 chunks as of 2026-05-08) | `agent-service/corpus/sources/{uspstf,cdc,nih,aha}/` + `LICENSES.md` |
 | Demo CLIs | `clinical_copilot/scripts/{ingest_document,retrieve_evidence}.py` |
 | **Supervisor + 2 workers (plain Python, no LangGraph)** — exposes `dispatch_intake_extractor` + `dispatch_evidence_retriever` `tool_use` blocks; logs each handoff | `clinical_copilot/orchestrator/supervisor.py`; `clinical_copilot/orchestrator/workers/{intake_extractor,evidence_retriever}.py` |
@@ -54,7 +54,7 @@ section is the architecture delta against this document's own §1–§16.
 | Documents-view side panel + chart summary card | §3.3, §3.4 | Not built. The "primary extraction-state surface" of PRD2 §2 lives on the dedicated review pages instead. |
 | LangGraph framework + planner / critic nodes | §4 | The two-worker supervisor ships in plain Python via Anthropic `tool_use` (no LangGraph dep). Planner and critic nodes from the original four-node design are deferred. The chart-tools / corpus separation is enforced today by package layout only — no `import-linter` contract. |
 | OCR strict + degraded path (`_check_document_bbox`) | §7.1 | Not built. `verification/citation_check.py` enforces the v1 citation discipline + the `LOW_CONFIDENCE` floor only. `CitationKind` and the verdict tri-state are not yet in code. |
-| Cross-encoder rerank | §6 | Today's reranker is an LLM-judge in `corpus/rerank.py`; cross-encoder swap is **scoped as MR W2-RR** (post-Sunday queue) — Cohere `rerank-v3.5` API preferred, LLM-judge stays as the fallback when `COHERE_API_KEY` is absent. Full plan in TASKS2.md → "W2-RR". |
+| Cohere `rerank-v3.5` rerank backend | §6 | **Promoted to Sunday-blocking on 2026-05-08** (was post-Sunday queue). Cohere becomes the primary reranker behind `COHERE_API_KEY`; the existing LLM-judge in `corpus/rerank.py` stays as the env-var-gated fallback when the key is absent or the API errors. MR W2-RR lands before submit. Full plan in TASKS2.md → "W2-RR — Cohere rerank backend". |
 | `import-linter` contract for tool-vs-RAG boundary | §10 | Not configured. The package boundary holds in code today (`tools/`, `documents/`, `corpus/` packages don't cross-import) but is not gate-enforced. |
 | Per-stage latency histogram + `latency.stage_p95` rubric | §11 | Not built. Spans carry `latency_ms` but no eval-side aggregation or budget assertion. |
 | LangSmith deny-by-default redaction layer | §8 | Not built; demo runs with `LANGSMITH_TRACING=false`. **Scoped as MR W2-12 in the post-Sunday queue** — deny-by-default per-span allowlist + regex backstop (SSN / MRN / phone / email / DOB / FHIR-bundle name fields). Full plan in TASKS2.md → "W2-12". |
@@ -112,8 +112,10 @@ called out for each surface where shipped ≠ target.
   exception.
 - **Hybrid retrieval over a 30-doc / 262-chunk guideline corpus** —
   BM25 + dense (OpenAI `text-embedding-3-small`) + RRF fusion +
-  LLM-judge rerank. Dense path is gated on the `dense.pkl` artifact
-  + `OPENAI_API_KEY`; degrades cleanly to BM25-only on Railway.
+  rerank stage in `corpus/rerank.py` (Cohere `rerank-v3.5` primary
+  when `COHERE_API_KEY` is set; LLM-judge fallback otherwise). Dense
+  path is gated on the `dense.pkl` artifact + `OPENAI_API_KEY`;
+  degrades cleanly to BM25-only on Railway.
 - **65-case eval gate + pre-push + GitLab CI** — boolean rubrics
   (`schema_valid = 1.0`, `citation_present ≥ 0.95`,
   `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`,
@@ -149,9 +151,12 @@ called out for each surface where shipped ≠ target.
 - **PHI redaction in LangSmith spans (W2-12).** Demo runs with
   `LANGSMITH_TRACING=false`; re-enabling needs the deny-by-default
   span filter described in §8.
-- **Cross-encoder rerank (W2-RR).** Cohere `rerank-v3.5` API behind
-  `COHERE_API_KEY` with the LLM-judge as fallback, scoped in
-  TASKS2.md.
+- **Cohere rerank backend (W2-RR).** *Promoted to Sunday-blocking
+  on 2026-05-08; lands before submit.* Cohere `rerank-v3.5` becomes
+  the primary reranker behind `COHERE_API_KEY`; the existing
+  LLM-judge in `corpus/rerank.py` stays as the env-var-gated
+  fallback when the key is absent or the Cohere call errors. Full
+  plan in TASKS2.md → "W2-RR".
 - **Postgres extraction queue + pgvector for the corpus.** Both are
   the production-shape target inside the existing `agent-db`; today
   facts persist as `data/extracted/<id>.json` on the agent-service
@@ -741,29 +746,35 @@ involved in the merge** — it's deterministic.
 
 > **Status (2026-05-08).** Corpus + indexer + **hybrid retriever
 > (BM25 + dense via OpenAI `text-embedding-3-small`, RRF-fused with
-> `k=60`) + LLM-judge reranker** are shipped and **wired into the
-> live `/api/agent/query` slow-lane path** through the supervisor's
+> `k=60`)** are shipped and **wired into the live
+> `/api/agent/query` slow-lane path** through the supervisor's
 > `evidence_retriever` worker — see `corpus/retriever.py:62–146` for
 > the fusion, `corpus/rerank.py` for the rerank, and
-> `main.py:541–632` for the supervisor wiring. `corpus/sources/` now
-> holds **30 Markdown excerpts** (~262 chunks) under `uspstf/`,
-> `cdc/`, `nih/`, `aha/`, each a *synthetic excerpt adapted from
-> public guidance* per `corpus/sources/LICENSES.md`. Coverage spans
-> screening *and* management for every condition / medication / lab
-> surfaced in the W1 chart fixtures and the cohort-5-week-2-assets-v2
-> set (HFrEF GDMT, hypertension management, statin intensity, CAD
-> secondary prevention, ACEi monitoring, CKD staging, atrial
-> fibrillation anticoagulation, basal-insulin initiation, asthma in
-> pregnancy, alcohol use disorder, CBC and CMP interpretation, and
-> the W1 anchors — diabetes management, metformin monitoring, AOM,
+> `main.py:541–632` for the supervisor wiring. The rerank stage is
+> two-tier: **Cohere `rerank-v3.5`** is the Sunday-target primary
+> backend (MR W2-RR landing before submit, promoted from the
+> post-Sunday queue 2026-05-08); the existing **LLM-judge
+> implementation** (Claude Haiku, ~600 ms p50) stays as the
+> env-var-gated fallback when `COHERE_API_KEY` is absent or the
+> Cohere call errors. `corpus/sources/` now holds **30 Markdown
+> excerpts** (~262 chunks) under `uspstf/`, `cdc/`, `nih/`, `aha/`,
+> each a *synthetic excerpt adapted from public guidance* per
+> `corpus/sources/LICENSES.md`. Coverage spans screening *and*
+> management for every condition / medication / lab surfaced in the
+> W1 chart fixtures and the cohort-5-week-2-assets-v2 set (HFrEF
+> GDMT, hypertension management, statin intensity, CAD secondary
+> prevention, ACEi monitoring, CKD staging, atrial fibrillation
+> anticoagulation, basal-insulin initiation, asthma in pregnancy,
+> alcohol use disorder, CBC and CMP interpretation, and the W1
+> anchors — diabetes management, metformin monitoring, AOM,
 > iron-deficiency anemia, thyroid). The dense path is gated on the
 > `dense.pkl` artifact + `OPENAI_API_KEY` and degrades cleanly to
 > BM25-only when absent (the deployed Railway demo runs BM25-only
 > today; the dense artifact rebuild lands when the key is in the
-> deploy environment). **Cross-encoder rerank** (Cohere / Jina API
-> or local `bge-reranker`) is the remaining deferred piece — the
-> LLM-judge in `corpus/rerank.py` is the Sunday-submission
-> substitute and the trade-off is documented in the file's header.
+> deploy environment). Local cross-encoder alternatives
+> (`bge-reranker-base` via `sentence-transformers`) and the Jina
+> rerank API remain documented as cheap follow-ons in TASKS2.md →
+> "W2-RR" but are not the Sunday backend.
 
 ### 6.1 Corpus structure
 
@@ -813,9 +824,16 @@ runbook (§16).
 2. **Parallel first-stage retrieval.** BM25 returns top-20; pgvector
    cosine-similarity returns top-20; results are deduped by
    `chunk_id` and unioned.
-3. **Cross-encoder rerank.** `cross-encoder/ms-marco-MiniLM-L-6-v2`
-   (loaded once at process start, ~80 MB) reranks the union to
-   top-K=5.
+3. **Rerank stage.** Cohere `rerank-v3.5` reranks the union to
+   top-K=5 when `COHERE_API_KEY` is configured (the Sunday-target
+   primary, ~80 ms p50, ~$2/1k searches; MR W2-RR). The LLM-judge
+   implementation in `corpus/rerank.py` (Claude Haiku scoring each
+   candidate, ~600 ms p50) stays as the env-var-gated fallback when
+   the key is absent or the Cohere call errors so the rerank stage
+   is best-effort end-to-end. The supervisor's `evidence_retriever`
+   worker reports which backend actually ran via the
+   `rerank_backend` field on `EvidenceRetrieverOutput` (`"cohere"` |
+   `"llm-judge"` | `"none"`).
 
 Output: `list[CorpusSnippet]` where each carries `chunk_id`,
 `corpus_id`, `source_url`, `version`, `score`. The supervisor cites
