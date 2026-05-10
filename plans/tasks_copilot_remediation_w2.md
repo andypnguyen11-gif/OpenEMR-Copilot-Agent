@@ -482,6 +482,44 @@ those values don't correspond to anything raster-renderable. The
 inline citation snippet next to each value remains the source of truth
 for clinician verification on these document types.
 
+### Follow-up: PR 5c — tighten per-field bboxes (extractor work)
+
+**Trigger:** open after PR 5 ships if reviewers report bbox rectangles
+that cover too much of the page to be useful for verification.
+
+**Observed problem (2026-05-09 against `openemr:doc:4518`, fax_tiff):**
+the Anthropic vision extractor returns one coarse bbox per page chunk,
+and every field on that page reuses it. Concrete shape from the
+extracted JSON:
+
+```
+patient_name page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49
+patient_dob  page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
+sender_name  page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
+fax_date     page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
+```
+
+Click-to-highlight is functionally meaningless because every row
+highlights the same page-chunk rectangle. The lab_pdf extractor does
+slightly better (row-scoped horizontal bands like
+`[0.07, 0.44, 0.93, 0.51]`), but still not value-tight.
+
+**Two viable paths:**
+
+1. **Tighter VLM prompt + few-shot bbox examples.** Cheap to try;
+   uncertain payoff because bbox precision is genuinely a weak point
+   for current Anthropic vision models on dense forms.
+2. **OCR-based post-processing.** Run Tesseract on each rendered page
+   at ingest time, build an index of `(text, bbox)` tuples, and for
+   each `SourceCitation.raw_text` find the matching OCR span and
+   replace the model's coarse bbox with the OCR bbox. Higher
+   reliability; adds Tesseract to the agent-service Dockerfile
+   (~50MB) and ~500ms per page at ingest time.
+
+**Per-extractor cost/benefit** — fax_tiff and lab_pdf benefit most
+(table-heavy, dense forms). Intake_form is already field-anchored at
+extraction time (less to gain). Skip for HL7 (no spatial layout).
+
 ### Follow-up: PR 5b — docx/xlsx → PDF rendering for full overlay support
 
 **Branch suggestion:** `feat/copilot-docx-overlay-rendering`
