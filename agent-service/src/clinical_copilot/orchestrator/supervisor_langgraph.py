@@ -613,7 +613,17 @@ def run_turn(
 
     log = logger.bind(request_id=request_id, query_len=len(user_query))
     log.info("supervisor_lg.invoke")
-    final_state: TurnState = graph.invoke(initial)  # type: ignore[assignment]
+    # Suppress LangGraph's LangSmith auto-instrumentation (the
+    # callback-based path that emits a per-node span carrying the raw
+    # TurnState as inputs and the unredacted return dict as outputs —
+    # both PHI-bearing). Our explicit @traceable wrappers on each node
+    # (added in 4886afdb6) emit their own redacted spans via the
+    # context-var tracer, which is independent of the callback system,
+    # so they survive callbacks=[]. See plans/langgraph-node-phi-redaction.md.
+    final_state: TurnState = graph.invoke(  # type: ignore[assignment]
+        initial,
+        config={"callbacks": []},
+    )
 
     final = final_state.get("final_response") or {}
     if "model_dump" in dir(final):
