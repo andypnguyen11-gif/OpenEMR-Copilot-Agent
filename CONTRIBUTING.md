@@ -68,14 +68,28 @@ BREAKING CHANGE: The patient endpoint now returns a different JSON structure.
 
 ### Local Validation
 
-If you use [pre-commit](https://pre-commit.com/), install hooks to validate locally:
+`composer install` installs a pre-push git hook automatically when
+[prek](https://github.com/j178/prek) (or pre-compatible drop-in) is on
+your PATH. The hook runs phpstan, rector, phpcs, codespell, and the rest
+of `.pre-commit-config.yaml` against the commits you are about to push,
+catching the same issues CI catches a few seconds later. Install prek
+once with `brew install prek` or `pipx install prek` (a pre-commit
+install works too). When the script can't find a runner it prints a
+single WARN line and continues — `composer install` never fails because
+of this.
+
+To install hooks manually, or to enable the commit-message validator:
 
 ```sh
-pre-commit install --hook-type commit-msg  # Validates commit message format
-pre-commit install                          # Enables all code quality hooks
+prek install --hook-type pre-push       # What composer install runs for you
+prek install --hook-type commit-msg     # Validates Conventional Commits format
+prek install                            # Enables all code quality hooks at commit time
 ```
 
-The full pre-commit suite (`.pre-commit-config.yaml`) includes:
+CI sets `CI=true`, which makes the post-install hook installer no-op so
+container builds don't waste time wiring git hooks they will never run.
+
+The full hook suite (`.pre-commit-config.yaml`) includes:
 - Trailing whitespace, line endings, JSON/YAML formatting
 - PHP syntax checking, phpcs, phpcbf, phpstan, rector
 - Composer validation and normalization
