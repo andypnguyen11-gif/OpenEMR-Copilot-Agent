@@ -367,3 +367,245 @@ def redact_orchestrator_outputs(output: object) -> dict[str, Any]:
             "abstention_state": abstention_state,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Supervisor (LangGraph) node redactors
+# ---------------------------------------------------------------------------
+
+
+def _usage_totals_summary(value: object) -> dict[str, int] | None:
+    """Coerce a ``UsageTotals`` dataclass or a dict-shaped fold result
+    into the same wire shape. Returns ``None`` for missing/unknown
+    inputs so callers can decide whether to omit the key.
+    """
+
+    if value is None:
+        return None
+    input_tokens = getattr(value, "input_tokens", None)
+    output_tokens = getattr(value, "output_tokens", None)
+    if input_tokens is None and isinstance(value, dict):
+        input_tokens = value.get("input_tokens")
+        output_tokens = value.get("output_tokens")
+    if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
+        return None
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+
+
+def _str_value(value: object) -> str | None:
+    """Return ``value`` if it's a non-empty string, else ``None``.
+    Used for enum-shaped fields that may arrive as ``StrEnum`` or raw
+    string depending on whether the dict came through ``model_dump``.
+    """
+
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _draft_summary(draft: object) -> dict[str, Any]:
+    """Pull only structural fields off a Draft-shaped dict / model.
+
+    ``text`` is the synthesizer's prose for a sub-query and is dropped
+    wholesale. ``citations`` source_id / corpus_id are server-issued
+    opaque identifiers (matching the orchestrator redactor's policy)
+    so they pass through to support trace-side debugging of which
+    chart records or guideline chunks a draft cited.
+    """
+
+    citations: list[dict[str, Any]] = []
+    raw_citations = (
+        draft.get("citations") if isinstance(draft, dict) else getattr(draft, "citations", None)
+    )
+    if raw_citations:
+        for citation in raw_citations:
+            if isinstance(citation, dict):
+                source_id = citation.get("source_id")
+                corpus_id = citation.get("corpus_id")
+            else:
+                source_id = getattr(citation, "source_id", None)
+                corpus_id = getattr(citation, "corpus_id", None)
+            entry: dict[str, Any] = {}
+            if isinstance(source_id, str):
+                entry["source_id"] = source_id
+            if isinstance(corpus_id, str):
+                entry["corpus_id"] = corpus_id
+            if entry:
+                citations.append(entry)
+    worker = (
+        draft.get("worker") if isinstance(draft, dict) else getattr(draft, "worker", None)
+    )
+    abstain_reason = (
+        draft.get("abstain_reason")
+        if isinstance(draft, dict)
+        else getattr(draft, "abstain_reason", None)
+    )
+    return {
+        "worker": _str_value(worker) if worker is not None else None,
+        "abstain_reason": _str_value(abstain_reason),
+        "citations": citations,
+    }
+
+
+def _verdict_summary(verdict: object) -> dict[str, Any]:
+    """Pull only the closed-enum fields off a Verdict. ``rationale``
+    is critic free-text — sometimes quotes the draft prose — and is
+    dropped wholesale.
+    """
+
+    raw_verdict = (
+        verdict.get("verdict") if isinstance(verdict, dict) else getattr(verdict, "verdict", None)
+    )
+    raw_reason = (
+        verdict.get("rejection_reason")
+        if isinstance(verdict, dict)
+        else getattr(verdict, "rejection_reason", None)
+    )
+    return {
+        "verdict": _str_value(raw_verdict),
+        "rejection_reason": _str_value(raw_reason),
+    }
+
+
+def redact_supervisor_node_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Redactor for LangGraph supervisor node *inputs*.
+
+    LangGraph nodes are called with one positional ``state`` argument
+    (a :class:`TurnState` TypedDict). ``@traceable`` captures kwargs by
+    name so this function receives ``{"state": <state_dict>}``. Anything
+    else in ``inputs`` is something a future caller added (extra
+    config, callbacks) — drop it.
+
+    The state dict carries the highest-risk PHI in the system: the
+    user's natural-language query, the patient's name on
+    ``session``, and every worker draft's prose. The allowlist
+    surfaces structural metadata (counts, request_id, hashed patient
+    identifier, token totals) and drops every free-text field.
+    """
+
+    state = inputs.get("state")
+    if not isinstance(state, dict):
+        state = {}
+
+    redacted: dict[str, Any] = {}
+
+    session = state.get("session")
+    if isinstance(session, dict):
+        request_id = session.get("request_id")
+        if isinstance(request_id, str):
+            redacted["request_id"] = request_id
+        patient_id_hash = _safe_hash(session.get("patient_id"))
+        if patient_id_hash is not None:
+            redacted["patient_id_hash"] = patient_id_hash
+
+    user_query = state.get("user_query")
+    if isinstance(user_query, str):
+        redacted["user_query_length"] = len(user_query)
+
+    sub_queries = state.get("sub_queries") or []
+    redacted["sub_query_count"] = len(sub_queries) if isinstance(sub_queries, list) else 0
+
+    drafts = state.get("drafts") or []
+    redacted["draft_count"] = len(drafts) if isinstance(drafts, list) else 0
+
+    verdicts = state.get("verdicts") or []
+    redacted["verdict_count"] = len(verdicts) if isinstance(verdicts, list) else 0
+
+    rerank_backend = state.get("rerank_backend")
+    if isinstance(rerank_backend, str):
+        redacted["rerank_backend"] = rerank_backend
+
+    usage = _usage_totals_summary(state.get("usage_totals"))
+    if usage is not None:
+        redacted["usage_totals"] = usage
+
+    retry_counts = state.get("retry_counts")
+    if isinstance(retry_counts, dict):
+        # Sub-query IDs are uuid hex (planner-assigned, see SubQuery.id);
+        # ints are counts. Neither carries PHI; pass through.
+        redacted["retry_counts"] = {
+            str(key): int(val)
+            for key, val in retry_counts.items()
+            if isinstance(val, int)
+        }
+
+    return _scrub_payload(redacted)
+
+
+def redact_supervisor_node_outputs(output: object) -> dict[str, Any]:
+    """Redactor for LangGraph supervisor node *outputs*.
+
+    Each node returns a partial-state dict that LangGraph folds into
+    the running :class:`TurnState`. Different nodes write different
+    keys — synthesizer writes ``final_response`` + ``usage_totals``,
+    workers write ``drafts``, the planner writes ``sub_queries``, the
+    critic writes ``verdicts``. The allowlist below covers every
+    key any node currently writes; an unknown key is dropped (defense
+    in depth — a future node that returns a PHI-bearing field will
+    not silently leak just because nobody updated this redactor).
+    """
+
+    if not isinstance(output, dict):
+        return {}
+
+    redacted: dict[str, Any] = {}
+
+    final_response = output.get("final_response")
+    if isinstance(final_response, dict):
+        synthesized_text = final_response.get("synthesized_text") or ""
+        abstention_reason = final_response.get("abstention_reason")
+        redacted["synthesized_text_length"] = (
+            len(synthesized_text) if isinstance(synthesized_text, str) else 0
+        )
+        redacted["abstention_reason"] = (
+            abstention_reason if isinstance(abstention_reason, str) else None
+        )
+
+    drafts = output.get("drafts")
+    if isinstance(drafts, list):
+        summaries = [_draft_summary(draft) for draft in drafts]
+        redacted["draft_count"] = len(summaries)
+        redacted["draft_workers"] = [
+            summary["worker"] for summary in summaries if summary["worker"] is not None
+        ]
+        redacted["draft_abstain_reasons"] = [summary["abstain_reason"] for summary in summaries]
+        redacted["draft_citations"] = [summary["citations"] for summary in summaries]
+
+    verdicts = output.get("verdicts")
+    if isinstance(verdicts, list):
+        summaries = [_verdict_summary(verdict) for verdict in verdicts]
+        redacted["verdict_count"] = len(summaries)
+        redacted["verdicts"] = summaries
+
+    sub_queries = output.get("sub_queries")
+    if isinstance(sub_queries, list):
+        claim_types: list[str] = []
+        for sub_query in sub_queries:
+            raw = (
+                sub_query.get("claim_type")
+                if isinstance(sub_query, dict)
+                else getattr(sub_query, "claim_type", None)
+            )
+            value = _str_value(raw)
+            if value is not None:
+                claim_types.append(value)
+        redacted["sub_query_count"] = len(sub_queries)
+        redacted["sub_query_claim_types"] = claim_types
+
+    rerank_backend = output.get("rerank_backend")
+    if isinstance(rerank_backend, str):
+        redacted["rerank_backend"] = rerank_backend
+
+    usage = _usage_totals_summary(output.get("usage_totals"))
+    if usage is not None:
+        redacted["usage_totals"] = usage
+
+    retry_counts = output.get("retry_counts")
+    if isinstance(retry_counts, dict):
+        redacted["retry_counts"] = {
+            str(key): int(val)
+            for key, val in retry_counts.items()
+            if isinstance(val, int)
+        }
+
+    return _scrub_payload(redacted)
