@@ -90,6 +90,14 @@ typechecks clean, and has Bootstrap 4.6 CSS loaded.
 - [ ] `.gitignore` for `node_modules/` and `dist/`
 - [ ] `README.md` with run instructions (`npm i`, `npm run dev`, the OpenEMR URL it expects)
 - [ ] Add `npm run typecheck` script (`tsc --noEmit`)
+- [ ] Add test infrastructure (per repo policy: tests ship with the code they cover):
+  - [ ] Pin `vitest`, `@vitest/ui`, `@testing-library/react`, `@testing-library/jest-dom`,
+        `@testing-library/user-event`, `jsdom` in `package.json`
+  - [ ] Configure Vitest in `vite.config.ts`
+        (`test: { environment: 'jsdom', setupFiles: ['./src/test/setup.ts'] }`)
+  - [ ] `src/test/setup.ts` — `import '@testing-library/jest-dom/vitest'`
+  - [ ] `npm run test` (watch) and `npm run test:ci` (`vitest run`) scripts
+  - [ ] Smoke test `src/App.test.tsx` — renders the hello heading; confirms the harness works
 - [ ] **Stub `PATIENT_DASHBOARD_MIGRATION.md` at repo root.** Write the
       framework-defense sections that don't need implementation evidence:
   - [ ] §0 Scope (full content — assignment-enumerated surface + read-only-summary framing)
@@ -101,12 +109,14 @@ typechecks clean, and has Bootstrap 4.6 CSS loaded.
   - [ ] §6 Parity matrix — `TBD` placeholder; PR 10 fills with screenshots
   - [ ] §7 Known parity gaps — pre-known list, marked `to be confirmed in PR 10`
   - [ ] §8 What's reusable (full content — `<CardBase>`, `fhirSearch`, auth flow)
-- [ ] **Verify:** `npm run dev` serves the hello page; `npm run typecheck` clean;
-      `PATIENT_DASHBOARD_MIGRATION.md` renders cleanly in markdown preview
+- [ ] **Verify:** `npm run dev` serves the hello page; `npm run typecheck` and
+      `npm run test:ci` both clean; `PATIENT_DASHBOARD_MIGRATION.md` renders cleanly
+      in markdown preview
 
 **New files:** all of `dashboard-spa/` (package.json, tsconfig.json, vite.config.ts,
 index.html, .env.example, .gitignore, README.md, src/main.tsx, src/App.tsx,
-src/styles/bootstrap.scss, public/), plus `PATIENT_DASHBOARD_MIGRATION.md` at repo root.
+src/styles/bootstrap.scss, src/test/setup.ts, src/App.test.tsx, public/), plus
+`PATIENT_DASHBOARD_MIGRATION.md` at repo root.
 **Edited files:** none outside `dashboard-spa/` and the root migration doc.
 
 ---
@@ -131,12 +141,23 @@ memory; refresh-on-401 works single-flight; logout clears state.
 - [ ] Implement `auth/routes.tsx` — `<RequireAuth>` wrapper that redirects to /login if no token
 - [ ] Implement `pages/Login.tsx` — calls `redirectToAuthorize()`
 - [ ] Implement `pages/Callback.tsx` — reads `?code` + `?state`, exchanges, stores in context, navigates to /patients
+- [ ] **Tests (test-first per repo policy — auth is the canonical "silent failure
+      bypasses authz" surface):**
+  - [ ] `src/auth/pkce.test.ts` — verifier length within RFC 7636 bounds (43–128
+        chars, URL-safe charset); `generateCodeChallenge` is base64url with no
+        padding; deterministic for a fixed verifier (fixture vector)
+  - [ ] `src/auth/oauth.test.ts` — `state` mismatch in `exchangeCode` throws and
+        does not POST; concurrent `refreshTokens()` calls share one in-flight
+        promise (single-flight); failed refresh clears tokens and rejects all waiters
+  - [ ] `src/auth/AuthContext.test.tsx` — initial state unauthenticated;
+        `setTokens()` populates `accessToken`/`expiresAt`; `logout()` clears state
 - [ ] **Verify:** full round-trip against `https://localhost:9300/`. In React DevTools,
       confirm `AuthContext` has `access_token` and `patient`. Manually expire the
       token (set `expiresAt` to past) → next FHIR call refreshes silently.
 
 **New files:** `src/auth/pkce.ts`, `src/auth/oauth.ts`, `src/auth/AuthContext.tsx`,
-`src/auth/routes.tsx`, `src/pages/Login.tsx`, `src/pages/Callback.tsx`.
+`src/auth/routes.tsx`, `src/pages/Login.tsx`, `src/pages/Callback.tsx`,
+`src/auth/pkce.test.ts`, `src/auth/oauth.test.ts`, `src/auth/AuthContext.test.tsx`.
 **Edited files:** `src/App.tsx` (wrap in `<AuthProvider>`, add `/login` + `/callback` routes),
 `.env.example` (add OAuth vars), `README.md` (document client-registration step).
 
@@ -160,11 +181,21 @@ clicks a result, navigates to `/patients/:id` (empty dashboard shell).
   - [ ] Results list with name, DOB, MRN
   - [ ] Click → navigate to `/patients/{id}`
 - [ ] Implement `pages/Dashboard.tsx` — placeholder shell with "Patient {id}" heading
+- [ ] **Tests:**
+  - [ ] `src/fhir/client.test.ts` (mock `fetch`):
+    - [ ] 200 Bundle → entries flattened to `T[]`
+    - [ ] 401 → triggers single refresh → retries once → returns data
+    - [ ] 401 after retry → rejects (no infinite loop)
+    - [ ] 403 → resolves to `[]`, logs warning, does not throw
+    - [ ] `_count=200` is the default when not specified
+  - [ ] `src/pages/PatientPicker.test.tsx` — typing a name issues
+        `Patient?name=…`; typing digits/MRN issues `Patient?identifier=…`;
+        clicking a result calls `navigate('/patients/{id}')`
 - [ ] **Verify:** logged-in user sees patient list; clicking navigates to `/patients/:id`;
       no console errors; network tab shows Bearer-authenticated FHIR calls
 
 **New files:** `src/fhir/client.ts`, `src/fhir/types.ts`, `src/pages/PatientPicker.tsx`,
-`src/pages/Dashboard.tsx`.
+`src/pages/Dashboard.tsx`, `src/fhir/client.test.ts`, `src/pages/PatientPicker.test.tsx`.
 **Edited files:** `src/App.tsx` (add `/patients` and `/patients/:id` routes, both
 `<RequireAuth>`-wrapped).
 
@@ -188,11 +219,21 @@ collapsible card placeholders matching the upstream Twig layout.
 - [ ] Implement `components/ErrorBoundary.tsx` — per-card error fallback so one
       card failing doesn't blank the dashboard
 - [ ] Wire dashboard layout: `<PatientHeader>` + 6 `<CardBase title="…">` placeholders
+- [ ] **Tests:**
+  - [ ] `src/components/PatientHeader.test.tsx` — fixture `Patient` with MRN
+        (`identifier.type.coding[].code === 'PT'`) renders MRN; fixture without
+        MRN renders `—`; missing `name[0].text` falls back gracefully
+  - [ ] `src/components/CardBase.test.tsx` — initial state expanded; click
+        header toggles collapse; chevron icon flips
+  - [ ] `src/components/ErrorBoundary.test.tsx` — child that throws renders
+        fallback UI; sibling rendered outside the boundary still mounts
 - [ ] **Verify:** open `/patients/:id` for a Synthea patient. Header populates.
       6 empty cards render and collapse/expand. Side-by-side screenshot vs upstream.
 
 **New files:** `src/components/PatientHeader.tsx`, `src/components/CardBase.tsx`,
-`src/components/EmptyState.tsx`, `src/components/Loading.tsx`, `src/components/ErrorBoundary.tsx`.
+`src/components/EmptyState.tsx`, `src/components/Loading.tsx`, `src/components/ErrorBoundary.tsx`,
+`src/components/PatientHeader.test.tsx`, `src/components/CardBase.test.tsx`,
+`src/components/ErrorBoundary.test.tsx`.
 **Edited files:** `src/pages/Dashboard.tsx` (render header + 6 placeholders).
 **Reference (read-only):** `interface/patient_file/summary/dashboard_header.php`,
 `templates/patient/card/card_base.html.twig`, `templates/patient/card/loader.html.twig`.
@@ -212,10 +253,20 @@ collapsible card placeholders matching the upstream Twig layout.
   - [ ] `Condition?patient={id}&category=problem-list-item`
   - [ ] Fields: `code.text` only
 - [ ] Lift HTML from rendered upstream cards (Synthea patient with rich data)
+- [ ] **Tests** (introduce shared fixture dir `src/__fixtures__/fhir/` for
+      reusable FHIR bundles, used by every card test from here on):
+  - [ ] `src/cards/AllergiesCard.test.tsx` — bundle with mixed
+        `clinicalStatus.coding[0].code` values: only `active` rows render;
+        NKDA-coded fixture → "No Known Allergies"; empty bundle → "Nothing
+        Recorded"; criticality `high` renders the severity badge
+  - [ ] `src/cards/ProblemsCard.test.tsx` — fixture with multiple Conditions
+        renders each `code.text`; empty → "Nothing Recorded"
 - [ ] **Verify:** parity matrix screenshots for one Synthea patient, both cards.
       Test empty states by picking/creating a patient with no data.
 
-**New files:** `src/cards/AllergiesCard.tsx`, `src/cards/ProblemsCard.tsx`.
+**New files:** `src/cards/AllergiesCard.tsx`, `src/cards/ProblemsCard.tsx`,
+`src/cards/AllergiesCard.test.tsx`, `src/cards/ProblemsCard.test.tsx`,
+`src/__fixtures__/fhir/` (shared FHIR bundle fixtures for card tests).
 **Edited files:** `src/pages/Dashboard.tsx` (replace 2 placeholders with real cards).
 **Reference (read-only):** `templates/patient/card/allergies.html.twig`,
 `templates/patient/card/medical_problems.html.twig`.
@@ -236,10 +287,20 @@ distinction handled correctly.
   - [ ] Fields: drug, dose, frequency, route, refills (`dispenseRequest.numberOfRepeatsAllowed`),
         quantity (`dispenseRequest.quantity.value`)
   - [ ] Reconstruct row layout from upstream Smarty fragment — no direct Twig analog
+- [ ] **Tests:**
+  - [ ] `src/cards/MedicationsCard.test.tsx` — fixture with intents `plan`,
+        `proposal`, `order`, `original-order`: only `plan` + `proposal` render;
+        `dosageInstruction[0].text` displayed; falls back to
+        `medicationCodeableConcept.text` when `medicationReference` absent
+  - [ ] `src/cards/PrescriptionsCard.test.tsx` — fixture renders refills
+        (`dispenseRequest.numberOfRepeatsAllowed`), quantity
+        (`dispenseRequest.quantity.value`), route, frequency; row missing
+        `dispenseRequest` doesn't crash
 - [ ] **Verify:** parity matrix screenshots; confirm Meds card includes
       problem-list medications (intent=plan) that Prescriptions excludes
 
-**New files:** `src/cards/MedicationsCard.tsx`, `src/cards/PrescriptionsCard.tsx`.
+**New files:** `src/cards/MedicationsCard.tsx`, `src/cards/PrescriptionsCard.tsx`,
+`src/cards/MedicationsCard.test.tsx`, `src/cards/PrescriptionsCard.test.tsx`.
 **Edited files:** `src/pages/Dashboard.tsx` (replace 2 more placeholders).
 **Reference (read-only):** `templates/patient/card/medication.html.twig`,
 `templates/patient/card/rx.html.twig` (Smarty fragment — read rendered HTML).
@@ -261,10 +322,16 @@ distinction handled correctly.
   - [ ] Edit mode: **out of scope** per the read-only-clinical-summary framing
         (see "Scope statement" at top of this file). Defended in the migration
         doc as a deliberate scope decision, *not* an API limit.
+- [ ] **Tests:**
+  - [ ] `src/cards/CareTeamCard.test.tsx` (mock `fhirRead`) — fixture
+        `CareTeam` with 4 participants referencing 3 unique Practitioner UUIDs
+        (one duplicate): exactly 3 `Practitioner.read()` calls fire; resolved
+        names render; `participant.role[].text` and `participant.period.start`
+        display; missing role/period rows render without crashing
 - [ ] **Verify:** patient with multi-member care team; network tab shows N parallel
       Practitioner reads with no dupes; total wait sub-100ms on localhost
 
-**New files:** `src/cards/CareTeamCard.tsx`.
+**New files:** `src/cards/CareTeamCard.tsx`, `src/cards/CareTeamCard.test.tsx`.
 **Edited files:** `src/pages/Dashboard.tsx` (replace placeholder).
 **Reference (read-only):** `templates/patient/card/manage_care_team.html.twig`,
 `src/Services/FHIR/FhirCareTeamService.php` (search-param surface).
@@ -284,10 +351,17 @@ high/low/critical badges from `interpretation`.
         badge (`interpretation[0].coding[0].code` → H/L/HH/LL/A)
   - [ ] Client-side tiebreaker sort by `effectiveDateTime`
   - [ ] Document the `_count=200` cap in the migration doc
+- [ ] **Tests:**
+  - [ ] `src/cards/LabResultsCard.test.tsx` — fixture mixed Observations
+        group by LOINC `code.coding[?].system === 'http://loinc.org'`; missing
+        LOINC falls back to `code.text` then `'Unknown'`; H/L/HH/LL/A
+        interpretation codes each render the right badge color; rows within a
+        group sort by `effectiveDateTime` newest-first; `valueString` rows
+        render alongside `valueQuantity` rows
 - [ ] **Verify:** patient with diverse labs (mix of normal/high/low/critical/abnormal);
       grouping correct, badges colored correctly, sort newest-first
 
-**New files:** `src/cards/LabResultsCard.tsx`.
+**New files:** `src/cards/LabResultsCard.tsx`, `src/cards/LabResultsCard.test.tsx`.
 **Edited files:** `src/pages/Dashboard.tsx` (replace last placeholder).
 **Reference (read-only):** `interface/patient_file/summary/labdata_fragment.php` (legacy reference only),
 `src/Services/Search/SearchQueryConfig.php` (Observation `_sort=-date` field).
@@ -308,10 +382,19 @@ persists across refresh, and the parity matrix is captured.
 - [ ] Boundary smoke check: `grep -rE 'mysql|mysqli|PDO|Doctrine|ADODB' dashboard-spa/` returns nothing
 - [ ] Capture parity matrix: 3 Synthea patients × 6 sections, side-by-side screenshots
       saved to `dashboard-spa/parity-matrix/`
+- [ ] **Tests:**
+  - [ ] `src/prefs/collapseStore.test.ts` — keys are namespaced
+        `${user.sub}:${cardId}`; setting user A's pref does not affect user
+        B's read; round-trip get/set; corrupt/missing localStorage value
+        returns the documented default
+  - [ ] `src/pages/Dashboard.test.tsx` — render the dashboard with one card
+        component swapped for a thrower; assert the other 5 cards still
+        mount and only the failing card shows the boundary fallback
 - [ ] **Verify:** force-throw inside one card → other 5 still render; refresh
       browser → collapse state preserved
 
-**New files:** `src/prefs/collapseStore.ts`, `dashboard-spa/parity-matrix/*.png`.
+**New files:** `src/prefs/collapseStore.ts`, `src/prefs/collapseStore.test.ts`,
+`src/pages/Dashboard.test.tsx`, `dashboard-spa/parity-matrix/*.png`.
 **Edited files:** `src/components/CardBase.tsx` (collapse persistence),
 all 6 `src/cards/*.tsx` (loading/error/empty polish), possibly `src/pages/Dashboard.tsx`
 (wrap each card in `<ErrorBoundary>`).
@@ -365,5 +448,8 @@ deliverable.
       title do that work.
 - **Each PR ends in a working state.** No half-shipped PRs that depend on the next one
       to compile.
+- **Tests ship with the code they cover** (per repo `CLAUDE.md` policy). `npm run test:ci`
+      must be green before a PR is marked ready. PR 2 (auth) follows test-first; PRs 3–9
+      are test-alongside.
 - **Boundary check on every PR:** the diff outside `dashboard-spa/` and root `*.md` files
       should be empty. If it isn't, something's wrong.
