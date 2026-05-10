@@ -1,4 +1,63 @@
-/* Project-level overrides on top of Bootstrap 4.6. */
+/* Project-level overrides on top of Bootstrap 4.6.
+   Goal: make the SPA read as a "dashboard" rather than a stack of bare
+   Bootstrap cards on a white page. We deliberately don't touch the
+   inside-the-card rendering (those mirror the legacy Twig surface). */
+
 body {
   margin: 0;
+  background-color: #f3f4f6; /* light gray app surface so cards visually pop */
+  color: #1f2937;
+}
+
+.dashboard-shell {
+  /* The legacy dashboard fills the viewport; we mirror that on lg+ but
+     keep narrower bounds on small screens for readability. */
+  max-width: 1280px;
+}
+
+.dashboard-card {
+  /* Subtle elevation — keeps the cards distinct from the gray surface
+     without pulling focus from the content inside. */
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.dashboard-card .card-title {
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  border-top-left-radius: 0.25rem;
+  border-top-right-radius: 0.25rem;
+}
+
+.dashboard-card .card-title .btn-link {
+  color: #1d4ed8; /* matches Bootstrap-4.6 primary blue but a touch deeper */
+  text-decoration: none;
+}
+
+.dashboard-card .card-title .btn-link:hover {
+  text-decoration: none;
+  color: #1e3a8a;
+}
+
+.patient-header {
+  /* Colored top accent so the identity bar reads as a pinned header
+     rather than just another card. */
+  border-top: 3px solid #1d4ed8;
+}
+
+.patient-header .patient-name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.patient-header .field-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+  color: #6b7280;
+}
+
+.patient-header .field-value {
+  font-weight: 500;
+  color: #111827;
 }

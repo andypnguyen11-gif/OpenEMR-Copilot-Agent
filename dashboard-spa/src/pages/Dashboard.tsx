@@ -20,29 +20,60 @@ export function Dashboard() {
     )
   }
   return (
-    <div className="container py-4">
-      <div className="d-flex justify-content-end mb-2">
+    <div className="container dashboard-shell py-4">
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <h1 className="h5 mb-0 text-muted font-weight-normal">
+          Medical Record Dashboard
+        </h1>
         <SwitchPatientButton />
       </div>
+
       <PatientHeader id={id} />
-      <CardSlot title="Allergies">
-        <AllergiesCard patientId={id} />
-      </CardSlot>
-      <CardSlot title="Problem List">
-        <ProblemsCard patientId={id} />
-      </CardSlot>
-      <CardSlot title="Medications">
-        <MedicationsCard patientId={id} />
-      </CardSlot>
-      <CardSlot title="Prescriptions">
-        <PrescriptionsCard patientId={id} />
-      </CardSlot>
-      <CardSlot title="Care Team">
-        <CareTeamCard patientId={id} />
-      </CardSlot>
-      <CardSlot title="Lab Results">
-        <LabResultsCard patientId={id} />
-      </CardSlot>
+
+      {/* Top row mirrors the legacy 3-column layout: Allergies, Problem List,
+          Medications. col-md-6 keeps two-up on tablets; col-xl-4 splits to
+          three-up on desktop. */}
+      <div className="row">
+        <div className="col-12 col-md-6 col-xl-4">
+          <CardSlot title="Allergies">
+            <AllergiesCard patientId={id} />
+          </CardSlot>
+        </div>
+        <div className="col-12 col-md-6 col-xl-4">
+          <CardSlot title="Problem List">
+            <ProblemsCard patientId={id} />
+          </CardSlot>
+        </div>
+        <div className="col-12 col-md-12 col-xl-4">
+          <CardSlot title="Medications">
+            <MedicationsCard patientId={id} />
+          </CardSlot>
+        </div>
+      </div>
+
+      {/* Prescriptions is full-width per the legacy — it's the densest card,
+          with refills/quantity columns that benefit from horizontal room. */}
+      <div className="row">
+        <div className="col-12">
+          <CardSlot title="Prescriptions">
+            <PrescriptionsCard patientId={id} />
+          </CardSlot>
+        </div>
+      </div>
+
+      {/* Care Team + Lab Results paired on lg+. */}
+      <div className="row">
+        <div className="col-12 col-lg-6">
+          <CardSlot title="Care Team">
+            <CareTeamCard patientId={id} />
+          </CardSlot>
+        </div>
+        <div className="col-12 col-lg-6">
+          <CardSlot title="Lab Results">
+            <LabResultsCard patientId={id} />
+          </CardSlot>
+        </div>
+      </div>
     </div>
   )
 }

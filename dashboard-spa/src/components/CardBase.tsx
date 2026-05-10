@@ -60,9 +60,9 @@ export function CardBase({
   }
 
   return (
-    <section className="card mb-3">
-      <div className="card-body p-1">
-        <h6 className="card-title mb-0 d-flex p-1 justify-content-between">
+    <section className="card dashboard-card mb-3">
+      <div className="card-body p-0">
+        <h6 className="card-title mb-0 d-flex px-3 py-2 justify-content-between">
           <button
             type="button"
             className="btn btn-link text-left font-weight-bolder p-0"

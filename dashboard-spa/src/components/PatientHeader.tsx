@@ -59,12 +59,15 @@ export function PatientHeader({ id }: Props) {
   }
 
   return (
-    <header className="card mb-3" role="banner">
+    <header className="card patient-header mb-3" role="banner">
       <div
-        className="card-body p-3 d-flex flex-wrap align-items-baseline"
+        className="card-body p-3 d-flex flex-wrap align-items-center"
         data-testid="patient-header"
       >
-        <h1 className="h4 mb-0 mr-4" data-testid="patient-name">
+        <h1
+          className="h4 mb-0 mr-4 patient-name"
+          data-testid="patient-name"
+        >
           {displayName(patient)}
         </h1>
         <Field label="DOB" value={patient.birthDate ?? '—'} />
@@ -112,8 +115,10 @@ function Field({
 }) {
   return (
     <div className="mr-4 mb-1">
-      <small className="text-muted d-block">{label}</small>
-      <span data-testid={testId}>{value}</span>
+      <small className="d-block field-label">{label}</small>
+      <span className="field-value" data-testid={testId}>
+        {value}
+      </span>
     </div>
   )
 }
