@@ -482,43 +482,47 @@ those values don't correspond to anything raster-renderable. The
 inline citation snippet next to each value remains the source of truth
 for clinician verification on these document types.
 
-### Follow-up: PR 5c — tighten per-field bboxes (extractor work)
+### PR 5c — OCR-based bbox tightening (LANDED 2026-05-09)
 
-**Trigger:** open after PR 5 ships if reviewers report bbox rectangles
-that cover too much of the page to be useful for verification.
+**What shipped:** Tesseract OCR runs at ingest time on each rendered
+page; for every extracted_document citation we tokenize its `raw_text`,
+find the matching OCR words inside the AI's coarse hint bbox, and
+replace the citation's bbox with the union bbox of the matched words.
+Best-effort — citations whose raw_text doesn't match keep their
+original coarse bbox.
 
-**Observed problem (2026-05-09 against `openemr:doc:4518`, fax_tiff):**
-the Anthropic vision extractor returns one coarse bbox per page chunk,
-and every field on that page reuses it. Concrete shape from the
-extracted JSON:
+**Files:**
+- NEW: `agent-service/src/clinical_copilot/documents/ocr_bbox.py`
+- NEW: `agent-service/tests/unit/documents/test_ocr_bbox.py` (12 cases)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (wire into ingest)
+- EDIT: `agent-service/Dockerfile` (add `tesseract-ocr` apt package)
+- EDIT: `agent-service/pyproject.toml` (add `pytesseract>=0.3.13`)
+
+**Verification (live ingest of `lipid_panel.pdf` after restart):**
+Before OCR: every observation row had bbox
+`[0.07, 0.30, 0.93, 0.37]` — width 0.86, area 0.060.
+After OCR: rows are now distinct and tighter:
 
 ```
-patient_name page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49
-patient_dob  page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
-sender_name  page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
-fax_date     page=1 bbox=[0.03,0.03,0.97,0.52]  w=0.94 h=0.49  ← same
+Total Cholesterol [0.155, 0.290, 0.574, 0.330] area=0.017
+HDL Cholesterol   [0.119, 0.236, 0.674, 0.300] area=0.035
+LDL Cholesterol   [0.119, 0.236, 0.683, 0.328] area=0.052
+Triglycerides     [0.530, 0.345, 0.574, 0.357] area=0.001
 ```
 
-Click-to-highlight is functionally meaningless because every row
-highlights the same page-chunk rectangle. The lab_pdf extractor does
-slightly better (row-scoped horizontal bands like
-`[0.07, 0.44, 0.93, 0.51]`), but still not value-tight.
+Click-to-highlight now points at different rectangles per row instead
+of all rows landing on the same row-band.
 
-**Two viable paths:**
+**Known limit:** subfield bboxes within a row (`.display`, `.value`,
+`.unit`) remain identical because the AI extractor emits one
+`raw_text` per row and reuses it across subfields. Per-subfield
+tightness requires an extractor-prompt change (emit per-subfield
+raw_text); separate work, not blocking.
 
-1. **Tighter VLM prompt + few-shot bbox examples.** Cheap to try;
-   uncertain payoff because bbox precision is genuinely a weak point
-   for current Anthropic vision models on dense forms.
-2. **OCR-based post-processing.** Run Tesseract on each rendered page
-   at ingest time, build an index of `(text, bbox)` tuples, and for
-   each `SourceCitation.raw_text` find the matching OCR span and
-   replace the model's coarse bbox with the OCR bbox. Higher
-   reliability; adds Tesseract to the agent-service Dockerfile
-   (~50MB) and ~500ms per page at ingest time.
-
-**Per-extractor cost/benefit** — fax_tiff and lab_pdf benefit most
-(table-heavy, dense forms). Intake_form is already field-anchored at
-extraction time (less to gain). Skip for HL7 (no spatial layout).
+**Cost:** ~1-3 seconds per page at ingest time (bound by Tesseract).
+Cached implicitly via the per-page OCR cache in
+`tighten_extracted_document_citations`. No runtime cost — the
+tightened bboxes live in the facts JSON the overlay reads.
 
 ### Follow-up: PR 5b — docx/xlsx → PDF rendering for full overlay support
 
