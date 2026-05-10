@@ -1,5 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { AllergiesCard } from '../cards/AllergiesCard'
+import { CareTeamCard } from '../cards/CareTeamCard'
 import { MedicationsCard } from '../cards/MedicationsCard'
 import { PrescriptionsCard } from '../cards/PrescriptionsCard'
 import { ProblemsCard } from '../cards/ProblemsCard'
@@ -8,10 +9,8 @@ import { EmptyState } from '../components/EmptyState'
 import { PatientHeader } from '../components/PatientHeader'
 import { SwitchPatientButton } from '../components/SwitchPatientButton'
 
-// PRs 7–8 swap each remaining placeholder for a real card. The titles match
-// upstream's section headings so the parity-matrix screenshots in PR 9 line
-// up row-for-row.
-const PLACEHOLDER_TITLES = ['Care Team', 'Lab Results'] as const
+// PR 8 swaps the last placeholder (Lab Results) for a real card.
+const PLACEHOLDER_TITLES = ['Lab Results'] as const
 
 export function Dashboard() {
   const { id } = useParams<{ id: string }>()
@@ -32,6 +31,7 @@ export function Dashboard() {
       <ProblemsCard patientId={id} />
       <MedicationsCard patientId={id} />
       <PrescriptionsCard patientId={id} />
+      <CareTeamCard patientId={id} />
       {PLACEHOLDER_TITLES.map((title) => (
         <CardBase key={title} title={title}>
           <EmptyState variant="nothing-recorded" />
