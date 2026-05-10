@@ -58,6 +58,17 @@ COPY --chown=apache:apache interface/modules/custom_modules/oe-module-copilot/ \
 COPY --chown=apache:apache scripts/copilot/ \
      ${OPENEMR_ROOT}/scripts/copilot/
 
+# Doctrine Migrations directory. The base image ships only the
+# Version00000000000000 baseline; any migration we add to db/Migrations/
+# in this repo (e.g. Version20260509201506 for chart-write idempotency
+# columns on the documents table) needs to be in the image so
+# `./cli migrations:migrate` can apply it on deploy. Without this COPY,
+# new migrations are committed to git but never reach prod, and any
+# code path that depends on the new schema fails with
+# "SQL Statement failed on preparation" at runtime.
+COPY --chown=apache:apache db/Migrations/ \
+     ${OPENEMR_ROOT}/db/Migrations/
+
 # Refresh the Composer classmap so PSR-4 picks up the new
 # OpenEMR\Services\Copilot\* classes even if the base image was built
 # with --classmap-authoritative. Best-effort: skipped if composer or
