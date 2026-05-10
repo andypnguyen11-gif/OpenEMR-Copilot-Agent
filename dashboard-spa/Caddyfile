@@ -1,0 +1,7 @@
+# Railway sets $PORT; fall back to 80 for local `docker run`.
+:{$PORT:80} {
+	root * /srv
+	encode zstd gzip
+	try_files {path} /index.html
+	file_server
+}
