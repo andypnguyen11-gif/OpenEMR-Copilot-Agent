@@ -2,7 +2,7 @@
 
 ## Context
 
-The OpenEMR patient dashboard is rendered server-side in PHP (`/interface/patient_file/summary/demographics.php` — a 1,600-line orchestrator that pulls 7+ services, dispatches Twig partials, and bolts together AJAX fragments). The UX was modernized in 2024–2025 (cards under `templates/patient/card/*.twig`), but the runtime stack is still PHP + jQuery + Smarty + Twig + Bootstrap 4 + Apache.
+The OpenEMR patient dashboard is rendered server-side in PHP (`/interface/patient_file/summary/demographics.php` — a 2,072-line orchestrator that pulls 7+ services, dispatches Twig partials, and bolts together AJAX fragments). The UX was modernized in 2024–2025 (cards under `templates/patient/card/*.twig`), but the runtime stack is still PHP + jQuery + Smarty + Twig + Bootstrap 4 + Apache.
 
 The assignment is a one-week port: keep the backend untouched, consume the existing FHIR R4 API, reproduce feature parity for the persistent patient header + the five required clinical cards (Allergies, Problem List, Medications, Prescriptions, Care Team) + one additional section, and **defend the framework choice** in `PATIENT_DASHBOARD_MIGRATION.md`.
 
@@ -14,6 +14,7 @@ The grade is split between (a) a working reimplementation with parity and (b) th
 - No UX redesign. Field-for-field parity with the existing Twig cards.
 - No new clinical features (writes, e-prescribing, lab orders).
 - Not a SMART-on-FHIR app store certification effort.
+- **No Co-Pilot panel port.** The fork-local Co-Pilot panel is not part of upstream OpenEMR and not on the assignment's required-section list. Out of scope; documented as a known gap in the defense doc.
 
 ## Hard architectural boundary
 
@@ -193,7 +194,7 @@ Three things that do NOT lift verbatim and need a real port:
 
 - `templates/patient/card/rx.html.twig` injects a **Smarty** controller fragment for prescription rows. Read the rendered HTML, rebuild the row in JSX (~30 LOC).
 - jQuery-driven Bootstrap collapse → 10-line `<CardBase>` with `useState` (or `react-bootstrap@1.x`).
-- Care Team's inline edit mode is dropped — the new dashboard is read-only.
+- Care Team's inline edit mode is out of scope. The port is positioned as a **read-only clinical summary** — the other required cards (Allergies, Problems, Medications, Prescriptions) are read-only views by nature, so the read-only framing is coherent across the dashboard, not a one-card concession.
 
 ---
 
@@ -234,7 +235,7 @@ Three things that do NOT lift verbatim and need a real port:
 - **FHIR:** `GET /CareTeam?patient={id}` THEN parallel `GET /Practitioner/{uuid}` for each unique `participant.member.reference`.
 - **Why parallel fetches:** OpenEMR's `FhirCareTeamService` declares only `patient`, `status`, `_id`, `_lastUpdated` as search params — `_include=CareTeam:participant` is silently dropped. Parallel fetches are 1–4 extra requests on localhost FHIR, sub-100ms total. Memoize per-request by reference so the same provider isn't fetched twice.
 - **Fields:** member name, role (`participant.role[].text`), facility, status, since-date (`participant.period.start`), note.
-- **Edit mode:** dropped (read-only port).
+- **Edit mode:** out of scope per the read-only-clinical-summary framing (see HTML lift strategy). Defended in `PATIENT_DASHBOARD_MIGRATION.md` §0/§7 as a deliberate scope decision, not an API constraint.
 
 ### Lab Results (additional section)
 - **Source:** new section; existing dashboard has `labdata_fragment.php` for reference
@@ -255,15 +256,30 @@ Three things that do NOT lift verbatim and need a real port:
 
 ## PATIENT_DASHBOARD_MIGRATION.md outline
 
-The defense doc is part of the grade. Outline:
+The defense doc is part of the grade. **Stub the doc with §0–§4 + §8 in PR 1** —
+the framework decision is locked and the headline argument can be written before
+any code. PR 10 finalizes §5–§7 with measured numbers and parity-matrix
+screenshots. Sections §5–§7 land as `TBD` placeholders in the PR 1 stub so the
+doc's structure exists from day one.
 
-1. **Why port at all** — what the legacy stack costs (untyped service-layer arrays flowing into Twig, jQuery + Smarty + Twig coexisting in one card, 1,600-line orchestrator).
+0. **Scope** — Parity is measured against the dashboard surface the assignment
+   enumerates: authentication, the persistent patient header, the five required
+   clinical cards (Allergies, Problem List, Medications, Prescriptions, Care
+   Team), and one additional section (Lab Results, chosen from the assignment's
+   fixed list). Other surfaces in the upstream dashboard (advance directives,
+   appointments, billing, eligibility, eRx, immunizations, insurance, recall,
+   treatment plans — ~15 cards in `templates/patient/card/` total) are out of
+   scope by the assignment's own enumeration. The port is positioned as a
+   **read-only clinical summary** — the required cards are data-display views
+   by nature; write workflows (Care Team edit) are deliberately out of scope,
+   not an API limitation.
+1. **Why port at all** — what the legacy stack costs (untyped service-layer arrays flowing into Twig, jQuery + Smarty + Twig coexisting in one card, 2,072-line orchestrator).
 2. **Why React + Vite (not Next.js, not SvelteKit, not Remix)** — three rejected alternatives steel-manned, with the actual reasons each was the runner-up. Honest about the *defense narrative* trade vs the *runtime simplicity* win.
 3. **Why pure SPA (no BFF)** — the boundary constraint, the foot-gun list from the Plan-agent critique that BFF would have introduced, and how the SPA path leaves zero new infra.
 4. **What was gained** — typed components, parallel fetches, per-card error boundaries, code-splitting by route, no jQuery, no Smarty, no Twig-includes-Twig-includes-Smarty, hot reload <100ms.
-5. **What was given up** — first paint waits for JS + token + network (numbers, not vibes); page refresh re-auths (~1s on local); no SSR; care-team edit removed; one-card-per-card parity gaps documented below.
-6. **Parity matrix** — for each of the 6 sections: side-by-side screenshots of legacy vs port for the same Synthea patient. Field-for-field check.
-7. **Known parity gaps** — collapse-state persistence is per-browser via `localStorage` (legacy was per-user via AJAX). `hide_dashboard_cards` global is unsupported. Care-team write actions removed. AllergyIntolerance `clinical-status` filtering is client-side because the API doesn't support the search param.
+5. **What was given up** — first paint waits for JS + token + network (measured number, not vibes); page refresh re-auths (~1s on local — measured); no SSR; one-card-per-card parity gaps documented below. Care-team edit is *not* listed here — it's covered in §0 as a deliberate scope decision.
+6. **Parity matrix** — for each of the 7 visible sections (header + 5 required cards + Lab Results): side-by-side screenshots of legacy vs port for the same Synthea patient. Field-for-field check.
+7. **Known parity gaps** — collapse-state persistence is per-browser via `localStorage` (legacy was per-user via AJAX) — direct consequence of the no-BFF decision. `hide_dashboard_cards` global is unsupported. **Care-team edit mode is out of scope per §0's read-only-summary framing, not an API limitation** (FHIR `CareTeam` writes are technically possible against OpenEMR — this is a deliberate scope decision). AllergyIntolerance `clinical-status` filtering is client-side because the API doesn't support the search param. Fork-local Co-Pilot panel excluded (this port targets upstream OpenEMR's dashboard surface, not this fork's local additions).
 8. **What's reusable** — `<CardBase>`, `fhirSearch` wrapper, the auth flow — this scaffold is what other PHP pages would migrate onto.
 
 ---
