@@ -1,15 +1,15 @@
 import { useParams } from 'react-router-dom'
+import { AllergiesCard } from '../cards/AllergiesCard'
+import { ProblemsCard } from '../cards/ProblemsCard'
 import { CardBase } from '../components/CardBase'
 import { EmptyState } from '../components/EmptyState'
 import { PatientHeader } from '../components/PatientHeader'
 import { SwitchPatientButton } from '../components/SwitchPatientButton'
 
-// Six placeholder cards seed the layout PRs 5–8 fill in (one card per PR
-// section). They render here so the parity-matrix screenshots in PR 9 can
-// capture the full grid even before any card has real data.
-const CARD_TITLES = [
-  'Allergies',
-  'Problem List',
+// PRs 6–8 swap each remaining placeholder for a real card. The titles match
+// upstream's section headings so the parity-matrix screenshots in PR 9 line
+// up row-for-row.
+const PLACEHOLDER_TITLES = [
   'Medications',
   'Prescriptions',
   'Care Team',
@@ -19,8 +19,6 @@ const CARD_TITLES = [
 export function Dashboard() {
   const { id } = useParams<{ id: string }>()
   if (!id) {
-    // Reached only via a misconfigured route; useParams returns undefined.
-    // Surface a clear message rather than silently rendering an empty header.
     return (
       <div className="container py-4">
         <p className="text-danger">Missing patient ID in route.</p>
@@ -33,7 +31,9 @@ export function Dashboard() {
         <SwitchPatientButton />
       </div>
       <PatientHeader id={id} />
-      {CARD_TITLES.map((title) => (
+      <AllergiesCard patientId={id} />
+      <ProblemsCard patientId={id} />
+      {PLACEHOLDER_TITLES.map((title) => (
         <CardBase key={title} title={title}>
           <EmptyState variant="nothing-recorded" />
         </CardBase>

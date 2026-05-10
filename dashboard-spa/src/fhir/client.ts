@@ -74,14 +74,14 @@ function buildSearchUrl(
   resourceType: string,
   params: Record<string, string>,
 ): string {
-  const url = new URL(`${baseUrl}/${resourceType}`)
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value)
+  // URLSearchParams (not new URL) — the dev build uses a relative
+  // baseUrl ("/apis/default/fhir" via Vite's proxy), and `new URL` rejects
+  // those. fetch() itself accepts relative URLs fine.
+  const search = new URLSearchParams(params)
+  if (!search.has('_count')) {
+    search.set('_count', DEFAULT_COUNT)
   }
-  if (!url.searchParams.has('_count')) {
-    url.searchParams.set('_count', DEFAULT_COUNT)
-  }
-  return url.toString()
+  return `${baseUrl}/${resourceType}?${search.toString()}`
 }
 
 async function requestWith401Retry(

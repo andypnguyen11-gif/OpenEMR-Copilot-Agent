@@ -91,6 +91,20 @@ describe('fhirSearch', () => {
     expect(new URL(call?.[0] ?? '').searchParams.get('_count')).toBe('200')
   })
 
+  it('builds search URLs against a relative baseUrl (Vite-proxy dev mode)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(buildBundle([])))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = createFhirClient({
+      baseUrl: '/apis/default/fhir',
+      getAccessToken: async () => 'access',
+    })
+    await client.search('AllergyIntolerance', { patient: 'p-1' })
+    const call = fetchMock.mock.calls[0] as FetchCall | undefined
+    expect(call?.[0]).toBe(
+      '/apis/default/fhir/AllergyIntolerance?patient=p-1&_count=200',
+    )
+  })
+
   it('honors a caller-provided _count', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(buildBundle([])))
     vi.stubGlobal('fetch', fetchMock)
