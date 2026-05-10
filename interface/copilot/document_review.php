@@ -467,14 +467,19 @@ Header::setupHeader();
         have the answer; leave them blank to keep the abstention.
     </p>
     <?php
-    // Bbox citation overlay — needs $documentId, $facts, $webroot in
-    // scope. Renders the source page(s) with rectangles for every
-    // SourceCitation the extractor emitted. Click any field row below
-    // to color-flip the matching rectangle so you can verify the
-    // extracted value against the source location it came from.
+    // Bbox citation overlay — needs $documentId, $documentType,
+    // $facts, $webroot in scope. Renders the source page(s) with
+    // rectangles for every SourceCitation the extractor emitted (or
+    // an explanatory note for non-renderable doc types). Click any
+    // field row to color-flip the matching rectangle. The partial
+    // floats right; the form-col wrapper below floats left so the
+    // two sit side-by-side on wide viewports.
     include __DIR__ . '/partials/citation_overlay.php';
     ?>
+    <div class="copilot-review-form-col">
     <?php echo FactsFormHelper::renderFacts($factsInner, '', ''); ?>
+    </div>
+    <div style="clear: both;"></div>
 
     <div class="actions">
         <button type="submit">Save edits, write to chart &amp; attach</button>

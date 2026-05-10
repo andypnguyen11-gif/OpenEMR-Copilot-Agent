@@ -134,12 +134,14 @@ Header::setupHeader();
 // Bbox citation overlay — needs $documentId, $facts, $webroot in
 // scope. Renders the source page(s) with rectangles for every
 // SourceCitation the extractor emitted. Click a row in the table
-// below (specifically the analyte cell) to color-flip the matching
-// rectangle.
+// (specifically the analyte cell) to color-flip the matching
+// rectangle. The partial floats right; the form below claims the
+// left column via .copilot-review-form-col so the two sit
+// side-by-side on wide viewports.
     include __DIR__ . '/partials/citation_overlay.php';
     ?>
 
-<form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/lab_save_ai.php', ENT_QUOTES, 'UTF-8'); ?>">
+<form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/lab_save_ai.php', ENT_QUOTES, 'UTF-8'); ?>" class="copilot-review-form-col">
     <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
     <input type="hidden" name="pid" value="<?php echo $pid; ?>">
     <input type="hidden" name="document_id" value="<?php echo htmlspecialchars($documentId, ENT_QUOTES, 'UTF-8'); ?>">
@@ -217,6 +219,7 @@ Header::setupHeader();
         <button type="submit">Confirm and save to chart</button>
     </div>
 </form>
+<div style="clear: both;"></div>
 <?php endif; ?>
 </body>
 </html>

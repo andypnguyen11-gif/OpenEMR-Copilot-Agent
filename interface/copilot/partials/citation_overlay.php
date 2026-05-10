@@ -90,13 +90,13 @@ $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERRO
 <?php elseif (!$documentTypeIsRenderable): ?>
     <p class="overlay-empty">
         Source preview is not available for <code><?php echo htmlspecialchars($documentTypeLocal, ENT_QUOTES, 'UTF-8'); ?></code>
-        documents — the citations below reference document positions
-        (page / sheet / HL7 segment) but the source bytes can't be
-        rendered to an image. Use the citation snippet on each row
-        below to verify the extracted value against the original.
+        documents — the citations on each field reference document
+        positions (page / sheet / HL7 segment) but the source bytes
+        can't be rendered to an image. Use the 📎 citation snippet on
+        each row to verify the extracted value against the original.
     </p>
 <?php else: ?>
-    <p class="overlay-help">Click a row in the table below to highlight its citation on the page.</p>
+    <p class="overlay-help">Click a row in the form to highlight its citation on the page.</p>
     <?php foreach ($citationsByPage as $pageNumber => $entries): ?>
         <?php
         $pageUrl = $pageImageBase
@@ -120,14 +120,62 @@ $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERRO
 <?php endif; ?>
 </section>
 <style>
-    .copilot-citation-overlay { margin: 1rem 0 1.5rem; }
+    /* Right-docked panel: source preview lives alongside the form so
+       the clinician can compare side-by-side without scrolling. The
+       parent page wraps the form in `.copilot-review-form-col` (one
+       CSS rule, defined here so the partial owns the layout
+       contract). On narrow viewports we stack form-then-panel via
+       the media query below. */
+    .copilot-review-form-col {
+        float: left;
+        width: 50%;
+        padding-right: 1rem;
+        box-sizing: border-box;
+    }
+    .copilot-review-form-col table,
+    .copilot-review-form-col input[type="text"],
+    .copilot-review-form-col input[type="number"],
+    .copilot-review-form-col input[type="date"] {
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    .copilot-citation-overlay {
+        float: right;
+        width: 48%;
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+        position: sticky;
+        top: 1rem;
+        margin: 0 0 1.5rem;
+        padding: 0.5rem;
+        background: #fafafa;
+        border: 1px solid #e5e5e5;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
     .copilot-citation-overlay .overlay-help { color: #555; font-size: 0.9em; }
     .copilot-citation-overlay .overlay-empty { color: #666; font-style: italic; }
     .copilot-citation-overlay .overlay-page { margin: 0 0 1rem; padding: 0; }
     .copilot-citation-overlay .overlay-page figcaption {
         font-size: 0.85em; color: #555; margin-top: 0.25rem;
     }
-    .copilot-citation-overlay .overlay-image { border: 1px solid #ddd; }
+    .copilot-citation-overlay .overlay-image {
+        border: 1px solid #ddd;
+        max-width: 100%;
+        height: auto;
+    }
+    /* Below ~1100px the side-by-side layout cramps the form's input
+       widths, so fall back to stacked: form first, panel below. */
+    @media (max-width: 1100px) {
+        .copilot-review-form-col,
+        .copilot-citation-overlay {
+            float: none;
+            width: 100%;
+            position: static;
+            max-height: none;
+        }
+        .copilot-review-form-col { padding-right: 0; }
+    }
 </style>
 <script>
 (function () {
