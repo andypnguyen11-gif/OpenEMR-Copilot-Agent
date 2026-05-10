@@ -1,7 +1,22 @@
 # Railway sets $PORT; fall back to 80 for local `docker run`.
 :{$PORT:80} {
-	root * /srv
 	encode zstd gzip
-	try_files {path} /index.html
-	file_server
+
+	# Same-origin reverse proxy to OpenEMR for /apis/*. The browser sees the
+	# SPA host as the origin for FHIR/REST fetches → no CORS preflight at all.
+	# This sidesteps an upstream OpenEMR CORSListener bug where OPTIONS on
+	# FHIR resource routes returns 404 before the listener can short-circuit.
+	# Backend is intentionally not patched — see PATIENT_DASHBOARD_MIGRATION.md.
+	handle /apis/* {
+		reverse_proxy https://openemr-production-6c31.up.railway.app {
+			header_up Host openemr-production-6c31.up.railway.app
+		}
+	}
+
+	# SPA static + fallback so /callback, /patients/* etc. survive a refresh.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
