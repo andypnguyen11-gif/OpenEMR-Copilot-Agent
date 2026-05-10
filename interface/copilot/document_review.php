@@ -466,6 +466,14 @@ Header::setupHeader();
         mark fields the extractor abstained on — fill them in if you
         have the answer; leave them blank to keep the abstention.
     </p>
+    <?php
+    // Bbox citation overlay — needs $documentId, $facts, $webroot in
+    // scope. Renders the source page(s) with rectangles for every
+    // SourceCitation the extractor emitted. Click any field row below
+    // to color-flip the matching rectangle so you can verify the
+    // extracted value against the source location it came from.
+    include __DIR__ . '/partials/citation_overlay.php';
+    ?>
     <?php echo FactsFormHelper::renderFacts($factsInner, '', ''); ?>
 
     <div class="actions">

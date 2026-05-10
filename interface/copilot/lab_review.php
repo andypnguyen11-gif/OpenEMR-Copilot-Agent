@@ -9,10 +9,12 @@
  * to ``procedure_order`` / ``procedure_order_code`` / ``procedure_report``
  * / ``procedure_result``.
  *
- * Citations render as a "view source" inline button; for the demo cut
- * the citation displays as text (page number + bbox raw_text). The
- * full citation modal with bbox-on-rendered-page overlay is W2-02
- * polish (cuttable per the plan).
+ * Citations render two ways. Each row carries a text snippet
+ * (page number + raw_text) inline next to the value, and the page
+ * is rendered in full above the table with bbox rectangles drawn on
+ * a canvas overlay (see ``partials/citation_overlay.php``). Clicking
+ * a row's analyte cell color-flips the matching rectangle so the
+ * clinician can verify the extraction against the source.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -128,6 +130,15 @@ Header::setupHeader();
     <div class="alert-error">The extractor returned no observations. The document may not be a lab report.</div>
 <?php else: ?>
 
+    <?php
+// Bbox citation overlay — needs $documentId, $facts, $webroot in
+// scope. Renders the source page(s) with rectangles for every
+// SourceCitation the extractor emitted. Click a row in the table
+// below (specifically the analyte cell) to color-flip the matching
+// rectangle.
+    include __DIR__ . '/partials/citation_overlay.php';
+    ?>
+
 <form method="post" action="<?php echo htmlspecialchars($webroot . '/interface/copilot/lab_save_ai.php', ENT_QUOTES, 'UTF-8'); ?>">
     <input type="hidden" name="csrf_token_form" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
     <input type="hidden" name="pid" value="<?php echo $pid; ?>">
@@ -161,10 +172,20 @@ Header::setupHeader();
             $citation = ExtractedFieldHelper::citationText($obs['display'] ?? null);
             $abstain = ExtractedFieldHelper::abstainReason($obs['value'] ?? null);
             $checked = $abstain === '' ? 'checked' : '';
+            // Surface the analyte cell's citation `field_or_chunk_id` on
+            // the cell itself so a click highlights the matching bbox in
+            // the overlay above. Each lab observation has multiple
+            // citations (display, value, unit, ...) — we anchor on
+            // ``display`` because that's the column the clinician's eye
+            // tracks first when scanning the table.
+            $displayCitationId = ExtractedFieldHelper::fieldOrChunkId($obs['display'] ?? null);
+            $analyteDataAttr = $displayCitationId !== ''
+                ? ' data-citation-id="' . htmlspecialchars($displayCitationId, ENT_QUOTES, 'UTF-8') . '"'
+                : '';
             ?>
             <tr>
                 <td><input type="checkbox" name="confirm[<?php echo $idx; ?>]" value="1" <?php echo $checked; ?>></td>
-                <td>
+                <td<?php echo $analyteDataAttr; ?> style="cursor: pointer;">
                     <input type="text" name="display[<?php echo $idx; ?>]" value="<?php echo htmlspecialchars($display, ENT_QUOTES, 'UTF-8'); ?>">
                 </td>
                 <td><input type="text" name="code[<?php echo $idx; ?>]" value="<?php echo htmlspecialchars($code, ENT_QUOTES, 'UTF-8'); ?>" style="width:80px;"></td>
