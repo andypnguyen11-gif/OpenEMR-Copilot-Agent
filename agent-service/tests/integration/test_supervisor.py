@@ -283,3 +283,68 @@ def test_supervisor_rerank_backend_none_when_only_intake_dispatched(monkeypatch)
         evidence_retriever=lambda **k: {"chunks": []},
     )
     assert response.rerank_backend is None
+
+
+def test_supervisor_parallel_dispatch_collapses_wall_clock(monkeypatch) -> None:
+    """Two tool_use blocks in one supervisor turn dispatch in parallel.
+
+    Each fake worker sleeps 250 ms; serial dispatch would clock ~500 ms,
+    parallel ~250 ms. We assert the elapsed is < 400 ms — wider than
+    250 to absorb thread-pool warm-up + the no-op Anthropic mock,
+    tighter than 500 to fail loudly on a regression to serial.
+
+    The two-block ``_FakeMessage`` returns both extractor + retriever
+    in a single response, which is exactly the pattern (mixed
+    "extract these labs AND give me the matching guideline") that the
+    serial path was costing the most p95 on.
+    """
+
+    import time
+
+    _patch_isinstance(monkeypatch)
+
+    def slow_intake(**kwargs: Any) -> dict[str, Any]:
+        time.sleep(0.25)
+        return {"facts": {}, "citations": []}
+
+    def slow_evidence(**kwargs: Any) -> dict[str, Any]:
+        time.sleep(0.25)
+        return {"chunks": []}
+
+    client = _build_client(
+        [
+            _FakeMessage(
+                content=[
+                    _FakeToolUseBlock(
+                        id="t1",
+                        name="dispatch_intake_extractor",
+                        input={"document_path": "x.pdf", "document_type": "lab_pdf"},
+                    ),
+                    _FakeToolUseBlock(
+                        id="t2",
+                        name="dispatch_evidence_retriever",
+                        input={"query": "atrial fibrillation rate control"},
+                    ),
+                ]
+            ),
+            _FakeMessage(content=[_FakeTextBlock(text="grounded synthesis")]),
+        ]
+    )
+
+    started = time.perf_counter()
+    response = supervisor.run(
+        client=client,
+        model="claude-sonnet-4",
+        query="extract this lab and find the matching guideline",
+        intake_extractor=slow_intake,
+        evidence_retriever=slow_evidence,
+    )
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+
+    assert len(response.handoffs) == 2
+    workers = sorted(h.worker for h in response.handoffs)
+    assert workers == ["evidence_retriever", "intake_extractor"]
+    assert elapsed_ms < 400, (
+        f"parallel dispatch should collapse to ~250ms; got {elapsed_ms}ms "
+        "(serial regression?)"
+    )

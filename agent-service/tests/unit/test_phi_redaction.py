@@ -20,6 +20,7 @@ import json
 from clinical_copilot.auth.role import Role
 from clinical_copilot.auth.session import ClinicianClaims
 from clinical_copilot.observability.redaction import (
+    _scrub_phi_patterns,
     redact_llm_inputs,
     redact_llm_outputs,
     redact_orchestrator_inputs,
@@ -316,6 +317,141 @@ def test_orchestrator_inputs_omit_lane_when_absent() -> None:
     }
     redacted = redact_orchestrator_inputs(inputs)
     assert "lane" not in redacted
+
+
+# --- Regex backstop coverage --------------------------------------------------
+#
+# The allowlist redactors above drop free-text wholesale. The regex
+# backstop is belt-and-suspenders for PHI that slips through inside an
+# *allowed* field — e.g. an MRN baked into a model-chosen ``tool_name``,
+# an email accidentally promoted to ``user_id``, or a future record
+# schema growing a string identifier whose contents weren't audited.
+#
+# These tests plant each PHI shape inside a normally-allowed field and
+# assert the backstop scrubs it to ``[REDACTED:<KIND>]``.
+
+
+def test_phi_backstop_replaces_ssn() -> None:
+    assert _scrub_phi_patterns("contact 123-45-6789") == "contact [REDACTED:SSN]"
+
+
+def test_phi_backstop_replaces_mrn() -> None:
+    assert _scrub_phi_patterns("MRN: 123456") == "[REDACTED:MRN]"
+    assert _scrub_phi_patterns("see mrn 99887766") == "see [REDACTED:MRN]"
+
+
+def test_phi_backstop_replaces_phone() -> None:
+    for phone in ("415-555-0100", "(415) 555-0100", "415.555.0100"):
+        assert _scrub_phi_patterns(f"call {phone} now") == "call [REDACTED:PHONE] now", phone
+
+
+def test_phi_backstop_replaces_email() -> None:
+    assert (
+        _scrub_phi_patterns("ping patient.smith@example.org for results")
+        == "ping [REDACTED:EMAIL] for results"
+    )
+
+
+def test_phi_backstop_replaces_dob_us_format() -> None:
+    assert _scrub_phi_patterns("DOB 03/14/1972") == "DOB [REDACTED:DOB]"
+    assert _scrub_phi_patterns("born 12-25-1985") == "born [REDACTED:DOB]"
+
+
+def test_phi_backstop_replaces_dob_iso_format() -> None:
+    assert _scrub_phi_patterns("dob: 1972-03-14") == "dob: [REDACTED:DOB]"
+
+
+def test_phi_backstop_replaces_fhir_name_keys() -> None:
+    bundle_ish = '{"resourceType":"Patient","name":[{"family":"Smith","given":["John","Q"]}]}'
+    scrubbed = _scrub_phi_patterns(bundle_ish)
+    assert "Smith" not in scrubbed
+    assert "John" not in scrubbed
+    assert scrubbed.count("[REDACTED:FHIR_NAME]") == 2
+
+
+def test_phi_backstop_leaves_clean_text_alone() -> None:
+    """Latencies, IDs, and structural metadata must pass through untouched."""
+
+    assert _scrub_phi_patterns("supervisor_dispatch_ms=145") == "supervisor_dispatch_ms=145"
+    assert _scrub_phi_patterns("get_problems") == "get_problems"
+    assert _scrub_phi_patterns("Condition/p101-cond-1") == "Condition/p101-cond-1"
+
+
+def test_phi_backstop_fires_on_phi_inside_tool_name_via_redactor() -> None:
+    """If a future tool_name ever carries an MRN-shaped fragment, the
+    backstop catches it even though the allowlist passed the field
+    through unchanged."""
+
+    inputs = {
+        "self": object(),
+        "name": "lookup MRN: 4567890 for chart pull",
+        "claims": _claims_with_secrets(),
+        "patient_id": "101",
+        "request_id": "r1",
+    }
+    redacted = redact_tool_dispatch_inputs(inputs)
+    assert "4567890" not in redacted["tool_name"]
+    assert "[REDACTED:MRN]" in redacted["tool_name"]
+
+
+def test_phi_backstop_fires_on_email_in_user_id_via_redactor() -> None:
+    """``user_id`` can be a clinician identifier; if a downstream
+    auth path ever fills it with an email-shaped value, the backstop
+    must redact it before the trace goes over the wire."""
+
+    claims = ClinicianClaims(
+        user_id="dr.patel@example.org",
+        role=Role.PHYSICIAN,
+        patient_id="101",
+        scopes=["system/Condition.read"],
+        nonce="n",
+        jti="j",
+    )
+    redacted = redact_orchestrator_inputs(
+        {
+            "self": object(),
+            "query": "anything",
+            "claims": claims,
+            "request_id": "r1",
+        }
+    )
+    assert redacted["user_id"] == "[REDACTED:EMAIL]"
+
+
+def test_phi_backstop_fires_on_dob_in_request_id_via_redactor() -> None:
+    """``request_id`` is opaque server data; a DOB-shaped value embedded
+    in it (e.g. via a debug helper that concatenated a date) must still
+    be scrubbed."""
+
+    inputs = {
+        "self": object(),
+        "name": "get_problems",
+        "claims": _claims_with_secrets(),
+        "patient_id": "101",
+        "request_id": "trace-1972-03-14-abc",
+    }
+    redacted = redact_tool_dispatch_inputs(inputs)
+    assert "1972-03-14" not in redacted["request_id"]
+    assert "[REDACTED:DOB]" in redacted["request_id"]
+
+
+def test_phi_backstop_walks_lists_in_redactor_output() -> None:
+    """``tool_def_names`` and ``message_roles`` are lists of strings; the
+    backstop's recursive walker must enter list elements, not just
+    scalar string fields."""
+
+    inputs = {
+        "self": object(),
+        "system": "ok",
+        "tools": [
+            {"name": "get_problems", "description": "...", "input_schema": {}},
+            {"name": "lookup MRN 999000 helper", "description": "...", "input_schema": {}},
+        ],
+        "messages": [],
+    }
+    redacted = redact_llm_inputs(inputs)
+    assert "999000" not in redacted["tool_def_names"][1]
+    assert "[REDACTED:MRN]" in redacted["tool_def_names"][1]
 
 
 def _claims_with_secrets() -> ClinicianClaims:

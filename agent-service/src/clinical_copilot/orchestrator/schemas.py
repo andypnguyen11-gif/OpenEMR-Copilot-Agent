@@ -33,6 +33,33 @@ mis-attributing rerank state to a turn that never invoked it.
 """
 
 
+StageLatencyKey = Literal[
+    "supervisor_dispatch",
+    "rerank",
+    "retriever",
+    "extraction",
+    "total",
+]
+"""Wire-shape labels for the ``AgentResponse.stage_latencies_ms`` map.
+
+Each key is the elapsed time the corresponding stage spent inside the
+request handler:
+
+* ``supervisor_dispatch`` — sum of per-handoff worker round-trips
+  reported by the supervisor (already captured in ``Handoff.latency_ms``).
+* ``rerank`` — wall-clock around the active rerank backend's call.
+* ``retriever`` — BM25 + dense union + RRF fusion stage.
+* ``extraction`` — VLM extraction wall-clock per document ingest.
+* ``total`` — request-level end-to-end (mirrors the ``latency_ms``
+  already persisted on ``agent_traces``; included in the dict so the
+  ratios are obvious to a reader).
+
+A stage that didn't run for the given turn is simply absent from the
+dict — never present with a zero value, since "stage didn't run" and
+"stage took zero time" are different facts.
+"""
+
+
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -171,4 +198,14 @@ class AgentResponse(_Frozen):
     fallback / degraded badge when this is ``"llm_judge"`` or
     ``"bm25_only"`` so a Cohere outage doesn't disappear into the
     background — see :mod:`public/copilot/chat.js`.
+    """
+    stage_latencies_ms: dict[StageLatencyKey, int] = Field(default_factory=dict)
+    """Per-stage wall-clock breakdown for the request that produced this response.
+
+    See :data:`StageLatencyKey` for the full set of keys. The map is
+    populated incrementally as the request progresses — a request that
+    never invoked the rerank stage carries no ``rerank`` key, and so
+    on. Always reported alongside the ``rerank_backend`` field so a
+    trace reader can join the two without descending into the audit
+    span.
     """

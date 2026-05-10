@@ -22,6 +22,7 @@ from the same slot so a salt rotation propagates uniformly.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from clinical_copilot.audit.log import hash_patient_id
@@ -45,6 +46,81 @@ class _SaltSlot:
 
 
 _REDACTION_SALT = _SaltSlot("dev-trace-redaction-salt")
+
+
+# Regex backstop patterns. The allowlist redactors above already drop
+# free-text fields wholesale; this layer is belt-and-suspenders for PHI
+# that slips through inside an *allowed* field — e.g. an MRN baked into
+# a model-chosen ``tool_name``, an email accidentally promoted to
+# ``user_id``, or a future record schema growing a string identifier
+# whose contents weren't audited. Each match is replaced with a typed
+# placeholder so a trace reader sees that scrubbing happened (and which
+# kind fired) rather than silently losing characters.
+_PHI_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "SSN"),
+    (re.compile(r"\bMRN[:\s#]*\d{4,}\b", re.IGNORECASE), "MRN"),
+    (re.compile(r"(?<!\d)\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}(?!\d)"), "PHONE"),
+    (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"), "EMAIL"),
+    (
+        re.compile(r"\b(0?[1-9]|1[0-2])[/-](0?[1-9]|[12]\d|3[01])[/-](19|20)\d{2}\b"),
+        "DOB",
+    ),
+    (
+        re.compile(r"\b(19|20)\d{2}-(0?[1-9]|1[0-2])-(0?[1-9]|[12]\d|3[01])\b"),
+        "DOB",
+    ),
+    (
+        re.compile(r"\"(family|given)\"\s*:\s*(\"[^\"]+\"|\[[^\]]*\])"),
+        "FHIR_NAME",
+    ),
+)
+
+
+def _scrub_phi_patterns(text: str) -> str:
+    """Run the regex backstop over a single string value.
+
+    Returns the input unchanged when no pattern matches. The replacement
+    is ``[REDACTED:<KIND>]`` so a trace reader can see the kind of PHI
+    that was scrubbed without exposing the value itself.
+    """
+
+    if not text:
+        return text
+    scrubbed = text
+    for pattern, kind in _PHI_PATTERNS:
+        scrubbed = pattern.sub(f"[REDACTED:{kind}]", scrubbed)
+    return scrubbed
+
+
+def _scrub_value(value: Any) -> Any:
+    """Recursive walker over arbitrarily-nested redactor output.
+
+    Strings get the regex backstop; dicts and lists get walked
+    element-wise; non-string scalars pass through. Returns ``Any`` so
+    mypy does not narrow the polymorphic value type — top-level callers
+    use :func:`_scrub_payload` to preserve the ``dict[str, Any]``
+    contract at the redactor boundary.
+    """
+
+    if isinstance(value, str):
+        return _scrub_phi_patterns(value)
+    if isinstance(value, dict):
+        return {key: _scrub_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scrub_value(item) for item in value]
+    return value
+
+
+def _scrub_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Top-level dict-typed entry point used by every redactor.
+
+    The redactors return plain dicts of strings, ints, lists, and other
+    dicts — every string value is a candidate for the backstop. This
+    wrapper preserves the ``dict[str, Any]`` return type at the
+    boundary so each redactor's signature stays narrow.
+    """
+
+    return {key: _scrub_value(value) for key, value in payload.items()}
 
 
 def configure_redaction_salt(salt: str) -> None:
@@ -112,7 +188,7 @@ def redact_tool_dispatch_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
     if requested_hash is not None:
         redacted["patient_id_hash"] = requested_hash
     redacted.update(_claims_summary(inputs.get("claims")))
-    return redacted
+    return _scrub_payload(redacted)
 
 
 def redact_tool_outputs(output: object) -> dict[str, Any]:
@@ -145,7 +221,7 @@ def redact_tool_outputs(output: object) -> dict[str, Any]:
     patient_hash = _safe_hash(patient_id)
     if patient_hash is not None:
         redacted["patient_id_hash"] = patient_hash
-    return redacted
+    return _scrub_payload(redacted)
 
 
 def redact_llm_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -187,7 +263,7 @@ def redact_llm_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
             for msg in messages
             if isinstance(msg, dict) and isinstance(msg.get("role"), str)
         ]
-    return redacted
+    return _scrub_payload(redacted)
 
 
 def redact_llm_outputs(output: object) -> dict[str, Any]:
@@ -214,12 +290,14 @@ def redact_llm_outputs(output: object) -> dict[str, Any]:
         for use in tool_uses
         if isinstance(getattr(use, "name", None), str)
     ]
-    return {
-        "stop_reason": getattr(output, "stop_reason", None),
-        "text_length": len(text),
-        "tool_use_names": tool_use_names,
-        "tool_use_count": len(tool_uses),
-    }
+    return _scrub_payload(
+        {
+            "stop_reason": getattr(output, "stop_reason", None),
+            "text_length": len(text),
+            "tool_use_names": tool_use_names,
+            "tool_use_count": len(tool_uses),
+        }
+    )
 
 
 def redact_orchestrator_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
@@ -249,7 +327,7 @@ def redact_orchestrator_inputs(inputs: dict[str, Any]) -> dict[str, Any]:
         # into the claims summary block.
         redacted["patient_id_hash"] = claims_summary["session_patient_id_hash"]
     redacted.update(claims_summary)
-    return redacted
+    return _scrub_payload(redacted)
 
 
 def redact_orchestrator_outputs(output: object) -> dict[str, Any]:
@@ -281,9 +359,11 @@ def redact_orchestrator_outputs(output: object) -> dict[str, Any]:
         # ``AbstentionState`` is a ``StrEnum``; ``str()`` is the wire value.
         abstention_state = str(state) if state is not None else None
 
-    return {
-        "card_count": len(cards),
-        "prose_count": len(prose),
-        "tool_result_count": len(tool_results),
-        "abstention_state": abstention_state,
-    }
+    return _scrub_payload(
+        {
+            "card_count": len(cards),
+            "prose_count": len(prose),
+            "tool_result_count": len(tool_results),
+            "abstention_state": abstention_state,
+        }
+    )

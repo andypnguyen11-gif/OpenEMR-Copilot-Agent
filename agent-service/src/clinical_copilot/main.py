@@ -461,11 +461,53 @@ def _retrieval_hits_from_handoffs(sup: SupervisorResponse) -> int | None:
     return total
 
 
+def _stage_latencies_from_handoffs(
+    sup: SupervisorResponse,
+    *,
+    total_ms: int,
+) -> dict[str, int]:
+    """Aggregate per-stage timings from a supervisor turn.
+
+    ``supervisor_dispatch`` sums every handoff's worker round-trip time
+    (so a turn with two workers shows the combined dispatch cost).
+    ``retriever`` and ``rerank`` are only present when at least one
+    evidence-retriever handoff actually populated them — workers
+    stamp those keys on their tool-result payload (see
+    :class:`EvidenceRetrieverOutput`). ``total`` mirrors the
+    request-level wall-clock so a trace reader can see the ratios in
+    one glance without cross-referencing the audit row's
+    ``latency_ms`` column.
+    """
+
+    stages: dict[str, int] = {"total": total_ms}
+    if sup.handoffs:
+        stages["supervisor_dispatch"] = sum(h.latency_ms for h in sup.handoffs)
+    retriever_ms = 0
+    rerank_ms = 0
+    saw_retriever = False
+    for handoff in sup.handoffs:
+        if handoff.worker != "evidence_retriever" or handoff.output is None:
+            continue
+        saw_retriever = True
+        rms = handoff.output.get("retriever_ms")
+        rerank_value = handoff.output.get("rerank_ms")
+        if isinstance(rms, int):
+            retriever_ms += rms
+        if isinstance(rerank_value, int):
+            rerank_ms += rerank_value
+    if saw_retriever:
+        stages["retriever"] = retriever_ms
+        if rerank_ms > 0:
+            stages["rerank"] = rerank_ms
+    return stages
+
+
 def _supervisor_to_agent_response(
     sup: SupervisorResponse,
     *,
     session_id: str,
     chart_pack: ChartPack | None = None,
+    stage_latencies_ms: dict[str, int] | None = None,
 ) -> AgentResponse:
     """Adapt a :class:`SupervisorResponse` to the wire :class:`AgentResponse`.
 
@@ -499,6 +541,7 @@ def _supervisor_to_agent_response(
     # the reranker never saw — the supervisor stamps ``None`` in those
     # cases and we surface it verbatim.
     rerank_backend = _wire_rerank_backend(sup.rerank_backend)
+    stages = stage_latencies_ms or {}
 
     if sup.abstention_reason is not None:
         return AgentResponse(
@@ -511,6 +554,7 @@ def _supervisor_to_agent_response(
             ),
             session_id=session_id,
             rerank_backend=rerank_backend,
+            stage_latencies_ms=stages,  # type: ignore[arg-type]
         )
 
     text = sup.synthesized_text.strip()
@@ -530,6 +574,7 @@ def _supervisor_to_agent_response(
             ),
             session_id=session_id,
             rerank_backend=rerank_backend,
+            stage_latencies_ms=stages,  # type: ignore[arg-type]
         )
 
     cards, tool_results = _chart_pack_surface(
@@ -543,6 +588,7 @@ def _supervisor_to_agent_response(
         tool_results=tool_results,
         session_id=session_id,
         rerank_backend=rerank_backend,
+        stage_latencies_ms=stages,  # type: ignore[arg-type]
     )
 
 
@@ -798,10 +844,14 @@ def create_app(
                     )
                 else:
                     _record_supervisor_trace(sup)
+                    total_ms = int((time.perf_counter() - request_started) * 1000)
                     return _supervisor_to_agent_response(
                         sup,
                         session_id=canonical_id,
                         chart_pack=chart_pack,
+                        stage_latencies_ms=_stage_latencies_from_handoffs(
+                            sup, total_ms=total_ms,
+                        ),
                     )
 
             try:
@@ -822,10 +872,14 @@ def create_app(
                 )
             else:
                 _record_supervisor_trace(sup)
+                total_ms = int((time.perf_counter() - request_started) * 1000)
                 return _supervisor_to_agent_response(
                     sup,
                     session_id=canonical_id,
                     chart_pack=chart_pack,
+                    stage_latencies_ms=_stage_latencies_from_handoffs(
+                        sup, total_ms=total_ms,
+                    ),
                 )
 
         try:

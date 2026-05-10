@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -333,14 +334,21 @@ def run(
         # Append the assistant's tool-use turn before sending tool_result.
         messages.append({"role": "assistant", "content": response.content})
 
+        # Parallelize multi-block turns. The workers themselves issue
+        # blocking I/O (Anthropic SDK calls, FAISS lookups, Cohere
+        # rerank, retrieval) so a thread pool — not asyncio — gives a
+        # real wall-clock win without making this entry point async
+        # (which would ripple through every sync caller). One worker
+        # per block, capped at the block count so a single-block turn
+        # spins zero extra threads.
+        block_results = _dispatch_blocks(
+            blocks=tool_use_blocks,
+            intake_extractor=intake_extractor,
+            evidence_retriever=evidence_retriever,
+            log=log,
+        )
         tool_results: list[dict[str, Any]] = []
-        for block in tool_use_blocks:
-            handoff, tool_result = _dispatch(
-                block=block,
-                intake_extractor=intake_extractor,
-                evidence_retriever=evidence_retriever,
-                log=log,
-            )
+        for handoff, tool_result in block_results:
             handoffs.append(handoff)
             tool_results.append(tool_result)
             usage_totals = usage_totals + _usage_from_handoff(handoff)
@@ -415,6 +423,57 @@ def _latest_rerank_backend(handoffs: list[Handoff]) -> str | None:
         if isinstance(backend, str) and backend:
             return backend
     return None
+
+
+def _dispatch_blocks(
+    *,
+    blocks: list[ToolUseBlock],
+    intake_extractor: IntakeExtractorFn,
+    evidence_retriever: EvidenceRetrieverFn,
+    log: structlog.stdlib.BoundLogger,
+) -> list[tuple[Handoff, dict[str, Any]]]:
+    """Dispatch every tool_use block in this turn, in parallel for >1 block.
+
+    A single-block turn short-circuits to the sequential path so we
+    don't pay for thread-pool setup on the common case (one worker per
+    iteration). A two- or three-block turn (planner emitted both
+    extractor + retriever, or retriever twice) gets one thread per
+    block and the wall-clock collapses to ``max(latencies)`` instead
+    of ``sum(latencies)``.
+
+    Returned in input order so the supervisor's tool-result list lines
+    up with the order Anthropic emitted the tool_use blocks — the SDK
+    matches ``tool_use_id`` strings, but in-order keeps the structlog
+    handoff sequence readable for a human walking the trace.
+    """
+
+    if len(blocks) <= 1:
+        return [
+            _dispatch(
+                block=b,
+                intake_extractor=intake_extractor,
+                evidence_retriever=evidence_retriever,
+                log=log,
+            )
+            for b in blocks
+        ]
+
+    with ThreadPoolExecutor(max_workers=len(blocks)) as pool:
+        # ``map`` preserves order — equivalent to dispatching all
+        # futures, then iterating ``futures`` in submit order. Cleaner
+        # than ``submit`` + ``as_completed`` here because we always
+        # want every result and order matters.
+        return list(
+            pool.map(
+                lambda b: _dispatch(
+                    block=b,
+                    intake_extractor=intake_extractor,
+                    evidence_retriever=evidence_retriever,
+                    log=log,
+                ),
+                blocks,
+            ),
+        )
 
 
 def _dispatch(

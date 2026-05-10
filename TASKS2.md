@@ -79,11 +79,13 @@ attributed to a specific PR N block):
   demo`; that section is the canonical shipped/deferred matrix at the
   level of CLIs and env vars.
 
-## Post-demo landing as of 2026-05-09
+## Post-demo landing as of 2026-05-09 / 2026-05-10
 
 Six remediation PRs landed the day after submission, addressing the
 gaps + risks surfaced in feedback. Detailed checklists are in the
 [Post-demo remediation chapter](#post-demo-remediation-pr-1419) below.
+Final-prep work (PR 20–22) landed 2026-05-10 and is summarized at the
+end of this table.
 
 | MR | Status | Notes |
 |---|---|---|
@@ -95,6 +97,10 @@ gaps + risks surfaced in feedback. Detailed checklists are in the
 | PR 18b — docx/xlsx/HL7 synthetic rendering | **SHIPPED** | Deterministic monospace text-on-page renderer for HL7 segments / docx paragraphs / xlsx cells; per-citation bboxes computed against the renderer's layout constants (no OCR pass needed). |
 | PR 18c — OCR-based bbox tightening | **SHIPPED** | Tesseract runs at ingest on each rendered page; per-citation bboxes are tightened from the AI's coarse hint to the union of matched OCR words. Lipid-panel observation rows went from area=0.060 (every row identical) to per-row distinct (Total Cholesterol 0.017 / HDL 0.035 / LDL 0.052 / Triglycerides 0.001). |
 | PR 19 — prek pre-push hook installer | **SHIPPED** | `composer install` automatically wires `.git/hooks/pre-push` against `.pre-commit-config.yaml` via `scripts/install-pre-push-hook.php`. Skips in CI / when `.git` absent. Single WARN line + exit 0 when prek is missing — never breaks `composer install`. Commit `44a17bbe2`. |
+| PR 20 — PHI regex backstop in trace redactors | **SHIPPED 2026-05-10** | Belt-and-suspenders pattern matchers (SSN, MRN, US phone, email, DOB US + ISO, FHIR `family`/`given` keys) layered after the existing allowlist redactors in `agent-service/src/clinical_copilot/observability/redaction.py`. Each match becomes `[REDACTED:<KIND>]` so a trace reader sees the kind that fired. 12 new unit tests in `tests/unit/test_phi_redaction.py` (25 total, mypy strict clean). Closes the cohort-feedback bullet **PHI safe logging**. |
+| PR 21 — LangSmith smoke test (gate for tracing flip) | **SHIPPED 2026-05-10** | New `agent-service/tests/unit/observability/test_langsmith_safe.py` monkey-patches `langsmith.Client.create_run` / `update_run` and exercises each `@traceable` wrapper with PHI-loaded fixtures, asserting no sentinels survive into the wire payload. Runs inside `tracing_context(enabled=True)` to override the SDK's process-scoped ContextVar. `LANGSMITH_TRACING=true` already set on Railway; the smoke test is the regression gate. Closes the cohort-feedback bullets **runtime observability** + the verification half of PHI safe logging. |
+| PR 22 — Per-stage latency observability | **SHIPPED 2026-05-10** | New `AgentResponse.stage_latencies_ms: dict[StageLatencyKey, int]` keyed by `supervisor_dispatch / retriever / rerank / extraction / total` (`agent-service/src/clinical_copilot/orchestrator/schemas.py`). Worker-side instrumentation in `EvidenceRetrieverOutput.retriever_ms` / `rerank_ms` (`orchestrator/workers/evidence_retriever.py`); main.py aggregates via `_stage_latencies_from_handoffs(sup, total_ms)` for both the LangGraph + plain-Python supervisor branches. 6 helper-function unit tests in `tests/unit/test_stage_latencies.py`; existing 12 supervisor + query-route integration tests stay green. Stage absent vs. zero is preserved: a stage that didn't run is **not** reported with a 0 value. Closes the cohort-feedback bullet **latency reduction → observability half**; the optimization half is PR 23 below. |
+| PR 23 — Parallel worker dispatch | **SHIPPED 2026-05-10** | The supervisor's per-iteration `for block in tool_use_blocks` serial loop becomes a `ThreadPoolExecutor.map` fan-out via the new `_dispatch_blocks` helper (`agent-service/src/clinical_copilot/orchestrator/supervisor.py`). Single-block turns short-circuit to the sequential path so the common case spins zero extra threads. Multi-block turns (planner emitted intake_extractor + evidence_retriever in one response) collapse from `sum(latencies)` to `max(latencies)`. Wall-clock proof at `tests/integration/test_supervisor.py::test_supervisor_parallel_dispatch_collapses_wall_clock` — two 250 ms sleep workers must finish in < 400 ms (~250 ms parallel vs. ~500 ms serial). All 6 prior supervisor integration tests stay green. ThreadPool chosen over `asyncio.gather` because workers issue blocking I/O (Anthropic SDK, FAISS, Cohere) and `supervisor.run` stays sync — no async ripple through callers. Closes the cohort-feedback bullet **latency reduction**. |
 
 **Status update on demo-cut MRs:** PR 5 (Citation OCR check) remains
 **DEFERRED** — PR 18c uses Tesseract for *bbox tightening*, but the

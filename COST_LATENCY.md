@@ -179,12 +179,25 @@ Ranked by latency contribution, with file:line and a one-line fix
 note for each. None of these are blocking the Sunday submission;
 they are the queue for the post-Sunday optimization pass.
 
-1. **Sequential `tool_use` dispatch in supervisor**
-   (`orchestrator/supervisor.py:313–322`). When the model emits 2
-   `tool_use` blocks in one assistant turn, the for-loop dispatches
-   them serially. Two parallel dispatches via `asyncio.gather` would
-   cut multi-tool turns roughly in half. **~5–10 s saved on p95
-   slow-lane multi-part.**
+1. **Sequential `tool_use` dispatch in supervisor** —
+   **RESOLVED 2026-05-10 (PR 23).**
+   The for-loop at `orchestrator/supervisor.py` is now a
+   `ThreadPoolExecutor.map` fan-out via the new `_dispatch_blocks`
+   helper. Single-block turns short-circuit to the sequential path
+   (zero extra threads on the common case); multi-block turns
+   (planner emitted `intake_extractor` + `evidence_retriever` in one
+   response) collapse from `sum(latencies)` to `max(latencies)`.
+   ThreadPool over `asyncio.gather` because workers issue blocking I/O
+   (Anthropic SDK, FAISS, Cohere) and `supervisor.run` stays sync —
+   no async ripple through callers. Wall-clock proof:
+   `tests/integration/test_supervisor.py::test_supervisor_parallel_dispatch_collapses_wall_clock`
+   asserts two 250 ms sleep workers finish in < 400 ms (was ~500 ms
+   serial; observed ~260 ms parallel). Production impact projected
+   to land in the 5–10 s p95 range called out below; verifiable on
+   the deployed agent via `AgentResponse.stage_latencies_ms`
+   (`supervisor_dispatch` key, PR 22). Per-stage observability +
+   parallel dispatch ship together so the optimization is measurable
+   end-to-end without bespoke instrumentation.
 
 2. **No per-call Anthropic timeout.** `client.messages.create` is
    called without a timeout in supervisor / extractor / rerank. A

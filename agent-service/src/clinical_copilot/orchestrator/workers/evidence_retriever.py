@@ -17,6 +17,7 @@ claim" check can treat lab-PDF and corpus citations uniformly.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -64,6 +65,14 @@ class EvidenceRetrieverOutput:
     # here). Surfaced on the tool-result payload so the supervisor can
     # fold it into the run-wide ``UsageTotals`` for the trace row.
     usage_totals: UsageTotals = UsageTotals()
+    # Per-stage timings. ``retriever_ms`` covers the BM25 + dense union
+    # + RRF fusion pass; ``rerank_ms`` covers the active reranker's
+    # call. Both are surfaced on the tool-result so the supervisor can
+    # fold them into ``AgentResponse.stage_latencies_ms`` without
+    # wrapping its own perf_counter around the worker call (which would
+    # only see the outer round-trip and miss the per-stage split).
+    retriever_ms: int = 0
+    rerank_ms: int = 0
 
     def to_tool_result(self) -> dict[str, Any]:
         return {
@@ -76,6 +85,8 @@ class EvidenceRetrieverOutput:
                 "input_tokens": self.usage_totals.input_tokens,
                 "output_tokens": self.usage_totals.output_tokens,
             },
+            "retriever_ms": self.retriever_ms,
+            "rerank_ms": self.rerank_ms,
         }
 
 
@@ -115,9 +126,12 @@ def run_evidence_retriever(
         raise WorkerError(f"k must be in (0, 50], got {k}")
 
     rerank_usage = UsageTotals()
+    rerank_ms = 0
     if cohere_client is not None:
         candidate_k = max(k, k * max(1, candidate_multiplier))
+        retriever_started = time.perf_counter()
         candidates = retriever.retrieve(query=query, k=candidate_k)
+        retriever_ms = int((time.perf_counter() - retriever_started) * 1000)
         cohere_kwargs: dict[str, Any] = {
             "client": cohere_client,
             "query": query,
@@ -126,12 +140,16 @@ def run_evidence_retriever(
         }
         if cohere_model:
             cohere_kwargs["model"] = cohere_model
+        rerank_started = time.perf_counter()
         chunks = rerank_with_cohere(**cohere_kwargs)
+        rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         reranked = True
         backend: RerankBackend = "cohere"
     elif rerank_client is not None:
         candidate_k = max(k, k * max(1, candidate_multiplier))
+        retriever_started = time.perf_counter()
         candidates = retriever.retrieve(query=query, k=candidate_k)
+        retriever_ms = int((time.perf_counter() - retriever_started) * 1000)
         llm_kwargs: dict[str, Any] = {
             "client": rerank_client,
             "query": query,
@@ -140,11 +158,15 @@ def run_evidence_retriever(
         }
         if rerank_model:
             llm_kwargs["model"] = rerank_model
+        rerank_started = time.perf_counter()
         chunks, rerank_usage = rerank_with_llm(**llm_kwargs)
+        rerank_ms = int((time.perf_counter() - rerank_started) * 1000)
         reranked = True
         backend = "llm_judge"
     else:
+        retriever_started = time.perf_counter()
         chunks = retriever.retrieve(query=query, k=k)
+        retriever_ms = int((time.perf_counter() - retriever_started) * 1000)
         reranked = False
         backend = "bm25_only"
 
@@ -155,6 +177,8 @@ def run_evidence_retriever(
         reranked=reranked,
         rerank_backend=backend,
         usage_totals=rerank_usage,
+        retriever_ms=retriever_ms,
+        rerank_ms=rerank_ms,
     )
 
 
