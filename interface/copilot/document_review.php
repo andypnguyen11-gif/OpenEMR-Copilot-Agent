@@ -284,7 +284,7 @@ Header::setupHeader();
 <head>
     <title>Review extracted document</title>
     <style>
-        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 1400px; }
+        body { font-family: system-ui, sans-serif; padding: 1rem 1.5rem; }
         h1 { margin-top: 0; }
         h2 { margin-top: 2rem; padding-bottom: 0.3rem; border-bottom: 1px solid #ddd; }
         .meta { color: #555; font-size: 0.95em; margin-bottom: 1rem; }

@@ -103,7 +103,7 @@ Header::setupHeader();
 <head>
     <title>Review extracted lab — pid <?php echo $pid; ?></title>
     <style>
-        body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 1200px; }
+        body { font-family: system-ui, sans-serif; padding: 1rem 1.5rem; }
         h1 { margin-top: 0; }
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; vertical-align: top; }
