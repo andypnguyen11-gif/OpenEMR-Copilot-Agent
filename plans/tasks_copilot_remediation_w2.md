@@ -466,6 +466,50 @@ design).
 - [ ] Manual: hit `/api/document_page.php?document_id=never-ingested&page=1` → 404 with JSON body `{"detail": {"reason": "document_not_rendered", ...}}`
 - [ ] Network tab: only OpenEMR-origin requests; agent-service never reached directly by browser
 
+### Known limitation: docx / xlsx / HL7 have no source preview
+
+`render_document` in `agent-service/src/clinical_copilot/documents/fetcher.py`
+only handles PDF, TIFF, and standard image formats. For `referral_docx`,
+`workbook_xlsx`, `hl7_oru`, and `hl7_adt` the ingest hook silently no-ops
+the cache write, so the overlay route always returns 404. The partial
+detects this from `$documentType` in scope and renders an explanatory
+note instead of broken-image placeholders (verified end-to-end against
+`openemr:doc:4516` referral_docx in Playwright on 2026-05-09).
+
+The citations on those documents still carry `page` numbers
+(docx page-breaks, xlsx sheet indices, HL7 segment positions), but
+those values don't correspond to anything raster-renderable. The
+inline citation snippet next to each value remains the source of truth
+for clinician verification on these document types.
+
+### Follow-up: PR 5b — docx/xlsx → PDF rendering for full overlay support
+
+**Branch suggestion:** `feat/copilot-docx-overlay-rendering`
+**Trigger:** open when reviewers say the inline citation snippet is
+insufficient for verifying referral / workbook facts and they need a
+visual preview.
+
+Sketch:
+- Add LibreOffice headless to the agent-service Dockerfile (~300MB).
+  `apt-get install -y --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc`.
+- New `documents/converter.py` exposing `convert_to_pdf(path, suffix) -> Path`.
+  Spawn `soffice --headless --convert-to pdf --outdir <tmp> <path>` with a
+  bounded timeout (~30s); fall back to no-cache on failure (current
+  best-effort path).
+- Wire converter into the ingest render hook before the existing
+  `render_document` call when the suffix is `.docx` / `.xlsx`.
+- HL7 stays out of scope — no inherent visual layout to preview.
+- **Bbox alignment caveat:** the docx extractor's bbox coordinates are
+  based on the docx's internal layout, not the converted PDF. Pixel-
+  accurate alignment requires either re-running extraction on the
+  converted PDF OR threading docx-page→pdf-page mapping through the
+  citation. Acceptable v1: render the converted PDF without bbox
+  rectangles (page-level "this is page N of the source" instead of
+  field-level). Pixel-accurate overlay is a v2.
+
+Acceptance: clinicians can click "view source" on a referral citation
+and see the actual page layout the value came from.
+
 ---
 
 ## PR 6 — Activate prek pre-push hook (Risk 1)
