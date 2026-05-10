@@ -102,7 +102,7 @@ line so reviewers see what shaped the design.
 - [x] **Pre-flight #6** — verify `ChartWriteOrchestrator` connection invariant; decide whether PR 2 ships TTL clause or drops it
 
 **Decisions captured here:**
-- **Pre-flight #3 result:** Render PHP-side from OpenEMR document blob storage (`DocumentService::getFile()` at `src/Services/DocumentService.php:162-177`). agent-service VLM extraction renders pages in-memory only via pypdfium2 → BytesIO → Anthropic vision API → discarded (`agent-service/src/clinical_copilot/documents/fetcher.py:44-155`); the temp input file is deleted in `finally` (`main.py:929-953`). No durable cache to expose. PR 5's `document_page.php` becomes a renderer, not a proxy.
+- **Pre-flight #3 result (REVERSED 2026-05-09 during PR 5 implementation):** Originally chose render PHP-side from OpenEMR document blob (`DocumentService::getFile()` + Imagick). On the openemr/openemr:flex docker image Imagick is present but **Ghostscript is not**, so `magick identify` on a PDF fails — PHP cannot rasterize without gs. **Revised design:** render in agent-service (which already runs `pypdfium2` for the VLM extractor), persist a small disk PNG cache keyed by `(document_id, page_number)`, and expose `GET /api/agent/internal/document_page/{id}?page=N`. PR 5's `document_page.php` becomes a thin same-origin proxy — preserves status + content-type so the cache-miss structured 404 reaches the browser as-is.
 - **Pre-flight #4 old-label list:**
   - `agent-service/src/clinical_copilot/orchestrator/workers/evidence_retriever.py:114` `"cohere"` (keep)
   - `agent-service/src/clinical_copilot/orchestrator/workers/evidence_retriever.py:128` `"llm-judge"` → `"llm_judge"`
@@ -197,29 +197,29 @@ or at the chart-pack producer (`orchestrator/chart_pack.py`), where the source
 metadata is already in hand.
 
 ### Subtasks (must run in this order — fixture rollout)
-- [ ] Add `CitationSourceType` StrEnum + new `GuidelineCitation` and `PatientChartCitation` classes to `citation.py`; add `source_type` and `field_or_chunk_id` to `SourceCitation` **with temporary defaults** so existing fixtures don't break
-- [ ] Write `backfill_citation_fields.py`; run against `agent-service/data/extracted/*.json`; commit fixtures
-- [ ] Tighten `field_or_chunk_id` to required on `SourceCitation` (drop the temporary default)
-- [ ] Add `Citation = Annotated[Union[...], Field(discriminator="source_type")]` alias; export from `citation.py`
-- [ ] Thread schema-walk path as parameter into a single `build_extracted_citation(path, ...)` helper; update extractor + 7 adapters (do NOT duplicate wiring at each call site)
-- [ ] Add `citation: Citation | None = None` to `CitedClaim` and `citations: list[Citation] = Field(default_factory=list)` to `Card` in `orchestrator/schemas.py` (Option 1 — alongside `source_id` / `source_ids`)
-- [ ] Update `_supervisor_to_agent_response()` in `main.py:406` to populate `citation`/`citations` from the in-scope source records; leave `None` / `[]` when no metadata is available (fast-lane, no-retrieval — drives Risk 2's `rerank_backend: None` in PR 3)
-- [ ] Construct `GuidelineCitation` in `workers/evidence_retriever.py` (retrieval-results boundary)
-- [ ] Construct `PatientChartCitation` in `orchestrator/chart_pack.py` (chart-pack source records)
-- [ ] Leave `corpus/rerank.py` ranking-only — no citation construction here
-- [ ] Confirm `PatientChartCitation.display_summary` is one-line label, NOT verbatim resource text (PHI surface)
-- [ ] **Drift-guard test (CI only, NOT a Pydantic `model_validator`):** at every site that constructs a `CitedClaim` or `Card` with non-None citations, the test asserts `citation.field_or_chunk_id == source_id` (and the per-class mapping listed in the design block above) for `PatientChartCitation` and `GuidelineCitation`. `SourceCitation` mapping deferred to PR 5.
-- [ ] Update `tests/unit/documents/test_citation.py`: round-trip each class, mixed-list discriminator round-trip, cross-class rejection
-- [ ] Update PHP `ExtractedFieldHelper` to surface new fields; update `AgentResponse.php` parser for the three citation shapes (and for `citation` being absent on legacy / fast-lane responses)
-- [ ] If Pydantic raises a discriminator-resolution error, fall back to bare-string `Literal[...]` (per the StrEnum gotcha note in plan §Gap 1)
+- [x] Add `CitationSourceType` StrEnum + new `GuidelineCitation` and `PatientChartCitation` classes to `citation.py`; add `source_type` and `field_or_chunk_id` to `SourceCitation` **with temporary defaults** so existing fixtures don't break
+- [x] Write `backfill_citation_fields.py`; run against `agent-service/data/extracted/*.json`; commit fixtures
+- [x] Tighten `field_or_chunk_id` to required on `SourceCitation` (drop the temporary default)
+- [x] Add `Citation = Annotated[Union[...], Field(discriminator="source_type")]` alias; export from `citation.py`
+- [x] Thread schema-walk path as parameter into a single `build_extracted_citation(path, ...)` helper; update extractor + 7 adapters (do NOT duplicate wiring at each call site)
+- [x] Add `citation: Citation | None = None` to `CitedClaim` and `citations: list[Citation] = Field(default_factory=list)` to `Card` in `orchestrator/schemas.py` (Option 1 — alongside `source_id` / `source_ids`)
+- [x] Update `_supervisor_to_agent_response()` in `main.py:406` to populate `citation`/`citations` from the in-scope source records; leave `None` / `[]` when no metadata is available (fast-lane, no-retrieval — drives Risk 2's `rerank_backend: None` in PR 3)
+- [x] Construct `GuidelineCitation` in `workers/evidence_retriever.py` (retrieval-results boundary)
+- [x] Construct `PatientChartCitation` in `orchestrator/chart_pack.py` (chart-pack source records)
+- [x] Leave `corpus/rerank.py` ranking-only — no citation construction here
+- [x] Confirm `PatientChartCitation.display_summary` is one-line label, NOT verbatim resource text (PHI surface)
+- [x] **Drift-guard test (CI only, NOT a Pydantic `model_validator`):** at every site that constructs a `CitedClaim` or `Card` with non-None citations, the test asserts `citation.field_or_chunk_id == source_id` (and the per-class mapping listed in the design block above) for `PatientChartCitation` and `GuidelineCitation`. `SourceCitation` mapping deferred to PR 5.
+- [x] Update `tests/unit/documents/test_citation.py`: round-trip each class, mixed-list discriminator round-trip, cross-class rejection
+- [x] Update PHP `ExtractedFieldHelper` to surface new fields; update `AgentResponse.php` parser for the three citation shapes (and for `citation` being absent on legacy / fast-lane responses)
+- [x] If Pydantic raises a discriminator-resolution error, fall back to bare-string `Literal[...]` (per the StrEnum gotcha note in plan §Gap 1)
 
 ### Verification (acceptance criteria from plan §Gap 1)
-- [ ] `pytest agent-service/tests/unit/documents/test_citation.py -v` green
-- [ ] `pytest agent-service/tests/ -k extract` green
-- [ ] `pytest agent-service/tests/ -k "agent_response or supervisor"` green
-- [ ] `pytest agent-service/tests/unit/verification/ -v` still green **without modification** (Option 1 invariant: middleware is untouched)
-- [ ] Drift-guard test: `pytest agent-service/tests/ -k citation_canonical_id` green
-- [ ] `composer phpstan` passes with no new baseline entries
+- [x] `pytest agent-service/tests/unit/documents/test_citation.py -v` green
+- [x] `pytest agent-service/tests/ -k extract` green
+- [x] `pytest agent-service/tests/ -k "agent_response or supervisor"` green
+- [x] `pytest agent-service/tests/unit/verification/ -v` still green **without modification** (Option 1 invariant: middleware is untouched)
+- [x] Drift-guard test: `pytest agent-service/tests/ -k citation_canonical_id` green
+- [x] `composer phpstan` passes with no new baseline entries
 - [ ] Manual: load lipid-panel review, inspect Network tab; `citation` objects appear on supervisor responses where source metadata is available; absent (`null` / `[]`) where it isn't, with PHP falling back to `source_id`
 
 ---
@@ -391,43 +391,80 @@ not `/api/agent/query`. They don't carry `rerank_backend` and don't get the badg
 ## PR 5 — Bbox canvas overlay MVP (Gap 4)
 
 **Branch suggestion:** `feat/copilot-bbox-overlay`
-**Depends on:** PR 1 (needs `field_or_chunk_id` + `bbox` on `SourceCitation`), Pre-flight #3
+**Depends on:** PR 1 (needs `field_or_chunk_id` + `bbox` on `SourceCitation`)
 
-### Files
-- NEW: `interface/copilot/api/document_page.php` (PHP-side renderer — fetches OpenEMR blob via `DocumentService::getFile()`, renders the requested page to PNG, streams it back; copilot session-gated; same-origin URL `/interface/copilot/api/document_page.php?document_id=...&page=...`)
+### Pre-flight #3 reversed (2026-05-09)
+
+The original Pre-flight #3 picked PHP-side rendering via `DocumentService::getFile()`
++ Imagick. During implementation we discovered `openemr/openemr:flex` ships ImageMagick
+**without Ghostscript** — `magick identify` on a PDF fails with `no decode delegate
+for this image format`. Adding gs to the upstream image is out of scope for this
+PR (and would only fix dev — Railway prod uses the same upstream image).
+
+**New design:** agent-service is the canonical renderer. It already runs
+`pypdfium2` for the VLM extractor, so the cache write is a one-line
+addition to the ingest path. PHP becomes a thin same-origin proxy that
+forwards to the new internal route. Same-origin from the browser is
+preserved; agent-service is never reached directly by the page.
+
+### Files (revised)
+- NEW: `agent-service/src/clinical_copilot/documents/page_cache.py` (disk-backed PNG cache; mirrors `documents/store.py` shape)
+- NEW: `agent-service/tests/unit/documents/test_page_cache.py`
+- NEW: `agent-service/tests/integration/test_document_page_route.py`
+- EDIT: `agent-service/src/clinical_copilot/documents/fetcher.py` (add `encode_png_bytes` helper)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (render-and-cache after extraction in ingest route; new `GET /api/agent/internal/document_page/{document_id}` route returning cached PNG or structured 404)
+- NEW: `interface/copilot/api/document_page.php` (thin same-origin proxy — copilot session-gated; forwards to `agent-service/api/agent/internal/document_page/{id}` with `X-Internal-Token`; preserves status + content-type so the structured 404 reaches the browser as-is)
 - NEW dir: `interface/copilot/partials/`
-- NEW: `interface/copilot/partials/citation_overlay.php` (img + canvas + JS)
-- EDIT: `interface/copilot/lab_review.php` (replace placeholder `include` partial)
-- EDIT: `interface/copilot/document_review.php` (same)
-- EDIT: `src/Services/Copilot/ExtractedFieldHelper.php` (surface full `SourceCitation` for JS payload — bbox + page + source_type + field_or_chunk_id)
-- NEW (test): PHPUnit test for `document_page.php` auth gate + DTO carrying bbox
+- NEW: `interface/copilot/partials/citation_overlay.php` (img + canvas + JS; renders one figure per page that carries citations)
+- EDIT: `src/Services/Copilot/AgentHttpClient.php` (add `getInternalRaw` for binary-safe forwarding)
+- EDIT: `src/Services/Copilot/ExtractedFieldHelper.php` (add `collectExtractedDocumentCitations` walker — JS payload source)
+- EDIT: `src/Services/Copilot/Documents/FactsFormHelper.php` (emit `data-citation-id` on each leaf field row so the overlay's click handler can match)
+- EDIT: `interface/copilot/lab_review.php` (drop "cuttable polish" note; include partial; tag analyte cell with `data-citation-id` from the display field's citation)
+- EDIT: `interface/copilot/document_review.php` (include partial above the editable form)
+- EDIT (tests): `tests/Tests/Isolated/Services/Copilot/AgentHttpClientTest.php` (`getInternalRaw` tests — bytes/content-type/status forwarding, error status preservation, transport error wrapping)
+- EDIT (tests): `tests/Tests/Isolated/Services/Copilot/ExtractedFieldHelperTest.php` (walker round-trip, discriminator-type filtering, invalid-shape rejection)
 
-**No agent-service changes in PR 5.** Per Pre-flight #3, agent-service does not durably
-cache rendered pages. PHP renders from `DocumentService::getFile()` (`src/Services/DocumentService.php:162-177`)
-on demand. Rendering library: pick from existing OpenEMR PDF deps (likely `mPDF` is already
-present; if a separate PDF→PNG renderer is needed, prefer Imagick over a new dep — confirm
-during implementation). Cache the rendered PNG on disk keyed by `(document_id, page)` with
-a TTL aligned with OpenEMR's existing document cache (or no cache for v1 if rendering is
-fast enough).
+### Cache miss policy
+
+agent-service's `GET /api/agent/internal/document_page/{id}?page=N` returns a
+**structured 404** on miss (`{"detail": {"reason": "...", "document_id": "...",
+"page": N}}` with `reason ∈ {document_not_rendered, page_out_of_range}`).
+The PHP proxy forwards body + status verbatim so the browser-side
+overlay can render a clear "preview unavailable" placeholder instead of
+guessing whether the document, the page, or the renderer is at fault.
+On-demand re-render from persisted source bytes is a worthwhile
+follow-up (it would add a PHI-on-disk surface — flagged for separate
+design).
 
 ### Subtasks
-- [ ] Pre-flight #3 decision documented in PR description (PHP-side render from OpenEMR blob)
-- [ ] Pick PDF→PNG renderer from existing deps; document the choice in PR description
-- [ ] `document_page.php`: copilot session/auth gate (mirror `interface/copilot/upload_document.php`); fetch document via `DocumentService::getFile()`; render requested page to PNG; stream with `Content-Type: image/png`
-- [ ] (Optional v1) cache rendered PNG to disk keyed `(document_id, page)`; document the cache directory choice
-- [ ] `citation_overlay.php`: `<img>` + absolutely-positioned `<canvas>` sized to image intrinsic dimensions; JS draws each `SourceCitation.bbox` scaled to image dims
-- [ ] Skip `GuidelineCitation` and `PatientChartCitation` in overlay (no `bbox`); they appear elsewhere in slow-lane source list
-- [ ] Click-to-highlight interaction: click row in field list → color-flip the box. Defer two-pane hover-sync (`plans/copilot_bbox_preview.md`)
-- [ ] Replace line-14 placeholder note in `lab_review.php` with `include` of partial
-- [ ] Same in `document_review.php`
-- [ ] PHPUnit: projected DTO carries `bbox` + `page` on `SourceCitation`-shaped payloads
-- [ ] PHPUnit: `document_page.php` returns 401/403 without session, 200 + PNG content-type with valid session
+- [x] Pre-flight #3 reversed; new design captured above
+- [x] Renderer chosen: `pypdfium2` already present in agent-service for VLM use; reused via the existing `render_document` + new `encode_png_bytes` helpers
+- [x] `agent-service`: add `documents/page_cache.py` with `write` / `read` / `has` / `page_count`; default root `data/page_renders/{document_id}/page_{N}.png`
+- [x] `agent-service`: render-and-cache after `run_extraction` succeeds in ingest route; best-effort fail-open so an unsupported format (xlsx, hl7) or a malformed PDF cannot break ingest
+- [x] `agent-service`: `GET /api/agent/internal/document_page/{document_id}` route, internal-token-gated, returns `image/png` or structured 404
+- [x] PHP `AgentHttpClient::getInternalRaw` (binary-safe — no JSON decode, returns `{statusCode, contentType, body}`)
+- [x] `interface/copilot/api/document_page.php`: copilot session/auth gate (`AclMain::aclCheckCore('patients', 'demo')`); validates `document_id` + `page`; forwards to internal route; preserves status + content-type; generic 502 on transport error (no message leakage)
+- [x] `partials/citation_overlay.php`: one `<figure>` per page that carries citations; `<img>` + abs-positioned `<canvas>`; JS draws bbox rects scaled to image dims (with devicePixelRatio for retina); redraws on resize and image load
+- [x] Skip `GuidelineCitation` and `PatientChartCitation` (no `bbox`) — `collectExtractedDocumentCitations` filters on `source_type === 'extracted_document'`
+- [x] Click-to-highlight: vanilla-JS click delegate matches `data-citation-id` against the bbox payload's `field_id`; second click on same row clears
+- [x] `FactsFormHelper::renderExtractedField` emits `data-citation-id="<field_or_chunk_id>"` on each leaf row when the citation has it
+- [x] `lab_review.php`: drop the "cuttable polish" docblock note; include partial; analyte `<td>` carries `data-citation-id` derived from the display field's `field_or_chunk_id`
+- [x] `document_review.php`: include partial above the `FactsFormHelper::renderFacts` call
+- [x] PHPUnit: `ExtractedFieldHelperTest::testCollectExtractedDocumentCitations*` (4 cases — leaf-walking, discriminator filtering, invalid bbox/page rejection, non-array tolerance)
+- [x] PHPUnit: `AgentHttpClientTest::testGetInternalRaw*` (5 cases — happy path forwards bytes/content-type/status, error status preserved, relative path rejected, empty token rejected, transport failure wrapped)
+- [ ] PHPUnit: end-to-end auth-gate test for `document_page.php` (deferred — entry-point file requires globals.php bootstrap; covered by manual curl below)
 
 ### Verification
-- [ ] `curl -b "PHPSESSID=<session>" 'https://localhost:9300/interface/copilot/api/document_page.php?document_id=<id>&page=1'` returns PNG
-- [ ] `curl 'https://...'` (no session) returns 401/403
-- [ ] Manual: upload lipid-panel fixture → six rectangles render at expected positions; click row → matching highlight
-- [ ] Network tab: only OpenEMR-origin image loads (no agent-service requests at all — Pre-flight #3 confirms agent-service never serves page images)
+- [x] `pytest agent-service/tests/unit/documents/test_page_cache.py -v` green (9 tests)
+- [x] `pytest agent-service/tests/integration/test_document_page_route.py -v` green (6 tests)
+- [x] `pytest agent-service/tests/integration/test_document_ingest_writes_trace.py -v` still green (no regression from render-and-cache addition)
+- [x] `composer phpunit-isolated -- --filter "AgentHttpClientTest|ExtractedFieldHelperTest"` green (45 tests, 123 assertions)
+- [x] `composer phpstan` clean (no new baseline entries)
+- [ ] Manual: restart local uvicorn so `main.py` picks up the new render-and-cache + route; re-upload lipid-panel fixture; confirm `agent-service/data/page_renders/<doc-id>/page_1.png` exists
+- [ ] Manual: load lipid-panel review at `https://localhost:9300/interface/copilot/lab_review.php?...` → bbox rectangles render over the page image; click an analyte cell → matching rectangle color-flips
+- [ ] Manual: `curl -b "PHPSESSID=<session>" 'https://localhost:9300/interface/copilot/api/document_page.php?document_id=<id>&page=1'` returns `image/png`; without cookie returns 403
+- [ ] Manual: hit `/api/document_page.php?document_id=never-ingested&page=1` → 404 with JSON body `{"detail": {"reason": "document_not_rendered", ...}}`
+- [ ] Network tab: only OpenEMR-origin requests; agent-service never reached directly by browser
 
 ---
 
