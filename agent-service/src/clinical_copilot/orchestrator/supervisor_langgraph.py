@@ -460,40 +460,48 @@ def build_graph(
     the graph once at app start with thread-local request context.
     """
 
+    # All seven nodes are wrapped with the supervisor-node redactor pair so
+    # LangGraph's auto-instrumentation can no longer leak raw TurnState or
+    # node return dicts to LangSmith. The synthesizer prototype confirmed a
+    # single span (no auto+manual double-tracing) so the same wrap rolls
+    # out uniformly here. See plans/langgraph-node-phi-redaction.md.
     builder = StateGraph(TurnState)
     builder.add_node(
         NODE_PLANNER,
-        make_planner_node(client=planner_client, model=planner_model),
+        traceable_supervisor_node(NODE_PLANNER)(
+            make_planner_node(client=planner_client, model=planner_model),
+        ),
     )
     builder.add_node(
         NODE_V1_SINGLE,
-        make_v1_single_node(
-            orchestrator=orchestrator,
-            claims=claims,
-            session_id=session_id,
-            lane=lane,
-            bound_patient_name=bound_patient_name,
+        traceable_supervisor_node(NODE_V1_SINGLE)(
+            make_v1_single_node(
+                orchestrator=orchestrator,
+                claims=claims,
+                session_id=session_id,
+                lane=lane,
+                bound_patient_name=bound_patient_name,
+            ),
         ),
     )
     builder.add_node(
         NODE_INTAKE_EXTRACTOR,
-        make_intake_extractor_node(),
+        traceable_supervisor_node(NODE_INTAKE_EXTRACTOR)(
+            make_intake_extractor_node(),
+        ),
     )
     builder.add_node(
         NODE_EVIDENCE_RETRIEVER,
-        make_evidence_retriever_node(
-            retriever=retriever,
-            rerank_client=rerank_client,
-            rerank_model=rerank_model,
-            cohere_client=cohere_client,
-            cohere_model=cohere_model,
+        traceable_supervisor_node(NODE_EVIDENCE_RETRIEVER)(
+            make_evidence_retriever_node(
+                retriever=retriever,
+                rerank_client=rerank_client,
+                rerank_model=rerank_model,
+                cohere_client=cohere_client,
+                cohere_model=cohere_model,
+            ),
         ),
     )
-    # Prototype: wrap only the synthesizer node with the supervisor-node
-    # redactor while we verify whether LangGraph emits a parallel auto-span
-    # alongside the manual @traceable. If single span: roll the same wrap
-    # out to the other six nodes. If double span: apply RunnableConfig
-    # callbacks=[] mitigation per plans/langgraph-node-phi-redaction.md.
     builder.add_node(
         NODE_SYNTHESIZER,
         traceable_supervisor_node(NODE_SYNTHESIZER)(
@@ -506,11 +514,15 @@ def build_graph(
     )
     builder.add_node(
         NODE_CRITIC,
-        make_critic_node(client=critic_client, model=critic_model),
+        traceable_supervisor_node(NODE_CRITIC)(
+            make_critic_node(client=critic_client, model=critic_model),
+        ),
     )
     builder.add_node(
         NODE_VERIFICATION,
-        _make_verification_node(),
+        traceable_supervisor_node(NODE_VERIFICATION)(
+            _make_verification_node(),
+        ),
     )
 
     builder.add_edge(START, NODE_PLANNER)
