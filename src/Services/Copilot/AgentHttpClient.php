@@ -293,6 +293,53 @@ readonly class AgentHttpClient
     }
 
     /**
+     * GET ``$path`` on the agent service with an ``X-Internal-Token``
+     * header and return the raw response body without JSON decoding.
+     *
+     * Used by the citation-overlay page proxy
+     * (``interface/copilot/api/document_page.php``) to forward rendered
+     * PNG bytes from the agent service to the browser without the
+     * intermediate JSON-decode the other ``getInternal*`` methods do.
+     * The caller forwards both the status code and the upstream
+     * Content-Type so a structured 404 (cache-miss JSON body) is
+     * preserved as-is rather than re-shaped.
+     *
+     * Mirrors :meth:`getInternal` for transport-error translation.
+     * Non-2xx HTTP statuses are returned, not thrown — the proxy
+     * decides whether to render a placeholder image or surface the
+     * error body.
+     *
+     * @return array{statusCode: int, contentType: string, body: string}
+     *
+     * @throws AgentServiceException When the transport itself fails.
+     */
+    public function getInternalRaw(string $path, string $internalToken): array
+    {
+        if (!str_starts_with($path, '/')) {
+            throw new AgentServiceException('agent path must start with /');
+        }
+        if ($internalToken === '') {
+            throw new AgentServiceException('agent getInternalRaw called without an internal token');
+        }
+
+        $url = $this->config->getAgentBaseUrl() . $path;
+        $request = $this->requestFactory->createRequest('GET', $url)
+            ->withHeader('X-Internal-Token', $internalToken);
+
+        try {
+            $response = $this->httpClient->sendRequest($request);
+        } catch (ClientExceptionInterface $e) {
+            throw new AgentServiceException('agent service transport failure', 0, $e);
+        }
+
+        return [
+            'statusCode' => $response->getStatusCode(),
+            'contentType' => $response->getHeaderLine('Content-Type'),
+            'body' => (string) $response->getBody(),
+        ];
+    }
+
+    /**
      * POST a multipart upload to ``$path`` on the agent service with an
      * ``X-Internal-Token`` header (PR W2-02 ingest route).
      *

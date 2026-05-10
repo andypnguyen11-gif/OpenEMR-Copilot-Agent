@@ -322,6 +322,77 @@ final class AgentHttpClientTest extends TestCase
         self::assertSame(['detail' => 'engine boom'], $response->body);
     }
 
+    public function testGetInternalRawForwardsBytesContentTypeAndStatus(): void
+    {
+        $pngBytes = "\x89PNG\r\n\x1a\n" . str_repeat('x', 32);
+
+        $this->httpClient->expects($this->once())
+            ->method('sendRequest')
+            ->with($this->callback(static function (RequestInterface $request): bool {
+                self::assertSame('GET', $request->getMethod());
+                self::assertSame(
+                    'http://agent.local:8500/api/agent/internal/document_page/doc-1?page=2',
+                    (string) $request->getUri(),
+                );
+                self::assertSame(['internal-token-xyz'], $request->getHeader('X-Internal-Token'));
+                return true;
+            }))
+            ->willReturn($this->stubResponseWithContentType(200, $pngBytes, 'image/png'));
+
+        $raw = $this->client->getInternalRaw(
+            '/api/agent/internal/document_page/doc-1?page=2',
+            'internal-token-xyz',
+        );
+
+        self::assertSame(200, $raw['statusCode']);
+        self::assertSame('image/png', $raw['contentType']);
+        // Byte-for-byte: the citation-overlay JS measures intrinsic
+        // image dimensions, so re-encoding here would silently break
+        // bbox alignment.
+        self::assertSame($pngBytes, $raw['body']);
+    }
+
+    public function testGetInternalRawForwardsErrorStatusAndJsonBody(): void
+    {
+        $body = '{"detail":{"reason":"document_not_rendered","document_id":"d","page":1}}';
+        $this->httpClient->method('sendRequest')
+            ->willReturn($this->stubResponseWithContentType(404, $body, 'application/json'));
+
+        $raw = $this->client->getInternalRaw(
+            '/api/agent/internal/document_page/d?page=1',
+            'token',
+        );
+
+        // The proxy preserves the upstream 404 + body verbatim so the
+        // PHP shell can render a clear "preview unavailable" message
+        // rather than guessing what failed.
+        self::assertSame(404, $raw['statusCode']);
+        self::assertSame('application/json', $raw['contentType']);
+        self::assertSame($body, $raw['body']);
+    }
+
+    public function testGetInternalRawRejectsRelativePath(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->expectExceptionMessage('agent path must start with /');
+        $this->client->getInternalRaw('api/agent/internal/document_page/d?page=1', 'token');
+    }
+
+    public function testGetInternalRawRejectsEmptyToken(): void
+    {
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternalRaw('/api/agent/internal/document_page/d?page=1', '');
+    }
+
+    public function testGetInternalRawWrapsTransportFailures(): void
+    {
+        $transportError = new class extends \RuntimeException implements ClientExceptionInterface {};
+        $this->httpClient->method('sendRequest')->willThrowException($transportError);
+
+        $this->expectException(AgentServiceException::class);
+        $this->client->getInternalRaw('/api/agent/internal/document_page/d?page=1', 'token');
+    }
+
     private function stubResponse(int $status, string $body): ResponseInterface
     {
         $stream = $this->createMock(StreamInterface::class);
@@ -330,6 +401,23 @@ final class AgentHttpClientTest extends TestCase
         $response = $this->createMock(ResponseInterface::class);
         $response->method('getStatusCode')->willReturn($status);
         $response->method('getBody')->willReturn($stream);
+        return $response;
+    }
+
+    private function stubResponseWithContentType(
+        int $status,
+        string $body,
+        string $contentType,
+    ): ResponseInterface {
+        $stream = $this->createMock(StreamInterface::class);
+        $stream->method('__toString')->willReturn($body);
+
+        $response = $this->createMock(ResponseInterface::class);
+        $response->method('getStatusCode')->willReturn($status);
+        $response->method('getBody')->willReturn($stream);
+        $response->method('getHeaderLine')->willReturnCallback(
+            static fn(string $name): string => strcasecmp($name, 'Content-Type') === 0 ? $contentType : '',
+        );
         return $response;
     }
 }

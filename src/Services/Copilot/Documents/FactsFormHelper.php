@@ -188,13 +188,32 @@ final class FactsFormHelper
             )
             : '';
 
+        // Surface the citation's `field_or_chunk_id` on the row as a
+        // data attribute so the bbox-overlay partial's click handler
+        // can match this row to the rectangle it corresponds to.
+        // Absent on legacy responses (pre-discriminated-union schema)
+        // and on extracted_document citations whose extractor hasn't
+        // backfilled the path yet — those rows simply don't trigger
+        // a highlight, which is the correct fail-soft behavior.
+        $citationDataAttr = '';
+        if (is_array($citation)) {
+            $fieldId = $citation['field_or_chunk_id'] ?? null;
+            if (is_string($fieldId) && $fieldId !== '') {
+                $citationDataAttr = sprintf(
+                    ' data-citation-id="%s"',
+                    htmlspecialchars($fieldId, ENT_QUOTES, 'UTF-8'),
+                );
+            }
+        }
+
         $namePathHtml = htmlspecialchars($namePath . '[value]', ENT_QUOTES, 'UTF-8');
         return sprintf(
-            '<div class="field-row">'
+            '<div class="field-row"%s>'
                 . '<label class="field-label" for="%s">%s</label>'
                 . '<input type="%s" name="%s" id="%s" value="%s" class="field-input">'
                 . '%s%s'
                 . '</div>',
+            $citationDataAttr,
             $namePathHtml,
             htmlspecialchars($label, ENT_QUOTES, 'UTF-8'),
             $inputType,

@@ -178,4 +178,138 @@ final class ExtractedFieldHelperTest extends TestCase
             'bool' => [true],
         ];
     }
+
+    public function testCollectExtractedDocumentCitationsWalksLeafFields(): void
+    {
+        $facts = [
+            'document_id' => 'doc-1',
+            'observations' => [
+                [
+                    'display' => self::makeField('Glucose', self::extractedCitation(
+                        page: 1,
+                        bbox: [0.10, 0.20, 0.30, 0.25],
+                        rawText: 'Glucose 142 mg/dL',
+                        path: 'observations[0].display',
+                    )),
+                    'value' => self::makeField(142.0, self::extractedCitation(
+                        page: 1,
+                        bbox: [0.40, 0.20, 0.55, 0.25],
+                        rawText: '142',
+                        path: 'observations[0].value',
+                    )),
+                ],
+            ],
+        ];
+
+        $citations = ExtractedFieldHelper::collectExtractedDocumentCitations($facts);
+
+        self::assertCount(2, $citations);
+        $byPath = [];
+        foreach ($citations as $entry) {
+            $byPath[$entry['field_id']] = $entry;
+        }
+        self::assertSame(1, $byPath['observations[0].display']['page']);
+        self::assertSame(
+            [0.10, 0.20, 0.30, 0.25],
+            $byPath['observations[0].display']['bbox'],
+        );
+        self::assertSame('Glucose 142 mg/dL', $byPath['observations[0].display']['raw_text']);
+    }
+
+    public function testCollectExtractedDocumentCitationsSkipsGuidelineAndPatientChartTypes(): void
+    {
+        $facts = [
+            'note' => self::makeField('see ref', [
+                'source_type' => 'guideline',
+                'field_or_chunk_id' => 'cdc-guideline-1#2',
+                'chunk_id' => 'cdc-guideline-1#2',
+                'source_url' => 'https://example.test/guidelines/cdc',
+            ]),
+            'pchart' => self::makeField('Observation/123', [
+                'source_type' => 'patient_chart',
+                'field_or_chunk_id' => 'Observation/123',
+                'resource_type' => 'Observation',
+                'resource_id' => '123',
+            ]),
+            'extracted' => self::makeField('Glucose', self::extractedCitation(
+                page: 2,
+                bbox: [0.0, 0.0, 0.5, 0.5],
+                rawText: 'Glucose',
+                path: 'extracted',
+            )),
+        ];
+
+        $citations = ExtractedFieldHelper::collectExtractedDocumentCitations($facts);
+
+        self::assertCount(1, $citations);
+        self::assertSame('extracted', $citations[0]['field_id']);
+        self::assertSame(2, $citations[0]['page']);
+    }
+
+    public function testCollectExtractedDocumentCitationsRejectsInvalidBboxOrPage(): void
+    {
+        $facts = [
+            // Wrong bbox arity (3 values instead of 4) — citation is dropped.
+            'a' => self::makeField('x', [
+                'source_type' => 'extracted_document',
+                'field_or_chunk_id' => 'a',
+                'page' => 1,
+                'bbox' => [0.0, 0.0, 1.0],
+                'raw_text' => 'x',
+                'confidence' => 0.9,
+                'document_id' => 'd',
+            ]),
+            // Page 0 — out of valid range, citation is dropped.
+            'b' => self::makeField('y', [
+                'source_type' => 'extracted_document',
+                'field_or_chunk_id' => 'b',
+                'page' => 0,
+                'bbox' => [0.0, 0.0, 1.0, 1.0],
+                'raw_text' => 'y',
+                'confidence' => 0.9,
+                'document_id' => 'd',
+            ]),
+            // Valid — kept.
+            'c' => self::makeField('z', self::extractedCitation(
+                page: 1,
+                bbox: [0.0, 0.0, 0.5, 0.5],
+                rawText: 'z',
+                path: 'c',
+            )),
+        ];
+
+        $citations = ExtractedFieldHelper::collectExtractedDocumentCitations($facts);
+
+        self::assertCount(1, $citations);
+        self::assertSame('c', $citations[0]['field_id']);
+    }
+
+    public function testCollectExtractedDocumentCitationsToleratesNonArrayInputs(): void
+    {
+        self::assertSame([], ExtractedFieldHelper::collectExtractedDocumentCitations(null));
+        self::assertSame([], ExtractedFieldHelper::collectExtractedDocumentCitations('not-a-tree'));
+        self::assertSame([], ExtractedFieldHelper::collectExtractedDocumentCitations(42));
+    }
+
+    /**
+     * @param array{0: float, 1: float, 2: float, 3: float} $bbox
+     *
+     * @return array<string, mixed>
+     */
+    private static function extractedCitation(
+        int $page,
+        array $bbox,
+        string $rawText,
+        string $path,
+    ): array {
+        return [
+            'source_type' => 'extracted_document',
+            'field_or_chunk_id' => $path,
+            'document_id' => 'doc-1',
+            'page' => $page,
+            'bbox' => $bbox,
+            'raw_text' => $rawText,
+            'confidence' => 0.92,
+        ];
+    }
 }

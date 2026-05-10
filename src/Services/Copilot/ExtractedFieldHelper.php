@@ -148,6 +148,91 @@ final class ExtractedFieldHelper
     }
 
     /**
+     * Walk an extracted-facts dict recursively and return one entry per
+     * extracted-document citation (i.e. citations whose ``source_type``
+     * is ``extracted_document`` — the only type with a renderable
+     * ``page`` + ``bbox``). Used by the bbox-overlay partial to build
+     * the JS payload that draws rectangles on the rendered page image.
+     *
+     * The walker is deliberately permissive about shape — agent
+     * responses can come from multiple document types
+     * (lab_pdf / intake_form / referral_docx / ...) and each has a
+     * different facts tree. Anything that looks like a citation block
+     * is collected; non-extracted-document citation types
+     * (``guideline``, ``patient_chart``) are skipped because they
+     * carry no ``bbox`` to draw.
+     *
+     * @return list<array{field_id: string, page: int, bbox: array{0: float, 1: float, 2: float, 3: float}, raw_text: string}>
+     */
+    public static function collectExtractedDocumentCitations(mixed $facts): array
+    {
+        $out = [];
+        self::walkForCitations($facts, $out);
+        return $out;
+    }
+
+    /**
+     * @param list<array{field_id: string, page: int, bbox: array{0: float, 1: float, 2: float, 3: float}, raw_text: string}> $accumulator
+     */
+    private static function walkForCitations(mixed $node, array &$accumulator): void
+    {
+        if (!is_array($node)) {
+            return;
+        }
+
+        $maybeCitation = $node['citation'] ?? null;
+        if (is_array($maybeCitation)) {
+            /** @var array<string, mixed> $maybeCitation */
+            $sourceType = $maybeCitation['source_type'] ?? null;
+            if ($sourceType === 'extracted_document') {
+                $entry = self::projectCitation($maybeCitation);
+                if ($entry !== null) {
+                    $accumulator[] = $entry;
+                }
+            }
+        }
+
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                self::walkForCitations($value, $accumulator);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $citation
+     * @return array{field_id: string, page: int, bbox: array{0: float, 1: float, 2: float, 3: float}, raw_text: string}|null
+     */
+    private static function projectCitation(array $citation): ?array
+    {
+        $page = $citation['page'] ?? null;
+        $bbox = $citation['bbox'] ?? null;
+        if (!is_int($page) || $page < 1) {
+            return null;
+        }
+        if (!is_array($bbox) || count($bbox) !== 4) {
+            return null;
+        }
+        $coords = [];
+        foreach ($bbox as $component) {
+            if (!is_numeric($component)) {
+                return null;
+            }
+            $coords[] = (float) $component;
+        }
+        $fieldIdRaw = $citation['field_or_chunk_id'] ?? '';
+        $fieldId = is_string($fieldIdRaw) ? $fieldIdRaw : '';
+        $rawTextRaw = $citation['raw_text'] ?? '';
+        $rawText = is_string($rawTextRaw) ? $rawTextRaw : '';
+        return [
+            'field_id' => $fieldId,
+            'page' => $page,
+            'bbox' => [$coords[0], $coords[1], $coords[2], $coords[3]],
+            'raw_text' => $rawText,
+        ];
+    }
+
+    /**
      * Narrow a mixed value to a list of array rows (the typical shape
      * for reported_allergies / current_medications / active_problems
      * / family_history). Non-array entries are dropped silently —
