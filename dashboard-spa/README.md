@@ -5,6 +5,16 @@ existing REST + FHIR API as the data layer. See
 [`../PATIENT_DASHBOARD_MIGRATION.md`](../PATIENT_DASHBOARD_MIGRATION.md) for
 the framework defense and parity matrix.
 
+## Deployed demo
+
+- **URL:** https://dashboard-spa-production.up.railway.app
+- **Login:** `admin` / `ChangeMe_StrongAdminPass_456` (same as the deployed
+  OpenEMR — the SPA OAuths against it via SMART standalone launch)
+- **Patient to pick:** `Sofia Reyes` on the SMART patient-selection screen
+  (the rest of the list is Synthea fixture data without curated content)
+
+Grading window only — credentials and host will be invalidated post-review.
+
 ## Stack
 
 - Vite 8 + React 19 + TypeScript 6 (strict, `noUncheckedIndexedAccess`)

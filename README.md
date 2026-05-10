@@ -33,6 +33,8 @@ This fork adds a **Clinical Co-Pilot** — a verified, lane-aware agent for cros
 | Local development (HTTP) | http://localhost:8300/ |
 | Local development (HTTPS) | https://localhost:9300/ |
 | Deployed demo (Railway) | https://openemr-production-6c31.up.railway.app *(grading window only — may be torn down post-review)* |
+| Dashboard SPA — local | http://localhost:5173/ *(see [`dashboard-spa/README.md`](dashboard-spa/README.md))* |
+| Dashboard SPA — deployed | https://dashboard-spa-production.up.railway.app *(grading window only — see [`PATIENT_DASHBOARD_MIGRATION.md`](PATIENT_DASHBOARD_MIGRATION.md))* |
 | phpMyAdmin (local) | http://localhost:8310/ |
 
 ### Credentials (demo only)
