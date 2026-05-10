@@ -18,6 +18,8 @@ salt. That match is what lets investigators join a LangSmith trace's
 
 from __future__ import annotations
 
+from typing import Any, Callable
+
 from langsmith import traceable
 
 from clinical_copilot.observability.redaction import (
@@ -26,6 +28,8 @@ from clinical_copilot.observability.redaction import (
     redact_llm_outputs,
     redact_orchestrator_inputs,
     redact_orchestrator_outputs,
+    redact_supervisor_node_inputs,
+    redact_supervisor_node_outputs,
     redact_tool_dispatch_inputs,
     redact_tool_outputs,
 )
@@ -57,3 +61,23 @@ traceable_tool_dispatch = traceable(
     process_inputs=redact_tool_dispatch_inputs,
     process_outputs=redact_tool_outputs,
 )
+
+
+def traceable_supervisor_node(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Decorator factory for LangGraph supervisor nodes.
+
+    Each node body receives the full ``TurnState`` and returns a partial
+    state dict — both carry PHI (free-text query, drafts, synthesized
+    text) that LangGraph's auto-instrumentation would otherwise emit to
+    LangSmith verbatim. Wrapping the node body with this decorator runs
+    the allowlist redactor pair from :mod:`.redaction` *before* the
+    payload reaches the LangSmith client, mirroring the existing
+    orchestrator/llm/tool wrappers above.
+    """
+
+    return traceable(
+        run_type="chain",
+        name=name,
+        process_inputs=redact_supervisor_node_inputs,
+        process_outputs=redact_supervisor_node_outputs,
+    )

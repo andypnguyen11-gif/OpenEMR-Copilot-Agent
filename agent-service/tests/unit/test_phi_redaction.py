@@ -175,6 +175,8 @@ def test_llm_outputs_drop_text_content_keep_metadata() -> None:
                 "input": {"patient_id": "101"},
             },
         ],
+        input_tokens=1234,
+        output_tokens=567,
     )
     redacted = redact_llm_outputs(turn)
 
@@ -182,6 +184,11 @@ def test_llm_outputs_drop_text_content_keep_metadata() -> None:
     assert redacted["stop_reason"] == "end_turn"
     assert redacted["tool_use_names"] == ["get_problems"]
     assert redacted["text_length"] == len(LLM_TEXT_SENTINEL)
+    assert redacted["usage_metadata"] == {
+        "input_tokens": 1234,
+        "output_tokens": 567,
+        "total_tokens": 1801,
+    }
 
 
 def test_llm_outputs_when_none_returned_yields_empty_metadata() -> None:
@@ -191,6 +198,11 @@ def test_llm_outputs_when_none_returned_yields_empty_metadata() -> None:
         "text_length": 0,
         "tool_use_names": [],
         "tool_use_count": 0,
+        "usage_metadata": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        },
     }
 
 

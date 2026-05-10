@@ -273,6 +273,11 @@ def redact_llm_outputs(output: object) -> dict[str, Any]:
     pipeline (it can quote the chart verbatim). We surface its length
     only. Tool-use blocks are safe to enumerate by name — those are
     model-chosen identifiers, not chart content.
+
+    ``usage_metadata`` is the LangChain-standard shape LangSmith reads
+    to populate the Tokens column (and, paired with the model name from
+    :func:`redact_llm_inputs`, the Cost column). Token counts are
+    integers, not PHI, so they're allowlisted explicitly.
     """
 
     if output is None:
@@ -281,6 +286,11 @@ def redact_llm_outputs(output: object) -> dict[str, Any]:
             "text_length": 0,
             "tool_use_names": [],
             "tool_use_count": 0,
+            "usage_metadata": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+            },
         }
 
     text = getattr(output, "text", "") or ""
@@ -290,12 +300,19 @@ def redact_llm_outputs(output: object) -> dict[str, Any]:
         for use in tool_uses
         if isinstance(getattr(use, "name", None), str)
     ]
+    input_tokens = int(getattr(output, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(output, "output_tokens", 0) or 0)
     return _scrub_payload(
         {
             "stop_reason": getattr(output, "stop_reason", None),
             "text_length": len(text),
             "tool_use_names": tool_use_names,
             "tool_use_count": len(tool_uses),
+            "usage_metadata": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            },
         }
     )
 

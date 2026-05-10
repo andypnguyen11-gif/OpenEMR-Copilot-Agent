@@ -94,6 +94,7 @@ from clinical_copilot.orchestrator.state import (
     initial_state,
 )
 from clinical_copilot.observability.traces import UsageTotals
+from clinical_copilot.observability.tracing import traceable_supervisor_node
 from clinical_copilot.orchestrator.supervisor import (
     Handoff,
     SupervisorResponse,
@@ -488,12 +489,19 @@ def build_graph(
             cohere_model=cohere_model,
         ),
     )
+    # Prototype: wrap only the synthesizer node with the supervisor-node
+    # redactor while we verify whether LangGraph emits a parallel auto-span
+    # alongside the manual @traceable. If single span: roll the same wrap
+    # out to the other six nodes. If double span: apply RunnableConfig
+    # callbacks=[] mitigation per plans/langgraph-node-phi-redaction.md.
     builder.add_node(
         NODE_SYNTHESIZER,
-        _make_synthesizer_node(
-            client=synthesizer_client,
-            model=synthesizer_model,
-            chart_pack=chart_pack,
+        traceable_supervisor_node(NODE_SYNTHESIZER)(
+            _make_synthesizer_node(
+                client=synthesizer_client,
+                model=synthesizer_model,
+                chart_pack=chart_pack,
+            )
         ),
     )
     builder.add_node(
