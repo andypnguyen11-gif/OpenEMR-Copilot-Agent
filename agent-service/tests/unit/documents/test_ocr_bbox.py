@@ -299,6 +299,200 @@ def test_tighten_caches_ocr_per_page(monkeypatch: pytest.MonkeyPatch) -> None:
     assert call_count["n"] == 1, "OCR should be cached per page"
 
 
+def test_tighten_rejects_low_coverage_match_and_keeps_original_bbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When OCR finds only a small fraction of the target tokens, the
+    tightened bbox would be precise-but-wrong (single word in the
+    wrong row). Better to keep the original coarse bbox so the UI
+    visually communicates "approximate" rather than mislead the
+    clinician with a tight rectangle on the wrong text.
+    """
+
+    facts = {
+        "field": {
+            "value": "Mother: None reported, deceased age 81 (natural)",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                bbox=[0.04, 0.78, 0.96, 0.802],
+                raw_text="Mother | None reported | — | Deceased age 81 (natural)",
+            ),
+        },
+    }
+    # Only "None" matches out of {mother, none, reported, deceased,
+    # age, 81, natural} — coverage = 1/7 ≈ 0.14, below the 0.5 floor.
+    fake_words = _ocr_words([
+        ("None", (0.10, 0.10, 0.18, 0.13)),
+    ])
+    monkeypatch.setattr(ocr_bbox, "ocr_page", lambda _img: fake_words)
+
+    out = tighten_extracted_document_citations(facts, [_make_page(1)])
+
+    # Tight match was rejected → original coarse bbox preserved.
+    assert out["field"]["citation"]["bbox"] == [0.04, 0.78, 0.96, 0.802]
+
+
+def test_tighten_prefers_full_page_match_when_hint_misses_most_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the AI's hint bbox excludes the page region where the
+    citation actually lives and the OCR match is contained within a
+    region smaller than the hint, the full-page pass should win.
+    """
+
+    facts = {
+        "field": {
+            "value": "Stroke",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                # Wrong hint: top-left of page. The real text is at
+                # bottom-right but its bbox is still smaller than the
+                # hint, so the area-shrink check passes.
+                bbox=[0.05, 0.05, 0.95, 0.30],
+                raw_text="Father Stroke CVA Deceased",
+            ),
+        },
+    }
+    fake_words = _ocr_words([
+        # Top-of-page words inside the hint — none match target tokens.
+        ("Header", (0.10, 0.10, 0.20, 0.13)),
+        # Bottom-of-page words outside the hint — all 4 target tokens
+        # match, coverage 4/4 = 1.00 (full-page pass wins).
+        ("Father", (0.10, 0.78, 0.18, 0.81)),
+        ("Stroke", (0.20, 0.78, 0.28, 0.81)),
+        ("CVA", (0.30, 0.78, 0.36, 0.81)),
+        ("Deceased", (0.50, 0.78, 0.62, 0.81)),
+    ])
+    monkeypatch.setattr(ocr_bbox, "ocr_page", lambda _img: fake_words)
+
+    out = tighten_extracted_document_citations(facts, [_make_page(1)])
+    new_bbox = out["field"]["citation"]["bbox"]
+    # Should land at the bottom row (full-page winner), not at the
+    # top hint region.
+    assert new_bbox[1] >= 0.7, f"expected bottom-of-page bbox, got {new_bbox}"
+
+
+def test_tighten_rejects_match_that_balloons_beyond_hint_area(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When greedy matching grabs OCR words from multiple page regions
+    (e.g. the same token appears twice), the union bbox can end up
+    larger than the AI's hint. Reject those — keeping the coarse hint
+    is better than a precise-but-wrong rectangle covering most of the
+    page.
+    """
+
+    facts = {
+        "field": {
+            "value": "Stroke",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                # Small hint near the top.
+                bbox=[0.05, 0.05, 0.30, 0.15],
+                raw_text="Father Stroke 70",
+            ),
+        },
+    }
+    fake_words = _ocr_words([
+        # Greedy first-match would grab these scattered words — coverage
+        # 3/3 but bbox spans top-to-bottom (area > hint area). Reject.
+        ("Father", (0.06, 0.10, 0.10, 0.13)),  # inside hint
+        ("Stroke", (0.40, 0.50, 0.50, 0.55)),  # mid-page
+        ("70", (0.20, 0.85, 0.25, 0.88)),       # bottom
+    ])
+    monkeypatch.setattr(ocr_bbox, "ocr_page", lambda _img: fake_words)
+
+    out = tighten_extracted_document_citations(facts, [_make_page(1)])
+    # Match was rejected (area too big) → original coarse bbox preserved.
+    assert out["field"]["citation"]["bbox"] == [0.05, 0.05, 0.30, 0.15]
+
+
+def test_tighten_breaks_ties_by_distance_to_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When hint and full-page passes tie on coverage, prefer the
+    one closer to the AI's hint center — the AI's region guess is a
+    better-than-nothing prior even if it's wrong by a few percent.
+    """
+
+    facts = {
+        "field": {
+            "value": "Sofia",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                bbox=[0.0, 0.45, 1.0, 0.55],
+                raw_text="Sofia",
+            ),
+        },
+    }
+    # Two "Sofia" occurrences with full coverage: one inside the hint,
+    # one near the top. Hint should win because it's closer.
+    fake_words = _ocr_words([
+        ("Sofia", (0.10, 0.10, 0.18, 0.13)),  # outside hint, top
+        ("Sofia", (0.40, 0.48, 0.48, 0.51)),  # inside hint, middle
+    ])
+    monkeypatch.setattr(ocr_bbox, "ocr_page", lambda _img: fake_words)
+
+    out = tighten_extracted_document_citations(facts, [_make_page(1)])
+    assert out["field"]["citation"]["bbox"] == [0.40, 0.48, 0.48, 0.51]
+
+
+def test_tighten_does_not_pull_tokens_across_adjacent_table_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the Apixaban row on the Whitaker intake had a
+    low-confidence "5 mg" cell that Tesseract dropped. The matcher
+    then reached into the *next* table row to satisfy the "mg" target
+    token — and the resulting Apixaban bbox extended down into the
+    Tamsulosin row, visually overlapping it.
+
+    Adjacent rows in a tabular layout are ~0.025 of page height
+    apart; the anchor-distance cap should reject cross-row pulls of
+    that magnitude even when a target token is missing from the
+    anchor's own row.
+    """
+
+    facts = {
+        "field": {
+            "value": "Apixaban 5 mg PO daily",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                bbox=[0.04, 0.59, 0.96, 0.62],
+                raw_text="Apixaban 5 mg PO daily",
+            ),
+        },
+    }
+    # Simulate the real Whitaker layout: Apixaban row at y≈0.63,
+    # Tamsulosin row at y≈0.66 (centers ~0.025 apart). The "5 mg"
+    # cell is missing from the Apixaban row (low Tesseract conf,
+    # dropped at the OCR threshold). Only the Tamsulosin row has
+    # a "mg" token. Pulling it would extend the bbox into y≥0.66.
+    fake_words = _ocr_words([
+        ("Apixaban", (0.07, 0.630, 0.13, 0.642)),
+        ("PO", (0.33, 0.630, 0.35, 0.640)),
+        ("daily", (0.40, 0.630, 0.43, 0.642)),
+        ("Tamsulosin", (0.07, 0.654, 0.15, 0.669)),
+        ("mg", (0.27, 0.658, 0.29, 0.667)),
+        ("PO", (0.33, 0.656, 0.35, 0.665)),
+        ("daily", (0.36, 0.656, 0.39, 0.667)),
+    ])
+    monkeypatch.setattr(ocr_bbox, "ocr_page", lambda _img: fake_words)
+
+    out = tighten_extracted_document_citations(facts, [_make_page(1)])
+    new_bbox = out["field"]["citation"]["bbox"]
+    # bbox must end before the Tamsulosin row begins (y < 0.654);
+    # a value of 0.667 (Tamsulosin "mg" bottom) means we pulled
+    # across rows.
+    assert new_bbox[3] < 0.65, (
+        f"bbox bottom {new_bbox[3]:.4f} should stay above the next row at 0.654"
+    )
+
+
 @pytest.mark.skipif(
     shutil.which("tesseract") is None,
     reason="Tesseract binary not installed; CI / minimal envs skip the real-OCR smoke",
