@@ -290,7 +290,12 @@ def _live_extract_output(case: Case) -> EvalOutput:
             "ANTHROPIC_API_KEY is not set; live extraction unavailable. "
             "Use --use-cached for a replay-only run."
         )
-    client = Anthropic(api_key=settings.llm_api_key)
+    # Bound each attempt at 120s and give the SDK 4 retries (default is 2).
+    # CI saw a single APITimeoutError on a vision call tank the whole 65-case
+    # gate; tighter per-attempt timeout + more retries keeps total budget
+    # similar (4×120s=8m vs 2×600s=20m) but is more resilient to transient
+    # network blips on a single page.
+    client = Anthropic(api_key=settings.llm_api_key, timeout=120.0, max_retries=4)
     document_type = case.document_type
     assert document_type in (DocumentType.LAB_PDF, DocumentType.INTAKE_FORM)
     runtime_doc_type = "lab_pdf" if document_type is DocumentType.LAB_PDF else "intake_form"

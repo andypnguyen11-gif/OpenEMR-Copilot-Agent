@@ -24,13 +24,22 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
+import random
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from anthropic import Anthropic
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    RateLimitError,
+)
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from clinical_copilot.documents.extractors.hl7_adt import extract_hl7_adt
@@ -86,6 +95,16 @@ CONFIDENCE_THRESHOLD: float = 0.7
 # at this max_tokens; Haiku occasionally truncates a multi-row lab
 # panel mid-tool-use, which costs more retries than the savings buy.
 VLM_MAX_TOKENS: int = 4096
+
+# App-level retry budget for transient SDK errors (timeouts, dropped
+# connections, 5xx, 429). The SDK already retries internally; this is a
+# second layer because the eval gate fans out 65 cases and a single
+# unrecovered failure tanks the whole run. Bounded total wait:
+# 2 + 4 + 8 = 14s of backoff across 3 attempts.
+_VLM_MAX_ATTEMPTS: int = 3
+_VLM_RETRY_BASE_DELAY: float = 2.0
+
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -630,6 +649,56 @@ def _merge_intake_pages(pages: list[RawIntakeExtraction]) -> RawIntakeExtraction
 # ---------------------------------------------------------------------------
 
 
+def _is_retriable_status(exc: APIStatusError) -> bool:
+    # 429 (rate limit) and 5xx are transient. 4xx other than 429 are
+    # programming bugs (bad request, auth) and must not be retried.
+    status = getattr(exc, "status_code", None)
+    return status == 429 or (status is not None and 500 <= status < 600)
+
+
+def _create_with_retry(
+    *,
+    client: Anthropic,
+    model: str,
+    system_prompt: str,
+    tool: dict[str, Any],
+    messages: list[dict[str, Any]],
+) -> Any:
+    last_exc: BaseException | None = None
+    for attempt in range(1, _VLM_MAX_ATTEMPTS + 1):
+        try:
+            return client.messages.create(
+                model=model,
+                max_tokens=VLM_MAX_TOKENS,
+                system=system_prompt,
+                tools=cast(Any, [tool]),
+                tool_choice=cast(Any, {"type": "tool", "name": tool["name"]}),
+                messages=cast(Any, messages),
+            )
+        except (APITimeoutError, APIConnectionError, RateLimitError) as exc:
+            last_exc = exc
+        except APIStatusError as exc:
+            if not _is_retriable_status(exc):
+                raise
+            last_exc = exc
+
+        if attempt == _VLM_MAX_ATTEMPTS:
+            break
+        delay = _VLM_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+        delay += random.uniform(0, delay * 0.25)
+        _logger.warning(
+            "vlm.transient_error attempt=%d/%d kind=%s sleep=%.1fs",
+            attempt,
+            _VLM_MAX_ATTEMPTS,
+            type(last_exc).__name__,
+            delay,
+        )
+        time.sleep(delay)
+
+    assert last_exc is not None
+    raise last_exc
+
+
 def _call_vlm[T: BaseModel](
     *,
     client: Anthropic,
@@ -665,13 +734,12 @@ def _call_vlm[T: BaseModel](
         }
     ]
 
-    response = client.messages.create(
+    response = _create_with_retry(
+        client=client,
         model=model,
-        max_tokens=VLM_MAX_TOKENS,
-        system=system_prompt,
-        tools=cast(Any, [tool]),
-        tool_choice=cast(Any, {"type": "tool", "name": tool["name"]}),
-        messages=cast(Any, messages),
+        system_prompt=system_prompt,
+        tool=tool,
+        messages=messages,
     )
 
     for block in response.content:
