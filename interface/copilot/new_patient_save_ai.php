@@ -6,12 +6,11 @@
  *
  * Creates a fresh OpenEMR patient row from the clinician-confirmed
  * intake review and seeds the lists table with active problems,
- * medications, and allergies in one transaction.
- *
- * Family-history write-back is documented in the plan as cuttable for
- * tonight; the family-history rows submitted from the review form are
- * intentionally not persisted yet (a follow-up MR adds the
- * ``history_data.family_*`` write).
+ * medications, and allergies in one transaction. Family history rows
+ * write back to ``history_data.history_<relative>`` (one longtext
+ * column per stock OpenEMR relative — father / mother / siblings /
+ * offspring / spouse), grouped by normalized relation so multiple
+ * siblings concatenate into one column rather than overwriting.
  *
  * @package   OpenEMR
  * @link      https://www.open-emr.org
@@ -468,6 +467,100 @@ if ($chiefComplaint !== '') {
         ServiceContainer::getLogger()->warning(
             'Co-Pilot intake: chief-complaint stash failed',
             ['pid' => $newpid, 'exception' => $exc],
+        );
+    }
+}
+
+// Family-history rows → history_data.history_<relative>. The stock
+// History form models family history as one longtext column per
+// relative (father / mother / siblings / offspring / spouse), not as
+// a relational sub-table — so multiple sibling entries here have to
+// concatenate into one column rather than producing multiple rows.
+// Lives outside the transaction for the same reason as chief
+// complaint: a write failure here must not undo a successfully
+// created patient.
+$fhxSave = $readPostList('fhx_save');
+$fhxRelations = $readPostList('fhx_relation');
+$fhxConditions = $readPostList('fhx_condition');
+$fhxOnsetAges = $readPostList('fhx_onset_age');
+$fhxStatuses = $readPostList('fhx_status');
+
+// Map of normalized relation token → history_data column. Anything
+// outside this set is dropped with a logged warning — the stock form
+// has no place to put "Cousin" or "Uncle" so we'd rather miss those
+// rows than silently merge them into the wrong relative's column.
+$relationColumnMap = [
+    'father' => 'history_father',
+    'dad' => 'history_father',
+    'mother' => 'history_mother',
+    'mom' => 'history_mother',
+    'sibling' => 'history_siblings',
+    'siblings' => 'history_siblings',
+    'brother' => 'history_siblings',
+    'sister' => 'history_siblings',
+    'child' => 'history_offspring',
+    'children' => 'history_offspring',
+    'son' => 'history_offspring',
+    'daughter' => 'history_offspring',
+    'offspring' => 'history_offspring',
+    'spouse' => 'history_spouse',
+    'husband' => 'history_spouse',
+    'wife' => 'history_spouse',
+    'partner' => 'history_spouse',
+];
+
+/** @var array<string, list<string>> $familyByColumn */
+$familyByColumn = [];
+foreach ($fhxSave as $idx => $flag) {
+    if ($flag !== '1') {
+        continue;
+    }
+    $relation = strtolower(trim($fhxRelations[$idx] ?? ''));
+    $condition = trim($fhxConditions[$idx] ?? '');
+    if ($relation === '' || $condition === '') {
+        continue;
+    }
+    $column = $relationColumnMap[$relation] ?? null;
+    if ($column === null) {
+        ServiceContainer::getLogger()->info(
+            'Co-Pilot intake: family-history relation has no history_data column',
+            ['pid' => $newpid, 'relation' => $relation],
+        );
+        continue;
+    }
+    $onsetAge = trim($fhxOnsetAges[$idx] ?? '');
+    $statusStr = trim($fhxStatuses[$idx] ?? '');
+    $parts = [$condition];
+    if ($onsetAge !== '') {
+        $parts[] = 'onset age ' . $onsetAge;
+    }
+    if ($statusStr !== '') {
+        $parts[] = $statusStr;
+    }
+    $familyByColumn[$column] ??= [];
+    $familyByColumn[$column][] = implode(', ', $parts);
+}
+
+foreach ($familyByColumn as $column => $entries) {
+    // ``history_<relative>`` is plain longtext, not a structured list,
+    // so multiple entries concatenate with a "; " separator. Stock
+    // OpenEMR users enter it the same way by hand.
+    $value = implode('; ', $entries);
+    try {
+        QueryUtils::sqlStatementThrowException(
+            // Bind the column name into the query string — it comes from
+            // a hard-coded allowlist (relationColumnMap values), never
+            // from user input, so SQL-injection isn't a risk here.
+            sprintf(
+                'UPDATE history_data SET %s = ? WHERE pid = ? ORDER BY id DESC LIMIT 1',
+                $column,
+            ),
+            [$value, $newpid],
+        );
+    } catch (SqlQueryException $exc) {
+        ServiceContainer::getLogger()->warning(
+            'Co-Pilot intake: family-history write failed',
+            ['pid' => $newpid, 'column' => $column, 'exception' => $exc],
         );
     }
 }
