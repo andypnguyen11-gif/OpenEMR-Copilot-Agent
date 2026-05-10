@@ -45,7 +45,7 @@ from clinical_copilot.auth.jwt_verifier import require_clinician_claims
 from clinical_copilot.auth.role import Role
 from clinical_copilot.config import Settings, get_settings
 from clinical_copilot.discrepancy.background import BackgroundRunner
-from clinical_copilot.documents import store as facts_store
+from clinical_copilot.documents import page_cache, store as facts_store
 from clinical_copilot.documents.schemas.citation import Citation
 from clinical_copilot.documents.extractor import (
     DocumentType,
@@ -54,6 +54,7 @@ from clinical_copilot.documents.extractor import (
 from clinical_copilot.documents.extractor import (
     extract as run_extraction,
 )
+from clinical_copilot.documents.fetcher import encode_png_bytes, render_document
 from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.observability import TraceRecord
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
@@ -1097,6 +1098,26 @@ def create_app(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"extraction failed: {exc}",
                 ) from exc
+
+            # Pre-render the source pages so the OpenEMR review UI's
+            # bbox-overlay can fetch them without re-rasterizing on every
+            # request. The OpenEMR docker image has no Ghostscript, so
+            # PHP cannot do this in-process — agent-service is the
+            # canonical renderer for every document type the extractor
+            # supports. Render-and-cache is fully best-effort: any
+            # failure (unsupported format, malformed bytes that the
+            # extractor's vision model still tolerated, disk full)
+            # leaves the cache empty and the page route's structured
+            # 404 takes over from there. Never let it fail the ingest.
+            try:
+                for rendered in render_document(tmp_path):
+                    page_cache.write(
+                        document_id,
+                        rendered.page_number,
+                        encode_png_bytes(rendered.image),
+                    )
+            except Exception:  # noqa: BLE001 - best-effort, see comment above
+                pass
         finally:
             with suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
@@ -1163,6 +1184,47 @@ def create_app(
                 detail="document not found",
             )
         return facts.model_dump(mode="json")
+
+    @app.get(
+        "/api/agent/internal/document_page/{document_id}",
+        tags=["internal"],
+    )
+    async def document_page_route(
+        document_id: str = Path(min_length=1, max_length=128),
+        page: int = Query(ge=1),
+        _: None = internal_dep,
+    ) -> Response:
+        # Serve the cached PNG for one page of an ingested document.
+        # The bbox-overlay UI fetches `?page=N` for each citation it
+        # has to draw on; the cache is populated eagerly during the
+        # ingest route above.
+        #
+        # Cache miss path is intentionally explicit: a 404 with a
+        # structured body so the PHP shell can render an "image
+        # unavailable" placeholder instead of guessing whether the
+        # document, the page, or the renderer is at fault.
+        png_bytes = page_cache.read(document_id, page)
+        if png_bytes is not None:
+            return Response(content=png_bytes, media_type="image/png")
+
+        cached_pages = page_cache.page_count(document_id)
+        if cached_pages == 0:
+            detail = {
+                "reason": "document_not_rendered",
+                "document_id": document_id,
+                "page": page,
+            }
+        else:
+            detail = {
+                "reason": "page_out_of_range",
+                "document_id": document_id,
+                "page": page,
+                "cached_page_count": cached_pages,
+            }
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )
 
     @app.put(
         "/api/agent/internal/extracted/{document_id}",

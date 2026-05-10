@@ -153,3 +153,19 @@ def encode_jpeg_bytes(image: Image.Image, quality: int = 85) -> bytes:
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
+
+
+def encode_png_bytes(image: Image.Image) -> bytes:
+    """Encode `image` as PNG bytes for the citation-overlay page cache.
+
+    PNG (rather than JPEG) avoids the compression artifacts JPEG
+    introduces around text glyphs and thin lines on lab printouts;
+    those artifacts make bbox alignment hard to eyeball when the
+    overlay UI flips a citation rectangle on hover. The size penalty
+    is acceptable for the cache use case (one-time write per page,
+    served on demand).
+    """
+
+    buf = io.BytesIO()
+    image.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
