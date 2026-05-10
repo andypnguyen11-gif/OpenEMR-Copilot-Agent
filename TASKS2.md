@@ -44,23 +44,23 @@ recommending it as "next up."
 
 | MR | Status | Notes |
 |---|---|---|
-| W2-01 — Schemas + abstain enum | **PARTIAL (DEMO-CUT)** | Runtime schemas, `RuntimeAbstainReason`, and `ExtractedField[T]` shipped under `documents/schemas/`. Eval-side `EvalCaseState` enum, `import-linter` contract, and `evals/` package skeleton — deferred. |
-| W2-02 — OpenEMR Documents category + event hook + state-poll | **DEMO-CUT REPLACEMENT** | The Symfony listener + queue + `GET /agent/documents/{id}` are not built. Replaced by chart-side PHP pages (`upload_lab.php`, `new_patient_with_ai.php`, `upload_document.php`) calling `POST /api/agent/internal/ingest` synchronously. |
-| W2-03 — `lab_pdf` VLM extraction worker | **PARTIAL (DEMO-CUT)** | Live VLM extraction shipped; **schema is per-field** via `ExtractedField[T]` (every observation field — code/display/value/unit/date/refs/flag — carries its own `SourceCitation` or `abstain_reason`); the VLM is prompted for one bbox per row so the same citation may repeat across a row's fields. Persisted to `data/extracted/<id>.json`, not the planned `extracted_facts` Postgres table. Eval bucket: 7 cases in the extraction bucket of the 65-case manifest (12 planned). |
-| W2-04 — `intake_form` extraction | **PARTIAL (DEMO-CUT)** | Live single-page extraction shipped; NKDA negation handled; per-field citations enforced via `ExtractedField[T]`. Stateful page-2 fallback deferred. Eval bucket: 7 cases in the extraction bucket of the 65-case manifest (10 planned). |
-| W2-05 — Citation OCR check | **DEFERRED** | No Tesseract pass; today's gate is VLM-confidence < 0.7 only. `CitationKind` and the strict + degraded path are not in code. |
-| W2-06 — Evidence retriever | **WIRED (LIVE)** | Hybrid retriever (BM25 + dense via `OpenAIEmbedder`, RRF-fused with `k=60`) at `corpus/retriever.py:62–146`; dense path is gated on the `dense.pkl` artifact + `OPENAI_API_KEY` and falls back to BM25-only when absent. Rerank stage at `corpus/rerank.py` is called from the supervisor's `evidence_retriever` worker (`orchestrator/workers/evidence_retriever.py:81–92`); Cohere `rerank-v3.5` is the Sunday-target primary backend (MR W2-RR — promoted to Sunday-blocking 2026-05-08), with the existing LLM-judge implementation as the env-var-gated fallback when `COHERE_API_KEY` is absent. Routed into `/api/agent/query` slow lane via the supervisor branch (`main.py:541–632`). Corpus is **30 docs / 262 chunks** as of 2026-05-08 (was 15 / 90); covers screening + management for every condition, medication, and lab surfaced in the W1 chart fixtures and the cohort-5-week-2-assets-v2 set. |
-| W2-07 — Supervisor + workers | **WIRED (LIVE)** | Supervisor + `intake_extractor` + `evidence_retriever` workers shipped in `orchestrator/supervisor.py` and `orchestrator/workers/` (commit `39f487aaf`, 2026-05-06). Plain Python via Anthropic `tool_use` dispatch — **no LangGraph dependency** (planner / critic nodes deferred). End-to-end test in `tests/integration/test_supervisor.py`; a separate `GET /api/agent/supervisor/audit/{resident_user_id}` endpoint surfaces handoff rows. Routed into `/api/agent/query` slow lane at `main.py:541–632` (gated on `resolved_settings.use_supervisor`, default on, with cross-patient guard + chart-pack pre-fetch + v1-orchestrator fallback on supervisor exception). Fast-lane requests still go through v1 `Orchestrator.run()` by design. The `/api/agent/internal/ingest` route still calls `run_extraction()` directly rather than the `intake_extractor` worker — left as planned because that worker is for *interactive query* dispatch. |
-| W2-08 — Reconciliation extension (extracted vs chart) | **DEFERRED** | No new discrepancy rules or eval cases yet. |
-| W2-09 — RBAC scope test for documents | **DEFERRED** | The chart-side ingest path uses an internal-token + multipart binding; no `GET /agent/documents/{id}` JWT-bound route exists yet. RBAC tests for the planned route are deferred. The internal-token gate is unit-tested in the v1 RBAC suite. |
-| W2-10 — Abstention rendering + chart summary card | **DEFERRED** | No Documents-view side panel and no chart summary card. Clinician review happens on `lab_review.php` / `intake_review.php` / `document_review.php`. |
-| W2-11 — Pre-push eval hook + Makefile + flake policy | **SHIPPED** | Extraction eval gate is now **65 cases** at `agent-service/evals/extraction/cases.jsonl` (28 extraction · 23 retrieval · 6 citations · 4 missing-data · 4 refusals); runner at `src/clinical_copilot/evals/extraction/runner.py`; thresholds in `evals/extraction/baseline.json`: `citation_present ≥ 0.95`, `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`, `schema_valid = 1.0`, `no_phi_in_logs = 1.0`, regression budget 5 pp. Pre-push hook (`4a81eca23`) and GitLab pipeline at `.gitlab-ci.yml` (`24ae138b9`) both invoke the gate. Boolean rubrics only; no judge wrapper, no per-stage latency rubric. |
-| W2-12 — PHI redaction in LangSmith spans | **DEFERRED** | Demo runs with `LANGSMITH_TRACING=false`. Re-enabling tracing requires this MR. |
-| W2-MM — Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 35 multimodal extraction cases (5 modality sub-buckets × 7 cases) on top of the 14 lab + intake cases. As of 2026-05-08 the eval manifest is **65 total cases across 5 top-level buckets** (extraction 28 / retrieval 23 / citations 6 / missing-data 4 / refusals 4); the extraction bucket subdivides into 7 modality sub-buckets (lab, intake, fax, referral, workbook, hl7-oru, hl7-adt). See plans/week2-multimodal-expansion.md for the per-step breakdown. |
-| W2-CW — Chart-write confirmation path | **IN PROGRESS (FEEDBACK-CUT)** | PHP review/save flow can attach uploaded documents to an existing patient and write selected extracted sections into OpenEMR chart tables (`lists` for allergies/meds/problems via `ChartWriteService:85,129,179`; `dated_reminders` for care gaps via `:236`; `procedure_order` chain for labs). Tests for `ChartWriteService` / `FactsExtractor` / save orchestration shipped (`tests/Tests/Services/Copilot/ChartWrite/`); transaction/idempotency story shipped via `ChartWriteCoordinator` + `documents.chart_written_at`/`chart_write_started_at`/`chart_write_summary` markers (`SaveDocumentEndpointIdempotencyTest`). Remaining proof points: visible write-confirmation summary in the review UI, and a clear written position vs FHIR Bundle persistence. |
+| PR 1 — Schemas + abstain enum | **PARTIAL (DEMO-CUT)** | Runtime schemas, `RuntimeAbstainReason`, and `ExtractedField[T]` shipped under `documents/schemas/`. Eval-side `EvalCaseState` enum, `import-linter` contract, and `evals/` package skeleton — deferred. |
+| PR 2 — OpenEMR Documents category + event hook + state-poll | **DEMO-CUT REPLACEMENT** | The Symfony listener + queue + `GET /agent/documents/{id}` are not built. Replaced by chart-side PHP pages (`upload_lab.php`, `new_patient_with_ai.php`, `upload_document.php`) calling `POST /api/agent/internal/ingest` synchronously. |
+| PR 3 — `lab_pdf` VLM extraction worker | **PARTIAL (DEMO-CUT)** | Live VLM extraction shipped; **schema is per-field** via `ExtractedField[T]` (every observation field — code/display/value/unit/date/refs/flag — carries its own `SourceCitation` or `abstain_reason`); the VLM is prompted for one bbox per row so the same citation may repeat across a row's fields. Persisted to `data/extracted/<id>.json`, not the planned `extracted_facts` Postgres table. Eval bucket: 7 cases in the extraction bucket of the 65-case manifest (12 planned). |
+| PR 4 — `intake_form` extraction | **PARTIAL (DEMO-CUT)** | Live single-page extraction shipped; NKDA negation handled; per-field citations enforced via `ExtractedField[T]`. Stateful page-2 fallback deferred. Eval bucket: 7 cases in the extraction bucket of the 65-case manifest (10 planned). |
+| PR 5 — Citation OCR check | **DEFERRED** | No Tesseract pass; today's gate is VLM-confidence < 0.7 only. `CitationKind` and the strict + degraded path are not in code. |
+| PR 6 — Evidence retriever | **WIRED (LIVE)** | Hybrid retriever (BM25 + dense via `OpenAIEmbedder`, RRF-fused with `k=60`) at `corpus/retriever.py`; dense path is gated on the `dense.pkl` artifact + `OPENAI_API_KEY` and falls back to BM25-only when absent. Rerank stage at `corpus/rerank.py` is called from the supervisor's `evidence_retriever` worker (`orchestrator/workers/evidence_retriever.py`); Cohere `rerank-v3.5` is the Sunday-target primary backend (PR 7 — promoted to Sunday-blocking 2026-05-08), with the existing LLM-judge implementation as the env-var-gated fallback when `COHERE_API_KEY` is absent. Routed into `/api/agent/query` slow lane via the supervisor branch in `main.py`. Corpus is **30 docs / 262 chunks** as of 2026-05-08 (was 15 / 90); covers screening + management for every condition, medication, and lab surfaced in the W1 chart fixtures and the cohort-5-week-2-assets-v2 set. |
+| PR 8 — Supervisor + workers / LangGraph pivot | **SHIPPED (OPT-IN)** | Plain-Python supervisor + `intake_extractor` + `evidence_retriever` workers remain the default live slow-lane path (`USE_SUPERVISOR=true`). The LangGraph `StateGraph` pivot has also landed behind `USE_LANGGRAPH=true`: `orchestrator/supervisor_langgraph.py`, `state.py`, `planner.py`, `critic.py`, `edges.py`, and `orchestrator/nodes/*`, with the plain-Python supervisor as fallback. End-to-end test for the plain supervisor remains in `tests/integration/test_supervisor.py`; LangGraph unit coverage lives in `tests/unit/orchestrator/{test_planner,test_critic,test_edges,test_supervisor_lg}.py`. Still open: LangSmith per-node span proof, citation-separation eval pass, and production rollout verification with the flag enabled. The `/api/agent/internal/ingest` route still calls `run_extraction()` directly rather than the `intake_extractor` worker — left as planned because that worker is for *interactive query* dispatch. |
+| PR 9 — Reconciliation extension (extracted vs chart) | **DEFERRED** | No new discrepancy rules or eval cases yet. |
+| PR 10 — RBAC scope test for documents | **DEFERRED** | The chart-side ingest path uses an internal-token + multipart binding; no `GET /agent/documents/{id}` JWT-bound route exists yet. RBAC tests for the planned route are deferred. The internal-token gate is unit-tested in the v1 RBAC suite. |
+| PR 11 — Abstention rendering + chart summary card | **DEFERRED** | No Documents-view side panel and no chart summary card. Clinician review happens on `lab_review.php` / `intake_review.php` / `document_review.php`. |
+| PR 12 — Pre-push eval hook + Makefile + flake policy | **SHIPPED** | Extraction eval gate is now **65 cases** at `agent-service/evals/extraction/cases.jsonl` (28 extraction · 23 retrieval · 6 citations · 4 missing-data · 4 refusals); runner at `src/clinical_copilot/evals/extraction/runner.py`; thresholds in `evals/extraction/baseline.json`: `citation_present ≥ 0.95`, `factually_consistent ≥ 0.90`, `safe_refusal = 1.0`, `schema_valid = 1.0`, `no_phi_in_logs = 1.0`, regression budget 5 pp. Pre-push hook (`4a81eca23`) and GitLab pipeline at `.gitlab-ci.yml` (`24ae138b9`) both invoke the gate. Boolean rubrics only; no judge wrapper, no per-stage latency rubric. |
+| PR 13 — PHI redaction in LangSmith spans | **DEFERRED** | Demo runs with `LANGSMITH_TRACING=false`. Re-enabling tracing requires this MR. |
+| Multimodal expansion (Steps 0-8) | **SHIPPED** | Adds 5 new document types (referral_docx, fax_tiff, workbook_xlsx, hl7_oru, hl7_adt) on top of the existing lab_pdf + intake_form, a universal `upload_document.php` entrypoint with format classifier, and a patient resolver that suggests existing-chart matches from extracted demographics. 8 commits, 35 multimodal extraction cases (5 modality sub-buckets × 7 cases) on top of the 14 lab + intake cases. As of 2026-05-08 the eval manifest is **65 total cases across 5 top-level buckets** (extraction 28 / retrieval 23 / citations 6 / missing-data 4 / refusals 4); the extraction bucket subdivides into 7 modality sub-buckets (lab, intake, fax, referral, workbook, hl7-oru, hl7-adt). See plans/week2-multimodal-expansion.md for the per-step breakdown. |
+| Chart-write confirmation path | **IN PROGRESS (FEEDBACK-CUT)** | PHP review/save flow can attach uploaded documents to an existing patient and write selected extracted sections into OpenEMR chart tables (`lists` for allergies/meds/problems via `ChartWriteService:85,129,179`; `dated_reminders` for care gaps via `:236`; `procedure_order` chain for labs). Tests for `ChartWriteService` / `FactsExtractor` / save orchestration shipped (`tests/Tests/Services/Copilot/ChartWrite/`); transaction/idempotency story shipped via `ChartWriteCoordinator` + `documents.chart_written_at`/`chart_write_started_at`/`chart_write_summary` markers (`SaveDocumentEndpointIdempotencyTest`). Remaining proof points: visible write-confirmation summary in the review UI, and a clear written position vs FHIR Bundle persistence. |
 
 Cross-cutting infrastructure that landed alongside the Week 2 demo (not
-attributed to a specific W2-XX block):
+attributed to a specific PR N block):
 
 - Chart-side AI entry points: Patient menu items in `interface/main/tabs/
   menu/menus/{standard,front_office}.json`; "Upload lab document" button
@@ -78,6 +78,31 @@ attributed to a specific W2-XX block):
 - Demo path documented in `agent-service/README.md § Week 2 — Multimodal
   demo`; that section is the canonical shipped/deferred matrix at the
   level of CLIs and env vars.
+
+## Post-demo landing as of 2026-05-09
+
+Six remediation PRs landed the day after submission, addressing the
+gaps + risks surfaced in feedback. Detailed checklists are in the
+[Post-demo remediation chapter](#post-demo-remediation-pr-1419) below.
+
+| MR | Status | Notes |
+|---|---|---|
+| PR 14 — Citation: three-class discriminator | **SHIPPED** | New optional `citation` field on `CitedClaim` / `Card` carrying `SourceCitation` / `GuidelineCitation` / `PatientChartCitation`; verifier untouched (Option 1). ~30 extracted JSON fixtures backfilled. PHP parser + drift-guard test landed. |
+| PR 15 — Idempotent chart-write save | **SHIPPED** | `ChartWriteCoordinator` with four explicit outcomes (AcquiredAndWrote / IdempotentReplay / ConcurrentInFlight / DocumentNotFound); migration `Version20260509201506.php` adds `chart_written_at`, `chart_write_started_at`, `chart_write_summary`; 25 tests / 95 assertions in `SaveDocumentEndpointIdempotencyTest`. New-patient retry recovery uses the existing `documents.foreign_id` pid. |
+| PR 16 — Surface active rerank backend | **SHIPPED** | `AgentResponse.rerank_backend` carries `"cohere" \| "llm_judge" \| "bm25_only"` (canonical underscored labels). Chat + side-panel JS badge non-Cohere backends. Boot log + per-request log both emit. `COHERE_API_KEY` reported set on Railway by maintainer (ops-side state, not verifiable from repo); the post-deploy `curl` verify of `"rerank_backend": "cohere"` is what proves the wiring end-to-end. |
+| PR 17 — Trace wiring (usage + retrieval + confidence) | **SHIPPED** | Alembic `0004_agent_traces_extension.py` adds `retrieval_hits` + `extraction_confidence` columns. Every `/api/agent/query` and document-ingest call writes one row; query paths carry summed token counts when available, while document-ingest currently records `token_in=0` / `token_out=0` and the mean extraction confidence. `TracesService` is fail-open (DB outages never surface to clinicians). NULL semantics enforced per column independently. |
+| PR 18 — Bbox canvas overlay MVP | **SHIPPED** | Click-to-source: clicking an extracted field highlights the matching bbox on a rendered page image. **Pre-flight #3 reversed:** rendering moved from PHP-side Imagick to agent-service `pypdfium2` (Imagick on `openemr:flex` lacks Ghostscript). PHP becomes a same-origin proxy preserving structured 404 on cache miss. |
+| PR 18b — docx/xlsx/HL7 synthetic rendering | **SHIPPED** | Deterministic monospace text-on-page renderer for HL7 segments / docx paragraphs / xlsx cells; per-citation bboxes computed against the renderer's layout constants (no OCR pass needed). |
+| PR 18c — OCR-based bbox tightening | **SHIPPED** | Tesseract runs at ingest on each rendered page; per-citation bboxes are tightened from the AI's coarse hint to the union of matched OCR words. Lipid-panel observation rows went from area=0.060 (every row identical) to per-row distinct (Total Cholesterol 0.017 / HDL 0.035 / LDL 0.052 / Triglycerides 0.001). |
+| PR 19 — prek pre-push hook installer | **SHIPPED** | `composer install` automatically wires `.git/hooks/pre-push` against `.pre-commit-config.yaml` via `scripts/install-pre-push-hook.php`. Skips in CI / when `.git` absent. Single WARN line + exit 0 when prek is missing — never breaks `composer install`. Commit `44a17bbe2`. |
+
+**Status update on demo-cut MRs:** PR 5 (Citation OCR check) remains
+**DEFERRED** — PR 18c uses Tesseract for *bbox tightening*, but the
+strict OCR-vs-VLM citation gate envisioned in PR 5 hasn't shipped.
+Chart-write confirmation path is now better characterized as **SHIPPED
+core, UI summary deferred** — the idempotency / transaction story is
+done (PR 15); the visible write-confirmation summary in the review UI
+is the remaining feedback-driven proof point.
 
 ## Submission timeline
 
@@ -102,7 +127,7 @@ and the **Open recovery items** section below.
 
 | Surface | Commit | Closes which reviewer concern |
 |---|---|---|
-| Supervisor + `intake_extractor` + `evidence_retriever` workers | `39f487aaf` | "Supervisor routing not active" — code shipped Wed; production wiring into `/api/agent/query` slow lane (`main.py:541–632`, gated on `use_supervisor`) landed during the Fri–Sat doc + corpus pass |
+| Supervisor + `intake_extractor` + `evidence_retriever` workers | `39f487aaf` | "Supervisor routing not active" — code shipped Wed; production wiring into `/api/agent/query` slow lane (`main.py`, gated on `use_supervisor`) landed during the Fri–Sat doc + corpus pass |
 | Stage 4A extraction eval gate | `0cced10ce` | "Eval/CI gate not at required level" — 50 cases + thresholds (later expanded to 65 on 2026-05-08) |
 | Pre-push hook for the eval gate | `4a81eca23` | Same — local enforcement |
 | GitLab pipeline for the eval gate | `24ae138b9` | Same — CI surface (GitLab is the project's canonical CI) |
@@ -111,13 +136,13 @@ and the **Open recovery items** section below.
 | Chart-write fixes (MIME guard, IngestResponse wrapper, type-hint UX) | `367f0b0b6`, `8bccf5f0a`, `38ea1db54`, `977651b56` | Demo polish |
 
 **Closed gaps as of 2026-05-08:** `/api/agent/query` slow lane now
-routes through the supervisor + hybrid retriever (`main.py:541–632`,
+routes through the supervisor + hybrid retriever (`/api/agent/query` in `main.py`,
 gated on `use_supervisor`). The corpus expanded to 30 docs / 262
 chunks covering every condition / medication / lab in the W1 + cohort-5
 fixtures; the eval manifest is now 65 cases (was 50) with 23 retrieval
-cases. **Next live deliverable for Sunday:** the W2-07 LangGraph pivot
-(see "Open recovery items" below) — the current plain-Python supervisor
-stays as the v1 fallback.
+cases. The PR 8 LangGraph pivot has landed behind `USE_LANGGRAPH=true`;
+the current plain-Python supervisor stays the default live path and v1
+fallback until rollout verification flips the flag.
 
 ## Open recovery items (Sunday-submission focus)
 
@@ -140,50 +165,44 @@ before submit) and a **Post-Sunday MR queue** (planned-but-deferred
 work; full MR blocks are authored further down in this doc and
 linked).
 
-**W2-07 LangGraph framing — current / target / risk.**
-The Sunday-blocking item below — *W2-07 LangGraph pivot* — assumes
-the upgrade lands before submit. Three-tier framing for grader
-clarity:
+**PR 8 LangGraph framing — shipped / fallback / remaining proof.**
+The LangGraph pivot has landed in code, but it is deliberately
+default-off until rollout verification:
 
-* **Current submission state.** The plain-Python `tool_use`
-  supervisor + 2 workers is live and satisfies the Core
-  "one supervisor and two workers" requirement
-  (`main.py:541–632`, gated on `use_supervisor`).
-* **Sunday target (W2-07).** LangGraph `StateGraph` adds explicit
-  planner + critic nodes + conditional edges + LangSmith per-node
-  spans, behind a new `use_langgraph` flag with the current
-  supervisor as the v1 fallback. The dedicated critic node closes
-  the assignment's **Extension-tier** "critic agent that rejects
-  uncited claims or unsafe action suggestions" item.
-* **Risk if W2-07 slips.** Submission falls back to "critic-intent
-  met by 3-layer enforcement (XOR validator + supervisor system
-  prompt + CI gate); dedicated critic LLM node deferred." That's
-  defensible — the three layers already prevent uncited claims —
-  but the Extension rubric line is only fully closed when W2-07
-  lands. SUBMISSIONW2.md §3 must reflect whichever state ships.
+* **Default live path.** The plain-Python `tool_use` supervisor + 2
+  workers remains live behind `use_supervisor` and satisfies the Core
+  "one supervisor and two workers" requirement.
+* **Opt-in LangGraph path.** `USE_LANGGRAPH=true` routes slow-lane
+  traffic through a `StateGraph` with planner, worker fan-out,
+  synthesizer, critic, verification, and `v1_single` fallback nodes.
+  Any LangGraph exception falls back to the plain-Python supervisor.
+* **Still open.** LangSmith per-node span linkage, citation-separation
+  eval pass, and flag-enabled production verification are the remaining
+  PR 8 proof points. SUBMISSIONW2.md §3 should present this as
+  shipped opt-in, not deferred.
 
 ---
 
-- [x] **[build] W2-07 LangGraph pivot — supervisor + planner + critic + edges.**
+- [x] **[build] PR 8 LangGraph pivot — supervisor + planner + critic + edges.**
   The shipped plain-Python supervisor (`orchestrator/supervisor.py`,
   Anthropic `tool_use` loop) becomes the v1 fallback; the LangGraph
   StateGraph implementation lands behind a new `use_langgraph`
-  config flag. New files per W2-07 plan: `orchestrator/state.py`
+  config flag. New files per PR 8 plan: `orchestrator/state.py`
   (`TurnState` TypedDict), `orchestrator/planner.py` (Haiku → typed
   `SubQuery[]`), `orchestrator/critic.py` (deterministic checks +
   1.5 s LLM-judge timeout), `orchestrator/edges.py`
   (`route_after_planner`, `route_after_critic`),
   `orchestrator/nodes/{intake_extractor,evidence_retriever,v1_single}.py`
-  (worker wrappers), updated `orchestrator/supervisor.py` (StateGraph
-  builder + `run_turn`), prompts under `orchestrator/prompts/`. Tests:
+  (worker wrappers), new `orchestrator/supervisor_langgraph.py`
+  (StateGraph builder + `run_turn`), prompts under `orchestrator/prompts/`. Tests:
   `tests/unit/orchestrator/{test_planner,test_critic,test_edges,test_supervisor_lg}.py`,
   `tests/integration/synthesis_flow_test.py`. 6 new
   citation-separation eval cases under
   `evals/extraction/labels/citation_separation/`. LangSmith spans per
-  node with `parent_run_id` linkage. **This is the largest open
-  Sunday item; plan in `plans/week2-langgraph-supervisor.md`.**
+  node with `parent_run_id` linkage remain open; plan archive in
+  `plans/week2-langgraph-supervisor.md`.
 
-- [ ] **[build] OpenEMR chart persistence — confirmation surface (W2-CW).**
+- [ ] **[build] OpenEMR chart persistence — confirmation surface (Chart-write).**
   The write path is in place (`save_document.php` → `ChartWriteCoordinator`
   → `ChartWriteService::writeAllergies/Medications/ActiveProblems/Reminders`
   → `lists` / `dated_reminders` / `procedure_*` tables). What's missing:
@@ -193,7 +212,7 @@ clarity:
   submission narrative. The idempotency story (re-clicking save must
   not duplicate rows) is split out below.
 
-- [x] **[build] Idempotent chart-write save endpoint (W2-CW
+- [x] **[build] Idempotent chart-write save endpoint (Chart-write
   idempotency story).** A documents-side conditional UPDATE on
   `chart_write_started_at` / `chart_written_at` / `chart_write_summary`
   (added in migration `db/Migrations/Version20260509201506.php`)
@@ -221,7 +240,7 @@ clarity:
   orchestration. Per CLAUDE.md test policy, these ship in the same MR
   as the confirmation-surface change above.
 
-- [x] **[build] W2-RR — Cohere `rerank-v3.5` as primary reranker
+- [x] **[build] PR 7 — Cohere `rerank-v3.5` as primary reranker
   (Sunday-blocking).** Promoted from the post-Sunday queue on
   2026-05-08. Reviewers reading "Cohere Rerank or an equivalent
   reranker" in the assignment expect to see a dedicated rerank model,
@@ -241,9 +260,9 @@ clarity:
   asserts `rerank_backend` is reported. Acceptance: env-var flip
   swaps backends with no code change; Cohere failures fall back to
   LLM-judge cleanly; eval gate stays green on the 23-case retrieval
-  bucket. Full block: §"W2-RR — Cohere rerank backend" below.
+  bucket. Full block: §"PR 7 — Cohere rerank backend" below.
 
-- [x] **[decide] Extracted-facts durability (W2-03).** Today: facts
+- [x] **[decide] Extracted-facts durability (PR 3).** Today: facts
   persist as `data/extracted/<document-id>.json` on the agent service's
   local disk — non-durable across container restarts on Railway.
   Decision: document JSON-on-disk as demo-only persistence with a
@@ -292,17 +311,17 @@ subtasks / acceptance) are authored further down in this doc — links
 below. Each is independently mergeable and explicitly *not* gating
 the Sunday submission.
 
-- [~] **[build] W2-RR — Cross-encoder rerank backend.** *Promoted to
+- [~] **[build] PR 7 — Cross-encoder rerank backend.** *Promoted to
   Sunday-blocking on 2026-05-08 — see "Open recovery items" above.
   Kept here as a back-link only.* Replaces the LLM-judge primary in
   `corpus/rerank.py` with Cohere `rerank-v3.5` (~80 ms p50, ~$2/1k
   searches), with the LLM-judge as the env-var-gated fallback when
   `COHERE_API_KEY` is absent. Optional Jina alternative + local
   `bge-reranker-base` swap remain documented in the MR block as
-  follow-on options. Full block: §"W2-RR — Cohere rerank backend"
+  follow-on options. Full block: §"PR 7 — Cohere rerank backend"
   below.
 
-- [ ] **[build] W2-05 — Citation OCR check (strict + degraded path).**
+- [ ] **[build] PR 5 — Citation OCR check (strict + degraded path).**
   Tesseract bundled into the agent-service Docker image, pytesseract
   wrapping at `verification/ocr.py`, `_check_document_bbox` (renders
   citation bbox + 5% margin, OCRs, fuzzy-matches against citation
@@ -310,18 +329,18 @@ the Sunday submission.
   permitted-source check), `CitationKind` enum gates which check
   runs. 10-fixture false-reject set + boolean rubric. Closes the
   `CITATION_INVALID` enum branch that's reachable today only via
-  manual construction. Full block: §"W2-05 — Citation OCR check"
+  manual construction. Full block: §"PR 5 — Citation OCR check"
   below.
 
-- [ ] **[build] W2-12 — PHI redaction in LangSmith spans.**
+- [ ] **[build] PR 13 — PHI redaction in LangSmith spans.**
   Deny-by-default key allowlist in `observability/langsmith_client.py`
   + regex backstop at `observability/phi_detector.py` (SSN / MRN /
   phone / email / DOB / FHIR-bundle-shape). Re-enables
   `LANGSMITH_TRACING=true` for the W2 demo path safely. Test-first
-  per CLAUDE.md policy. Full block: §"W2-12 — PHI redaction in
+  per CLAUDE.md policy. Full block: §"PR 13 — PHI redaction in
   LangSmith spans" below.
 
-MR identifiers (`W2-01` … `W2-12`) match the test matrix in
+MR identifiers (`PR 1` … `PR 13`) match the test matrix in
 `PRD2.md §15.1` exactly so the cross-references between PRD2,
 W2_ARCHITECTURE.md, and this file stay coherent. **MR identifiers are not
 build order.** See §"Recommended sequencing" below.
@@ -330,7 +349,7 @@ build order.** See §"Recommended sequencing" below.
 
 ## How to use this document
 
-- **One MR per W2-XX block.** Subtasks are the work inside that MR.
+- **One MR per PR N block.** Subtasks are the work inside that MR.
   When you push the MR, copy the block's `Acceptance` lines into the MR
   description so the reviewer / grader can scan them.
 - **Files: NEW vs EDIT.** Every block lists files in two groups. NEW
@@ -342,9 +361,9 @@ build order.** See §"Recommended sequencing" below.
 - **Tests ship in the same MR.** Per CLAUDE.md test policy: the test
   files listed under each MR are required for that MR to merge. Never
   defer tests to a follow-up MR.
-- **Commit messages do not reference W2-XX.** Identifiers in this file
+- **Commit messages do not reference PR N.** Identifiers in this file
   are for tracking; commits stand on their own. The MR description is
-  the right place to link back to the W2-XX block.
+  the right place to link back to the PR N block.
 - **Bypass policy.** A `git push --no-verify` for a Week 2 MR requires
   the eval-gate run artifact in the MR description (PRD2 §8 / Appendix
   A.2). Reviewers refuse bypassed MRs without that artifact.
@@ -353,28 +372,28 @@ build order.** See §"Recommended sequencing" below.
 
 ## Recommended sequencing
 
-The W2-XX numbers match PRD2 §15.1, but the **build order is different**
+The PR N numbers match PRD2 §15.1, but the **build order is different**
 because two MRs are test-first per CLAUDE.md ("test-first is required for
 high-risk behaviors: JWT verification, audit-log fail-closed path, RBAC /
 scope enforcement, PHI redaction to LangSmith"). Build in this order:
 
 | Order | MR | Why this order |
 |---|---|---|
-| 1 | **W2-01** Schemas + abstain enum | Foundation — every later MR imports these types |
-| 2 | **W2-12** PHI redaction | Test-first; lands before any module that emits LangSmith spans containing extracted text |
-| 3 | **W2-09** RBAC scope tests for documents | Test-first; gate documents access before any extraction MR ships |
-| 4 | **W2-02** OpenEMR category + event hook + state-poll endpoint | Bridge from existing Documents subsystem to the agent service |
-| 5 | **W2-05** Citation OCR check (strict + degraded path) | Required by the extractor; lands before extraction MRs so they can call it |
-| 6 | **W2-03** lab_pdf VLM extraction worker | First end-to-end document → extracted_facts path |
-| 7 | **W2-04** intake_form extraction | Same module, second schema |
-| 8 | **W2-10** Abstention rendering + chart-side summary card | UX surfaces (Documents-view canonical, chart-panel summary-only secondary) |
-| 9 | **W2-06** Evidence retriever (corpus + RAG) | Independent from W2-03/04; parallel-safe but typically lands after |
-| 10 | **W2-07** Supervisor + planner + critic | Composes the prior workers; needs W2-03/06 in place |
-| 11 | **W2-08** Reconciliation extension | Needs extracted facts (W2-03) and existing chart tools |
-| 12 | **W2-11** Pre-push eval hook + Makefile + flake policy + README + COST_LATENCY.md | Wraps the suite; all cases must be authored by here (now 65 manifest entries) |
+| 1 | **PR 1** Schemas + abstain enum | Foundation — every later MR imports these types |
+| 2 | **PR 13** PHI redaction | Test-first; lands before any module that emits LangSmith spans containing extracted text |
+| 3 | **PR 10** RBAC scope tests for documents | Test-first; gate documents access before any extraction MR ships |
+| 4 | **PR 2** OpenEMR category + event hook + state-poll endpoint | Bridge from existing Documents subsystem to the agent service |
+| 5 | **PR 5** Citation OCR check (strict + degraded path) | Required by the extractor; lands before extraction MRs so they can call it |
+| 6 | **PR 3** lab_pdf VLM extraction worker | First end-to-end document → extracted_facts path |
+| 7 | **PR 4** intake_form extraction | Same module, second schema |
+| 8 | **PR 11** Abstention rendering + chart-side summary card | UX surfaces (Documents-view canonical, chart-panel summary-only secondary) |
+| 9 | **PR 6** Evidence retriever (corpus + RAG) | Independent from PR 3/04; parallel-safe but typically lands after |
+| 10 | **PR 8** Supervisor + planner + critic | Composes the prior workers; needs PR 3/06 in place |
+| 11 | **PR 9** Reconciliation extension | Needs extracted facts (PR 3) and existing chart tools |
+| 12 | **PR 12** Pre-push eval hook + Makefile + flake policy + README + COST_LATENCY.md | Wraps the suite; all cases must be authored by here (now 65 manifest entries) |
 
-Parallel-safe pairs once foundation is in: (W2-05, W2-09), (W2-06, anything
-in 4–8). Hard blockers stay sequential: nothing past W2-04 can be
+Parallel-safe pairs once foundation is in: (PR 5, PR 10), (PR 6, anything
+in 4–8). Hard blockers stay sequential: nothing past PR 4 can be
 *completed* without the extractor producing real facts.
 
 ---
@@ -391,15 +410,15 @@ These apply to every Week 2 MR. The MR description should affirm them.
 - [ ] No `mixed`, no inline `@var` casts, no `@phpstan-ignore` in new PHP
       code (CLAUDE.md type-system rules).
 - [ ] No raw document text, no patient identifiers, no chart-fact strings
-      sent to LangSmith. Spans pass the W2-12 redaction layer.
+      sent to LangSmith. Spans pass the PR 13 redaction layer.
 - [ ] Every new public function has a return type. Every parameter has a
       native type declaration. PSR-3 logging context, never string
       concatenation (CLAUDE.md).
-- [ ] `make import-check` passes (W2-01 introduces the contract; every
+- [ ] `make import-check` passes (PR 1 introduces the contract; every
       later MR keeps it green).
 - [ ] `make copilot-eval-fast` passes locally before push (available
-      from W2-11 onward; earlier MRs use `make copilot-eval BUCKET=<name>`
-      skeleton from W2-01 to verify their own bucket).
+      from PR 12 onward; earlier MRs use `make copilot-eval BUCKET=<name>`
+      skeleton from PR 1 to verify their own bucket).
 
 ---
 
@@ -484,16 +503,16 @@ agent-service/
 │   │   ├── langsmith_client.py                       [EDIT — deny-by-default redaction layer]
 │   │   └── latency.py                                [NEW — per-stage histogram]
 │   ├── evals/                                        [NEW package]
-│   │   ├── __init__.py                               [W2-01]
-│   │   ├── case_state.py                             [W2-01 — JUDGE_INCONCLUSIVE]
-│   │   ├── harness.py                                [W2-01 skeleton; W2-11 extends]
-│   │   ├── rubrics.py                                [W2-01 registry; later MRs register theirs]
-│   │   ├── judge.py                                  [W2-11]
-│   │   ├── budget.py                                 [W2-11]
-│   │   ├── results.py                                [W2-11]
+│   │   ├── __init__.py                               [PR 1]
+│   │   ├── case_state.py                             [PR 1 — JUDGE_INCONCLUSIVE]
+│   │   ├── harness.py                                [PR 1 skeleton; PR 12 extends]
+│   │   ├── rubrics.py                                [PR 1 registry; later MRs register theirs]
+│   │   ├── judge.py                                  [PR 12]
+│   │   ├── budget.py                                 [PR 12]
+│   │   ├── results.py                                [PR 12]
 │   │   └── w2/
 │   │       ├── cases.jsonl
-│   │       ├── judge.yaml                            [W2-11]
+│   │       ├── judge.yaml                            [PR 12]
 │   │       ├── fixtures/                             [hand-built lab PDFs + intake forms]
 │   │       ├── corpus_freeze/                        [snapshot for reproducibility]
 │   │       └── results/                              [committed Markdown + JSON]
@@ -528,8 +547,8 @@ src/CoPilot/
 ├── Documents/                                        [NEW package]
 │   ├── CategoryProvider.php
 │   ├── EnqueuePayloadBuilder.php
-│   └── Routes.php                                    [W2-02: GET /agent/documents/{id};
-│                                                       W2-10: GET /agent/documents/summary]
+│   └── Routes.php                                    [PR 2: GET /agent/documents/{id};
+│                                                       PR 11: GET /agent/documents/summary]
 src/Events/
 └── CoPilotDocumentUploadedListener.php               [NEW]
 sql/migrations/
@@ -548,7 +567,7 @@ COST_LATENCY.md                                       [NEW — Week 2 cost & lat
 
 ---
 
-## W2-01 — Schemas + abstain enum (foundation)
+## PR 1 — Schemas + abstain enum (foundation)
 
 **Status:** PARTIAL (DEMO-CUT, 2026-05-06). Shipped: `RuntimeAbstainReason`
 (7 members) under `clinical_copilot/schemas/abstain.py`; `SourceCitation`,
@@ -594,13 +613,13 @@ contract that enforces the tool-vs-RAG boundary structurally.
   skeleton.** Bucket discovery (`evals/w2/<bucket>/*.json`), rubric
   registry collection, sequential case run, prints per-case pass/fail
   to stdout, exits non-zero on any failure. NO judge wrapper, NO budget
-  pre-flight, NO results writer, NO retry — those land in W2-11. The
+  pre-flight, NO results writer, NO retry — those land in PR 12. The
   goal is just enough to let later MRs run their own bucket via
   `make copilot-eval BUCKET=<name>` and verify acceptance locally.
 - `agent-service/src/clinical_copilot/evals/rubrics.py` — registry
   decorator (`@rubric(class_=..., id_=...)`) + base rubric type. No
   rubric implementations yet — each later MR registers the rubrics it
-  needs. The registry is the contract; W2-11 extends with the judge
+  needs. The registry is the contract; PR 12 extends with the judge
   variant and the cross-bucket rubric classes (`latency.stage_p95`,
   `phi.span_redaction`).
 - `agent-service/.importlinter` — initial contract:
@@ -610,10 +629,10 @@ contract that enforces the tool-vs-RAG boundary structurally.
     versa.
 - `agent-service/Makefile` — two skeleton targets:
   - `import-check` — runs `import-linter`.
-  - `copilot-eval BUCKET=<name>` — invokes the W2-01 harness skeleton
+  - `copilot-eval BUCKET=<name>` — invokes the PR 1 harness skeleton
     on a single bucket. Exits 0 when the bucket is empty (so empty
     buckets in early MRs are not failures).
-  - W2-11 extends with `copilot-eval` (full suite), `copilot-eval-fast`
+  - PR 12 extends with `copilot-eval` (full suite), `copilot-eval-fast`
     (deterministic-only), and the budget gate. **Do not over-build
     here** — keep this MR scoped to "skeleton runs, exits sanely on
     empty buckets."
@@ -668,7 +687,7 @@ contract that enforces the tool-vs-RAG boundary structurally.
 
 ---
 
-## W2-02 — OpenEMR Documents category + event hook + state-poll endpoint
+## PR 2 — OpenEMR Documents category + event hook + state-poll endpoint
 
 **Status:** DEMO-CUT REPLACEMENT (2026-05-06). The bridge below is the
 production design and has not landed. Replaced for the Week 2 demo by
@@ -696,7 +715,7 @@ post-upload Symfony event listener that signs an HMAC payload and
 enqueues a job in agent-db, and the read-only `GET /agent/documents/{id}`
 endpoint the side-panel polls.
 
-**Depends on.** W2-01 (imports schemas). Otherwise lifts the existing
+**Depends on.** PR 1 (imports schemas). Otherwise lifts the existing
 `HmacSigner.php`, `Document.class.php`, FHIR DocumentReference / Binary
 endpoints from v1 territory unchanged.
 
@@ -714,9 +733,9 @@ endpoints from v1 territory unchanged.
   payload (`document_id`, `patient_id`, `category_id`, `uploader_user_id`,
   `signed_at`). Reuses the existing `HmacSigner.php` from v1.
 - `src/CoPilot/Documents/Routes.php` — registers `GET /agent/documents/{id}`
-  on the existing `/agent/*` gateway prefix. (W2-10 adds a sibling
+  on the existing `/agent/*` gateway prefix. (PR 11 adds a sibling
   `GET /agent/documents/summary` route to this same file for the
-  chart-panel rollup; not part of W2-02 scope.)
+  chart-panel rollup; not part of PR 2 scope.)
 - `src/Events/CoPilotDocumentUploadedListener.php` — Symfony EventDispatcher
   listener; fires on document insert; only acts when category matches the
   Co-Pilot category; calls `EnqueuePayloadBuilder` then POSTs to
@@ -729,7 +748,7 @@ endpoints from v1 territory unchanged.
 - `agent-service/src/clinical_copilot/documents/queue.py` — `enqueue` (HMAC
   verify + insert into `extraction_jobs`), `claim` (`SELECT ... FOR UPDATE
   SKIP LOCKED`), `complete`, `fail`. Stub `claim` for now; real worker
-  arrives in W2-03.
+  arrives in PR 3.
 - `agent-service/src/clinical_copilot/db/alembic/versions/XXXX_extraction_jobs.py`
   — schema: `id`, `document_id`, `patient_id`, `category_id`,
   `uploader_user_id`, `signed_at`, `payload_hmac`, `state ∈ {queued,
@@ -742,7 +761,7 @@ endpoints from v1 territory unchanged.
   - `POST /internal/documents/enqueue` (HMAC-bound; verifies signature
     against the same secret v1 uses for the JWT signing key chain).
   - `GET /agent/documents/{id}` — reads from `extraction_jobs` +
-    (eventually) `extracted_facts` (W2-03). For this MR, returns
+    (eventually) `extracted_facts` (PR 3). For this MR, returns
     `{state, ready=false}` only.
 
 **EDIT** — PHP side
@@ -751,7 +770,7 @@ endpoints from v1 territory unchanged.
   Symfony listener. Light touch only.
 - `templates/documents/general_list.html` — add a side-panel slot for
   the Co-Pilot category. Empty state for now; the panel content lands
-  in W2-10.
+  in PR 11.
 
 **Tests**
 
@@ -797,7 +816,7 @@ endpoints from v1 territory unchanged.
 
 ---
 
-## W2-03 — lab_pdf VLM extraction worker
+## PR 3 — lab_pdf VLM extraction worker
 
 **Status:** PARTIAL (DEMO-CUT, 2026-05-06). Shipped:
 `clinical_copilot/documents/extractor.py::run_extraction` — synchronous
@@ -809,17 +828,17 @@ bucket: 5 cases under `tests/eval/w2_cases/extraction-lab/` (`p01_chen_lipid`,
 `p02_whitaker_cbc`, `p03_reyes_hba1c_png`, `p04_kowalski_cmp`,
 `synthetic_glucose_panel`); 12-case bucket and the per-field citation
 upgrade are deferred. No queue-claim path because there is no queue
-(W2-02 deferred); domain-rule pass + citation OCR check (W2-05) are not
+(PR 2 deferred); domain-rule pass + citation OCR check (PR 5) are not
 wired in.
 
 **Goal.** First end-to-end document → extracted_facts path. Worker
 claims a job from the queue, fetches the binary via FHIR, renders the
 page, calls the VLM with the `lab_pdf` schema, validates the response,
-runs the citation OCR check (W2-05 required for this), runs the
+runs the citation OCR check (PR 5 required for this), runs the
 domain-rule pass, and persists facts to agent-db.
 
-**Depends on.** W2-01 (schemas), W2-02 (queue), W2-05 (citation OCR
-check). W2-12 must already have shipped (PHI redaction) — extraction
+**Depends on.** PR 1 (schemas), PR 2 (queue), PR 5 (citation OCR
+check). PR 13 must already have shipped (PHI redaction) — extraction
 emits LangSmith spans with content that requires the redaction layer.
 
 **Binding contracts.** PRD2 §6 (vision extraction), §10.1 async pipeline
@@ -867,10 +886,10 @@ budgets, Appendix A.5 worker isolation; W2_ARCHITECTURE §3.2, §5.1,
 - `agent-service/tests/unit/documents/test_merge.py` — multi-page merge
   edge cases.
 - `agent-service/tests/integration/ingestion_flow_test.py` — extends
-  W2-02 integration test: full upload → queue → extract → side-panel
+  PR 2 integration test: full upload → queue → extract → side-panel
   reads `state == extracted` with citations.
 - `agent-service/tests/eval/w2/extraction-lab/` — **12 eval cases**
-  (PRD2 §15.1 row W2-03). Each case: fixture lab PDF +
+  (PRD2 §15.1 row PR 3). Each case: fixture lab PDF +
   ground-truth extraction; rubrics `extraction.field_present`,
   `extraction.citation_resolves`, `extraction.value_in_range`.
 
@@ -886,7 +905,7 @@ budgets, Appendix A.5 worker isolation; W2_ARCHITECTURE §3.2, §5.1,
       VLM with `tool_choice` = schema tool; validate via
       `model_validate`; emit per-field citations.
 - [ ] Author `merge.py` for `lab_pdf`. Pure function, deterministic.
-- [ ] Wire citation OCR check (from W2-05) into the per-field pipeline.
+- [ ] Wire citation OCR check (from PR 5) into the per-field pipeline.
       Reject `OUT_OF_SCHEMA` early; mark `LOW_CONFIDENCE` when
       confidence < 0.7.
 - [ ] Author `extracted_facts` persistence. One row per field, not one
@@ -907,12 +926,12 @@ budgets, Appendix A.5 worker isolation; W2_ARCHITECTURE §3.2, §5.1,
 - [ ] All 12 eval cases pass against committed fixtures (run
       `make copilot-eval BUCKET=extraction-lab`).
 - [ ] No worker → worker calls (Appendix A.5 worker isolation).
-- [ ] No raw document text in any LangSmith span (W2-12 redaction
+- [ ] No raw document text in any LangSmith span (PR 13 redaction
       layer holds).
 
 ---
 
-## W2-04 — intake_form extraction
+## PR 4 — intake_form extraction
 
 **Status:** PARTIAL (DEMO-CUT, 2026-05-06). Shipped: `intake_form` dispatch
 in `extractor.py` against the `IntakeFormFacts` schema; NKDA / "denies
@@ -927,17 +946,17 @@ plausibility rules in `discrepancy/rules.py`. Single-page intake forms
 extract correctly; multi-page forms fall back to whatever the VLM emits
 on page 1 alone.
 
-**Goal.** Second document schema. Extends the W2-03 extractor with the
+**Goal.** Second document schema. Extends the PR 3 extractor with the
 `intake_form` dispatch path and the multi-page-with-required-field-fallback
 strategy from W2_ARCHITECTURE §5.3.
 
-**Depends on.** W2-03.
+**Depends on.** PR 3.
 
-**Binding contracts.** Same as W2-03; schema contract per PRD2 §6.
+**Binding contracts.** Same as PR 3; schema contract per PRD2 §6.
 
 **NEW**
 
-- (none — schema already in W2-01)
+- (none — schema already in PR 1)
 - `agent-service/tests/eval/w2/extraction-intake/` — **10 eval cases**.
 
 **EDIT**
@@ -968,7 +987,7 @@ strategy from W2_ARCHITECTURE §5.3.
 - [ ] Hand-build **10 intake-form fixtures**: 4 typed, 4 handwritten,
       2 partially complete. Hand-validated ground truth.
 - [x] Author the `intake_form` extractor branch.
-- [ ] Author the stateful merge for `intake_form`.
+- [x] Author the stateful merge for `intake_form`. *(`_merge_intake_pages` at `documents/extractor.py` — scalar merge with citation match + confidence tiebreak, list concat preserving page order.)*
 - [ ] Add domain-rule plausibility checks for reported allergies and
       meds.
 - [ ] Author the 10 eval cases.
@@ -983,7 +1002,7 @@ strategy from W2_ARCHITECTURE §5.3.
 
 ---
 
-## W2-05 — Citation OCR check (strict + degraded path)
+## PR 5 — Citation OCR check (strict + degraded path)
 
 **Status:** DEFERRED (2026-05-08, status confirmed during the
 post-Sunday MR-queue planning pass). No Tesseract pass in
@@ -1006,10 +1025,10 @@ runtime use one number.
 
 **Goal.** Implement the formal citation-validity rule from PRD2 §8.2 +
 Appendix A.4. This is what makes "citation valid" mean something
-auditable. Used by the extractor (W2-03/04) per-field after VLM call.
+auditable. Used by the extractor (PR 3/04) per-field after VLM call.
 
-**Depends on.** W2-01 (`SourceCitation` schema). Independent of W2-02
-and prior; ships *before* W2-03 so the extractor wires it directly.
+**Depends on.** PR 1 (`SourceCitation` schema). Independent of PR 2
+and prior; ships *before* PR 3 so the extractor wires it directly.
 
 **Binding contracts.** PRD2 §8.2, Appendix A.4 (threshold contract);
 W2_ARCHITECTURE §7.1.
@@ -1065,7 +1084,7 @@ W2_ARCHITECTURE §7.1.
 
 ---
 
-## W2-06 — Evidence retriever (corpus + hybrid RAG)
+## PR 6 — Evidence retriever (corpus + hybrid RAG)
 
 **Status:** PARTIAL (DEMO-CUT, 2026-05-06). Shipped: corpus indexer,
 chunker, scrub, BM25 retriever (`clinical_copilot/corpus/`), 11
@@ -1082,9 +1101,9 @@ wrapper that would make the retriever reachable from chat synthesis,
 the `corpus-rebuild.md` runbook, and the 8 retrieval eval cases.
 
 **Goal.** Stand up the guideline corpus + indexer + hybrid retriever.
-Independent of W2-03/04; can land in parallel.
+Independent of PR 3/04; can land in parallel.
 
-**Depends on.** W2-01 (schemas). Otherwise standalone.
+**Depends on.** PR 1 (schemas). Otherwise standalone.
 
 **Binding contracts.** PRD2 §7 (corpus + permitted sources), §5.3 + Appendix
 A.5 (tool-vs-RAG boundary); W2_ARCHITECTURE §6, §10.
@@ -1165,7 +1184,7 @@ A.5 (tool-vs-RAG boundary); W2_ARCHITECTURE §6, §10.
 
 ---
 
-## W2-RR — Cohere rerank backend
+## PR 7 — Cohere rerank backend
 
 **Status:** SUNDAY-BLOCKING (promoted 2026-05-08 from post-Sunday
 queue). The shipped rerank stage in
@@ -1184,8 +1203,8 @@ Primary when `COHERE_API_KEY` is configured; falls back to
 fails. The supervisor's `evidence_retriever` worker picks the backend
 at construction time so the dispatch is a runtime no-op.
 
-**Depends on.** W2-06 (corpus retriever + LLM-judge rerank already
-landed); independent of W2-07 LangGraph pivot — they touch
+**Depends on.** PR 6 (corpus retriever + LLM-judge rerank already
+landed); independent of PR 8 LangGraph pivot — they touch
 non-overlapping files.
 
 **Binding contracts.** PRD2 §7 (rerank stage); W2_ARCHITECTURE §6.4
@@ -1268,20 +1287,19 @@ non-overlapping files.
 fallback pattern works); (b) local `bge-reranker-base` via
 `sentence-transformers` (no API key but ~700 MB image growth +
 ~280 MB model download on first run; doubles Railway image size).
-Both are cheap follow-ons after W2-RR ships.
+Both are cheap follow-ons after PR 7 ships.
 
 ---
 
-## W2-07 — Supervisor + planner + critic + handoff logging (LangGraph)
+## PR 8 — Supervisor + planner + critic + handoff logging (LangGraph)
 
-**Status:** DEFERRED (2026-05-06). LangGraph is not in
-`agent-service/pyproject.toml`; none of `orchestrator/{planner,
-supervisor,critic,state,edges}.py` or `orchestrator/nodes/*` have been
-created. Synthesis runs through the v1 single-loop orchestrator
-(`orchestrator/agent.py` + `lanes.py`), with the v1 verification
-middleware as the only post-draft gate. Every "supervisor" / "critic" /
-"planner" reference in PRD2 §5 / W2_ARCHITECTURE §4 should be read as
-*deferred design*, not current behaviour.
+**Status:** SHIPPED OPT-IN (2026-05-09). `langgraph>=0.2,<0.3` is in
+`agent-service/pyproject.toml`; `orchestrator/{planner,critic,state,edges,
+supervisor_langgraph}.py` and `orchestrator/nodes/*` exist. `/api/agent/query`
+uses the LangGraph path only when `USE_LANGGRAPH=true` and all supervisor
+collaborators are wired; otherwise it stays on the plain-Python supervisor
+and then the v1 orchestrator fallback. Remaining proof points are called out
+in the unchecked subtasks below.
 
 **Goal.** Compose the multi-agent graph using **LangGraph**
 (`langgraph>=0.2,<0.3`). Implements the planner node (query
@@ -1295,7 +1313,7 @@ We use LangGraph **minimally** — `StateGraph`, `add_node`,
 packages, no ReAct loops, no LangChain `Tool` wrappers; node bodies
 are plain Python that read/write the typed `TurnState` dict.
 
-**Depends on.** W2-01, W2-03, W2-04, W2-06. Last MR before integration
+**Depends on.** PR 1, PR 3, PR 4, PR 6. Last MR before integration
 gets real.
 
 **Binding contracts.** PRD2 §5, §5.1, §5.2, §5.3, Appendix A.5, A.6;
@@ -1307,8 +1325,8 @@ W2_ARCHITECTURE §4, §10.
   TypedDict (W2_ARCHITECTURE §4.1): `user_query`, `session`,
   `sub_queries`, `drafts`, `retry_counts`, `final_response`. Single
   source of truth for the LangGraph state shape.
-- `agent-service/src/clinical_copilot/orchestrator/supervisor.py` —
-  builds and compiles the `StateGraph` once at process start. Declares
+- `agent-service/src/clinical_copilot/orchestrator/supervisor_langgraph.py` —
+  builds and compiles the request-scoped `StateGraph`. Declares
   nodes (`planner`, `chart_tools`, `intake_extractor`,
   `evidence_retriever`, `critic`, `verification`, `v1_single`),
   conditional edges (`route_after_planner`, `route_after_critic`),
@@ -1326,12 +1344,10 @@ W2_ARCHITECTURE §4, §10.
   (timeout → abstain). Emits a verdict that
   `route_after_critic` turns into either `retry` or `verification`.
 - `agent-service/src/clinical_copilot/orchestrator/nodes/__init__.py`
-- `agent-service/src/clinical_copilot/orchestrator/nodes/chart_tools.py`
-  — wraps the v1 tool registry as a LangGraph node body.
 - `agent-service/src/clinical_copilot/orchestrator/nodes/intake_extractor.py`
-  — wraps `tools/extracted_facts.py` (W2-03) as a LangGraph node body.
+  — wraps `tools/extracted_facts.py` (PR 3) as a LangGraph node body.
 - `agent-service/src/clinical_copilot/orchestrator/nodes/evidence_retriever.py`
-  — wraps `corpus/retriever.py` (W2-06) as a LangGraph node body.
+  — wraps `corpus/retriever.py` (PR 6) as a LangGraph node body.
 - `agent-service/src/clinical_copilot/orchestrator/nodes/v1_single.py` —
   wraps the v1 single-orchestrator path (`orchestrator/agent.py`) for
   the §4.5 short-circuit conditional edge.
@@ -1349,8 +1365,8 @@ W2_ARCHITECTURE §4, §10.
   single-orchestrator path; expose it as a callable that
   `nodes/v1_single.py` wraps.
 - `agent-service/src/clinical_copilot/main.py` — turn-handling endpoint
-  invokes the compiled supervisor graph instead of v1's `agent.py`.
-  v1 path is reachable only through the StateGraph's `v1_single` node.
+  invokes the compiled supervisor graph when `USE_LANGGRAPH=true`.
+  Otherwise it uses the plain-Python supervisor and v1 fallback.
 - `agent-service/src/clinical_copilot/observability/langsmith_client.py` —
   configure LangGraph's tracing callback so every node emits a span
   with `parent_run_id` linkage automatically; remove any redundant
@@ -1371,7 +1387,7 @@ W2_ARCHITECTURE §4, §10.
   `fan_out`) and `route_after_critic` (accept → `verification`;
   rejection with retry budget → `retry`; rejection without budget
   → `abstain`).
-- `agent-service/tests/unit/orchestrator/test_supervisor.py` — graph
+- `agent-service/tests/unit/orchestrator/test_supervisor_lg.py` — graph
   compiles; invoking `run_turn` against fixture states executes
   nodes in the expected order; retry semantics (max 1 per
   sub-query, tracked in `state["retry_counts"]`); fast-lane
@@ -1379,8 +1395,9 @@ W2_ARCHITECTURE §4, §10.
 - `agent-service/tests/integration/synthesis_flow_test.py` — full turn
   end-to-end through the compiled StateGraph. Asserts every node
   execution is a logged span with `parent_run_id` linkage.
-- `agent-service/tests/eval/w2/citation-separation/` — **6 eval cases**
-  testing planner-claim-type vs citation-type matching.
+- `agent-service/evals/extraction/labels/citation_separation/` — **6 eval
+  labels** testing planner-claim-type vs citation-type matching. They are
+  authored but not yet wired into `cases.jsonl`.
 
 **Subtasks**
 
@@ -1403,15 +1420,15 @@ W2_ARCHITECTURE §4, §10.
       `state["retry_counts"]`), `"verification"`, or `"abstain"`.
 - [x] Wire `supervisor.py`: build the StateGraph at module load,
       compile once. Expose `run_turn(state) -> Response`.
-- [ ] Wrap v1 `orchestrator/agent.py` in `nodes/v1_single.py` for the
+- [x] Wrap v1 `orchestrator/agent.py` in `nodes/v1_single.py` for the
       §4.5 short-circuit conditional edge. Eval bucket
-      `latency.single_claim_passthrough` covers it.
+      `latency.single_claim_passthrough` covers it. *(Wrapper at `orchestrator/nodes/v1_single.py` calls `Orchestrator.run` and writes the AgentResponse straight into `state["final_response"]`; graph routes from here to END, bypassing verification since v1 already runs its own.)*
 - [ ] Configure LangGraph's tracing callback so every node emits a
       span with `parent_run_id` automatically; remove any redundant
       manual span emission in node bodies.
-- [x] Author the 6 citation-separation eval cases. Each case asserts
-      both that the right citation type is used AND that a violation
-      would be caught by the critic.
+- [x] Author the 6 citation-separation labels. Each label asserts both
+      that the right citation type is used AND that a violation would be
+      caught by the critic. Wiring them into `cases.jsonl` remains open.
 
 **Acceptance**
 
@@ -1434,7 +1451,7 @@ W2_ARCHITECTURE §4, §10.
 
 ---
 
-## W2-08 — Reconciliation extension (extracted facts vs chart)
+## PR 9 — Reconciliation extension (extracted facts vs chart)
 
 **Status:** DEFERRED (2026-05-06). `discrepancy/rules.py` has not been
 extended with the `extracted_med_not_in_med_list` /
@@ -1449,7 +1466,7 @@ do not flow into the discrepancy cache.
 facts against structured chart facts (the use-case 6 differentiating
 feature in PRD2 §4).
 
-**Depends on.** W2-03 (extracted facts produced), W2-04 (intake_form
+**Depends on.** PR 3 (extracted facts produced), PR 4 (intake_form
 allergies/meds for reconciliation against chart allergies/meds).
 
 **Binding contracts.** PRD2 §4 use case 6; W2_ARCHITECTURE §4.3.
@@ -1497,25 +1514,25 @@ allergies/meds for reconciliation against chart allergies/meds).
 
 ---
 
-## W2-09 — RBAC scope test for documents (test-first)
+## PR 10 — RBAC scope test for documents (test-first)
 
 **Status:** DEFERRED (2026-05-06). The boundary this MR was meant to
 test (`GET /agent/documents/{id}` JWT-bound, HMAC-signed enqueue
 payload, replay window) does not exist yet — both routes are blocked
-on W2-02. The shipped chart-side ingest path uses an *internal-token*
+on PR 2. The shipped chart-side ingest path uses an *internal-token*
 header (service-to-service) plus a multipart-form `patient_id`, which
 bypasses the per-clinician JWT path entirely. The internal-token gate
 is exercised by the v1 RBAC suite under
 `tests/eval/cases/rbac_bypass/`; the new `tests/integration/
 rbac_documents_test.py` and the 4-case `eval/w2/rbac/` bucket are
-deferred until W2-02 lands.
+deferred until PR 2 lands.
 
 **Goal.** Per CLAUDE.md test-first policy: assert the documents-access
 boundary holds before any extraction MR ships. Most "implementation"
-in this MR is *tests* against existing OpenEMR FHIR + W2-02 endpoints;
+in this MR is *tests* against existing OpenEMR FHIR + PR 2 endpoints;
 production code only changes if tests reveal a gap.
 
-**Depends on.** W2-02 (state-poll endpoint exists).
+**Depends on.** PR 2 (state-poll endpoint exists).
 
 **Binding contracts.** PRD2 §14 (RBAC must be 100% pass), Appendix A.2
 clause 1; W2_ARCHITECTURE §2.1.
@@ -1564,7 +1581,7 @@ clause 1; W2_ARCHITECTURE §2.1.
 
 ---
 
-## W2-10 — Abstention rendering + chart-side summary card
+## PR 11 — Abstention rendering + chart-side summary card
 
 **Status:** DEFERRED (2026-05-06). No `templates/documents/
 copilot_panel.html`, no `templates/copilot/chart_summary_card.html`, no
@@ -1575,7 +1592,7 @@ inline in `interface/copilot/lab_review.php` and `intake_review.php` —
 abstaining fields render with a "Could not read reliably — please
 verify in source" hint and remain editable. `OUT_OF_SCHEMA` is silently
 omitted by the structured-output dispatch at the SDK boundary;
-`CITATION_INVALID` is unreachable until W2-05 ships. A clinician-side
+`CITATION_INVALID` is unreachable until PR 5 ships. A clinician-side
 "extracting…" spinner ships on the upload pages (commit f8ca97fbd) so
 the page-load → extraction-finish gap is not a blank screen.
 
@@ -1587,7 +1604,7 @@ rollup card:** a small "N extracted, M abstained" rollup that
 deep-links into the Documents view (PRD2 §3 + §2; W2_ARCHITECTURE
 §1 — chart panel is summary-only, Documents view is canonical).
 
-**Depends on.** W2-03 (extractor emits abstain reasons), W2-02 (side
+**Depends on.** PR 3 (extractor emits abstain reasons), PR 2 (side
 panel slot exists in `general_list.html`; chart side panel from v1
 already on the patient summary surface).
 
@@ -1620,7 +1637,7 @@ table; Appendix A.1.a.
 
 **EDIT**
 
-- `templates/documents/general_list.html` — replace the W2-02 stub
+- `templates/documents/general_list.html` — replace the PR 2 stub
   side-panel slot with the real `copilot_panel.html` include.
 - The v1 in-chart side panel template (path TBD; confirm during
   implementation — likely under `templates/patient/` or wherever v1
@@ -1683,12 +1700,12 @@ table; Appendix A.1.a.
       Documents view filtered to the Co-Pilot category for the active
       patient.
 - [ ] `GET /agent/documents/summary` returns 401 cross-patient (RBAC
-      check from W2-09 covers it).
+      check from PR 10 covers it).
 - [ ] Both abstention eval cases pass.
 
 ---
 
-## W2-11 — Pre-push eval hook + Makefile + flake policy + README + COST_LATENCY.md
+## PR 12 — Pre-push eval hook + Makefile + flake policy + README + COST_LATENCY.md
 
 **Status:** PARTIAL (DEMO-CUT, 2026-05-06). Shipped:
 `tests/eval/extraction_runner.py` — boolean-rubric extraction runner
@@ -1708,7 +1725,7 @@ rubric classes (`latency.stage_p95`, `phi.span_redaction`), and
 
 **Goal.** Wrap the eval suite, wire the pre-push gate, finalize
 documentation. The harness *skeleton* + the rubric registry already
-exist from W2-01; this MR layers on the judge wrapper, the budget
+exist from PR 1; this MR layers on the judge wrapper, the budget
 gate, the flake/quarantine logic, the results writer, the
 `.pre-commit-config.yaml` hooks, and the README + COST_LATENCY.md updates
 that close out the deliverables.
@@ -1738,25 +1755,25 @@ W2_ARCHITECTURE §9, §11, §12.
   - `copilot-eval-full` (stage `pre-push`) — full 65-case suite per
     Appendix A.2.
 
-**EDIT (extending W2-01 skeleton)**
+**EDIT (extending PR 1 skeleton)**
 
 - `agent-service/src/clinical_copilot/evals/harness.py` — extend the
-  W2-01 skeleton with: per-case retry on `TOOL_FAILURE` (max 2),
+  PR 1 skeleton with: per-case retry on `TOOL_FAILURE` (max 2),
   judge invocation for judge-evaluated rubrics (3-of-3 unanimity),
   quarantine-ceiling check (5%), budget pre-flight, results writer
   invocation.
 - `agent-service/src/clinical_copilot/evals/rubrics.py` — extend the
-  W2-01 registry with the cross-bucket rubric classes
+  PR 1 registry with the cross-bucket rubric classes
   (`latency.stage_p95`, `phi.span_redaction`,
   `citation.false_reject_rate`, `citation.degraded_path_rate`).
   Per-bucket rubrics were registered by their owning MRs.
 
 **EDIT**
 
-- `agent-service/Makefile` — extend the W2-01 skeleton:
+- `agent-service/Makefile` — extend the PR 1 skeleton:
   - `copilot-eval` — full live-VLM run (new).
   - `copilot-eval-fast` — deterministic rubric classes only (new).
-  - `copilot-eval BUCKET=<name>` — keep the W2-01 form; now wired
+  - `copilot-eval BUCKET=<name>` — keep the PR 1 form; now wired
     through the full retry + judge + budget path.
 - `README.md` — Week 2 section: app URL, demo video link,
   two-service startup, eval shortcut, **environment-variable matrix**
@@ -1767,10 +1784,10 @@ W2_ARCHITECTURE §9, §11, §12.
   - `ANTHROPIC_API_KEY` — VLM + planner + critic + judge calls.
   - `OPENAI_API_KEY` — corpus embedding model
     (`text-embedding-3-small`); skip if you swap to a local
-    embedding model in W2-06.
+    embedding model in PR 6.
   - `LANGSMITH_API_KEY` — observability traces.
   - `COPILOT_JWT_SECRET` — PHP gateway HMAC + JWT signing (v1 carries).
-  - `COPILOT_PSEUDONYM_SALT` — HMAC salt for span pseudonyms (W2-12).
+  - `COPILOT_PSEUDONYM_SALT` — HMAC salt for span pseudonyms (PR 13).
   - `COPILOT_BUDGET_CAP_USD` — eval-gate budget cap (default 5.00).
   - `COPILOT_CORPUS_INDEX_PATH` — pgvector + BM25 manifest location.
   - `COPILOT_FHIR_BASE_URL` — system-scoped FHIR endpoint (v1).
@@ -1799,9 +1816,9 @@ W2_ARCHITECTURE §9, §11, §12.
 
 **Subtasks**
 
-- [ ] Extend `harness.py` (W2-01 skeleton) with retry-on-TOOL_FAILURE
+- [ ] Extend `harness.py` (PR 1 skeleton) with retry-on-TOOL_FAILURE
       (max 2), judge invocation, quarantine-ceiling check.
-- [x] Extend `rubrics.py` (W2-01 registry) with the cross-bucket
+- [x] Extend `rubrics.py` (PR 1 registry) with the cross-bucket
       rubric classes (`latency.stage_p95`, `phi.span_redaction`,
       `citation.false_reject_rate`, `citation.degraded_path_rate`).
 - [ ] Author `judge.py` (Anthropic Haiku judge wrapper) with config
@@ -1844,7 +1861,7 @@ W2_ARCHITECTURE §9, §11, §12.
 
 ---
 
-## W2-12 — PHI redaction in LangSmith spans (test-first)
+## PR 13 — PHI redaction in LangSmith spans (test-first)
 
 **Status:** DEFERRED (2026-05-08, status confirmed during the
 post-Sunday MR-queue planning pass). No
@@ -1864,16 +1881,16 @@ fields (`run_id`, `parent_run_id`, `worker`, `latency_ms`,
 `<redacted>` before send. (b) regex backstop catches PHI shapes
 (SSN, MRN, phone, email, DOB, FHIR-bundle name fields) in any text
 that does land — drops the whole span on match and increments
-`spans_redacted_total`. Once W2-11's eval gate adds the
+`spans_redacted_total`. Once PR 12's eval gate adds the
 `phi.span_redaction` rubric class (Appendix A.2 clause 6), any
 future PHI leak blocks the pre-push gate.
 
 **Goal.** Per CLAUDE.md test-first policy: lock down the PHI-redaction
 fail-closed path before any module that emits LangSmith spans
 containing extracted text ships. This MR is small and lands early in
-the build sequence (recommended order #2 after W2-01).
+the build sequence (recommended order #2 after PR 1).
 
-**Depends on.** W2-01 (schemas only — keeps the dependency surface
+**Depends on.** PR 1 (schemas only — keeps the dependency surface
 minimal so this can ship before extraction MRs).
 
 **Binding contracts.** PRD2 §9, Appendix A.2 clause 6;
@@ -1882,7 +1899,7 @@ W2_ARCHITECTURE §8.
 **NEW**
 
 - `agent-service/src/clinical_copilot/observability/latency.py` — created
-  here (or in W2-11; whichever lands first owns it). Per-stage
+  here (or in PR 12; whichever lands first owns it). Per-stage
   histogram aggregator that the redaction layer composes with.
 - `agent-service/src/clinical_copilot/observability/phi_detector.py` —
   regex layer for PHI signals (SSN, MRN-shape, phone, email, raw
@@ -1905,7 +1922,7 @@ W2_ARCHITECTURE §8.
 - `tests/integration/phi_redaction_test.py` — fail-closed: synthetic
   span with raw chart-text payload reaches `send_span`, gets dropped,
   no LangSmith API call made (verified with mocked HTTP client).
-- Eval-side test (lives in `evals/rubrics.py` once W2-11 ships): a
+- Eval-side test (lives in `evals/rubrics.py` once PR 12 ships): a
   `phi.span_redaction` rubric that runs the eval suite with span
   capture enabled and asserts zero PHI signals across all spans.
 
@@ -1932,8 +1949,282 @@ W2_ARCHITECTURE §8.
 - [ ] All unit tests pass; integration test confirms no LangSmith
       API call made on a PHI-bearing span.
 - [ ] `spans_redacted_total` metric increments on each drop.
-- [ ] Once W2-11 ships, the `phi.span_redaction` rubric blocks the
+- [ ] Once PR 12 ships, the `phi.span_redaction` rubric blocks the
       pre-push gate on any future PHI leak (Appendix A.2 clause 6).
+
+---
+
+## Post-demo remediation (PR 14–19)
+
+> **Status (2026-05-09).** All six post-demo PRs landed. Original
+> design rationale, pre-flight findings, and full subtask history
+> preserved in
+> [`plans/tasks_copilot_remediation_w2.md`](plans/tasks_copilot_remediation_w2.md)
+> (now superseded by this chapter for tracking — kept as design
+> archive). The PRs below close out the post-submission feedback
+> loop: citation schema cleanup, chart-write idempotency,
+> rerank-backend visibility, trace wiring, the bbox overlay MVP
+> with non-PDF support and OCR tightening, and the prek pre-push
+> hook installer.
+
+### PR 14 [SHIPPED 2026-05-09] — Citation: three-class discriminated union (Gap 1)
+
+**Goal.** Add `SourceCitation` / `GuidelineCitation` /
+`PatientChartCitation` discriminator alongside the canonical opaque
+`source_id`. Option 1 reframe (per Pre-flight #5): new optional
+`citation` field is **display metadata only** — verifier still joins
+on `source_id` strings, so `verification/middleware.py` is untouched.
+
+**Files:**
+- NEW: `agent-service/scripts/backfill_citation_fields.py`
+- EDIT: `agent-service/src/clinical_copilot/documents/schemas/citation.py`
+- EDIT: `agent-service/src/clinical_copilot/documents/extractor.py`
+- EDIT: `agent-service/src/clinical_copilot/documents/extractors/{referral_docx,workbook_xlsx,hl7_adt,hl7_oru,_hl7_common}.py`
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/schemas.py`
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/workers/evidence_retriever.py`
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/chart_pack.py`
+- EDIT: `agent-service/src/clinical_copilot/main.py` (`_supervisor_to_agent_response`)
+- EDIT: `agent-service/data/extracted/*.json` (~30 files backfilled)
+- EDIT: `src/Services/Copilot/AgentResponse.php`
+- EDIT: `src/Services/Copilot/ExtractedFieldHelper.php`
+- EDIT (tests): `agent-service/tests/unit/documents/test_citation.py`
+
+**Done:**
+- [x] `CitationSourceType` StrEnum + `GuidelineCitation` + `PatientChartCitation` classes
+- [x] `Citation = Annotated[Union[...], Field(discriminator="source_type")]`
+- [x] Backfill script run; ~30 extracted JSON fixtures regenerated and committed
+- [x] `field_or_chunk_id` tightened to required on `SourceCitation` (after fixtures backfilled)
+- [x] Schema-walk path threaded into single `build_extracted_citation(path, ...)` helper
+- [x] Optional `citation` / `citations` added to `CitedClaim` / `Card` (Option 1)
+- [x] `_supervisor_to_agent_response()` populates citation metadata where source data is in scope
+- [x] `GuidelineCitation` constructed in evidence_retriever; `PatientChartCitation` in chart_pack
+- [x] Drift-guard CI test asserts `citation.field_or_chunk_id == source_id`
+- [x] PHP `ExtractedFieldHelper` + `AgentResponse.php` parser tolerate all three discriminators and absence
+- [x] `pytest -k "test_citation or agent_response or supervisor or verification"` green
+- [x] `composer phpstan` clean (no new baseline entries)
+
+**Manual still open:**
+- [ ] Load lipid-panel review, confirm `citation` objects appear in network tab
+
+### PR 15 [SHIPPED 2026-05-09] — Idempotent chart-write save endpoint (Gap 2)
+
+**Goal.** Make the chart-write submit path safe to re-submit. Single
+new-doc save coordinated by a `ChartWriteCoordinator` that owns the
+lock-acquire / write / finalize cycle with four explicit outcomes
+(AcquiredAndWrote / IdempotentReplay / ConcurrentInFlight /
+DocumentNotFound).
+
+**Files:**
+- NEW: `db/Migrations/Version20260509201506.php` (adds `chart_written_at`, `chart_write_started_at`, `chart_write_summary`)
+- NEW: `src/Services/Copilot/ChartWrite/ChartWriteCoordinator.php`
+- NEW: `tests/Tests/Services/Copilot/ChartWrite/SaveDocumentEndpointIdempotencyTest.php`
+- EDIT: `interface/copilot/api/save_document.php`
+
+**Done:**
+- [x] Doctrine migration: up adds 3 markers; down drops them; LONGTEXT (not MariaDB JSON alias) so the column reads back as a plain string regardless of driver flags
+- [x] `ChartWriteCoordinator` with `SaveOutcomeKind` enum (AcquiredAndWrote / IdempotentReplay / ConcurrentInFlight / DocumentNotFound)
+- [x] Atomic conditional UPDATE on `documents` is the lock acquisition; TTL clause shipped (`OR chart_write_started_at < NOW() - INTERVAL N SECOND`, default 300s)
+- [x] `ChartWriteOrchestrator->run()` runs inside the same `QueryUtils::inTransaction()` as the marker UPDATE — Pre-flight #6 confirmed shared global ADODB handle, no constructor refactor
+- [x] `chart_write_summary` JSON shape: `pid` / `patient_created` / `document_type` / `document_id` / `selected_sections` / `counts` — endpoint reconstructs success-page redirect from these on replay (avoids baking webroot into DB)
+- [x] New-patient retry recovery: when `documents.foreign_id` already maps to a previously-created pid, the endpoint short-circuits past demographic extraction + duplicate-patient guard and reuses that pid
+- [x] Tests cover all four outcomes + stale-lock TTL claim (`vendor/bin/phpunit ... --filter ChartWrite` → 25 tests, 95 assertions)
+- [x] Existing `ChartWriteServiceTest::testWriteAllergiesDoesNotDedupeOnRepeatCall` still green
+- [x] `composer phpstan` clean
+
+**Manual still open:**
+- [ ] Re-submit lipid-panel review twice → second response shows `idempotent=1`, MySQL row counts unchanged
+- [ ] Two-tab concurrent submit within ~50ms → exactly one set of rows written
+- [ ] `patient_choice=new` retry → same `pid` returned, no duplicate patient
+
+### PR 16 [SHIPPED 2026-05-09] — Surface active rerank backend (Risk 2)
+
+**Goal.** Stop the dashboard from silently degrading. Surface which
+rerank backend (`cohere` / `llm_judge` / `bm25_only`) actually ran on
+each query, and badge the chat UI when the active backend isn't
+Cohere.
+
+**Files:**
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/workers/evidence_retriever.py`
+- EDIT: `agent-service/src/clinical_copilot/corpus/rerank.py` (label canonicalization only)
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/schemas.py` (`AgentResponse.rerank_backend`)
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/{supervisor,supervisor_langgraph,state}.py` (response build + LangGraph state slot)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (`_supervisor_to_agent_response`)
+- EDIT: `agent-service/src/clinical_copilot/app_state.py` (boot log: `supervisor.rerank_backend_resolved=<label>`)
+- EDIT: `interface/copilot/{chat,side_panel}.{php,js}` (consumer-side badge)
+- EDIT: `src/Services/Copilot/AgentResponse.php`
+- EDIT (tests): `agent-service/tests/unit/orchestrator/test_evidence_retriever_worker.py`
+
+**Done:**
+- [x] Canonical labels: `"cohere" | "llm_judge" | "bm25_only"` (underscored — replaced `"llm-judge"` / `"none"` / `"bm25-only"` everywhere)
+- [x] `AgentResponse.rerank_backend: Optional[Literal[...]]` populated only when a reranker actually ran (None on fast-lane / no-retrieval)
+- [x] Boot log emits `supervisor.rerank_backend_resolved` based on Cohere + Anthropic key presence
+- [x] Per-request log `corpus.rerank.backend_used` only from paths that invoke a reranker
+- [x] Chat + side-panel JS badges show only when non-null AND not `"cohere"`; copy: `"rerank: llm-judge fallback"` / `"rerank: BM25 only — degraded"`
+- [x] Worker test asserts each of three labels under matching mock conditions
+- [x] PHP parser tolerates new top-level field
+- [x] `composer phpstan` clean
+
+**Deployment (manual, outside PR scope):**
+- [x] Set `COHERE_API_KEY` on Railway agent-service env *(reported set by maintainer; ops-side, not verifiable from repo)*
+- [ ] Verify post-deploy: `/api/agent/query` shows `"rerank_backend": "cohere"` *(quick `curl` against the deployed agent — open until run)*
+
+### PR 17 [SHIPPED 2026-05-09] — Wire usage + retrieval + confidence into agent_traces (Gap 3)
+
+**Goal.** Every `/api/agent/query` and document-ingest call now writes
+exactly one `agent_traces` row. Query paths carry summed token counts
+when the orchestrator exposes them; document-ingest currently records
+`token_in=0` / `token_out=0` and the mean `extraction_confidence`
+(extractor token capture is a follow-up). `retrieval_hits` is slow-lane
+only. Fail-open: DB outages never surface to clinicians.
+
+**Files:**
+- NEW: `agent-service/src/clinical_copilot/db/migrations/versions/0004_agent_traces_extension.py`
+- NEW: `agent-service/src/clinical_copilot/observability/traces.py`
+- NEW: `agent-service/tests/unit/observability/test_traces.py`
+- NEW: `agent-service/tests/integration/test_agent_query_writes_trace.py`
+- NEW: `agent-service/tests/integration/test_document_ingest_writes_trace.py`
+- EDIT: `agent-service/src/clinical_copilot/db/models.py` (new `AgentTrace` columns)
+- EDIT: `agent-service/src/clinical_copilot/app_state.py` (`TracesService` constructed with shared `session_factory`)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (UsageTotals aggregation; emit at both entry points)
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/agent.py` (constructor accepts `TracesService`)
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/llm_gateway.py` (token threading on `LlmTurn`)
+- EDIT: `agent-service/src/clinical_copilot/orchestrator/{supervisor,supervisor_langgraph,state,planner,critic}.py` (token aggregation across nodes)
+- EDIT: `agent-service/src/clinical_copilot/corpus/rerank.py` (LLM-judge token capture)
+
+**Done:**
+- [x] Alembic `0004_agent_traces_extension.py` adds `retrieval_hits INTEGER NULL` + `extraction_confidence REAL NULL`; up/down round-trip clean
+- [x] `AgentTrace` ORM updated to match (types + nullability)
+- [x] `LlmTurn` carries `input_tokens` / `output_tokens` populated from `response.usage`
+- [x] All Anthropic call sites return `(result, UsageTotals)` and fold into LangGraph state via `_add_usage` reducer
+- [x] `traces.py` mirrors `metrics.py` (fail-open, never raises into clinician path)
+- [x] NULL semantics enforced per column: slow-lane retrieval → `extraction_confidence` NULL; doc-ingest extraction → `retrieval_hits` NULL; v1 fallback → both NULL
+- [x] Unit tests cover token threading + DB-exception fail-open + NULL handling
+- [x] Integration tests assert exactly one row per call, matching token sums where available and column population
+- [x] `pytest agent-service/tests/unit/observability/ agent-service/tests/integration/test_agent_query_writes_trace.py agent-service/tests/integration/test_document_ingest_writes_trace.py -v` all green
+
+**Manual still open:**
+- [ ] Local doc-ingest of lipid-panel fixture → row with `extraction_confidence` populated, `retrieval_hits` NULL
+- [ ] Local slow-lane query → row with `retrieval_hits` populated, `extraction_confidence` NULL
+
+### PR 18 [SHIPPED 2026-05-09] — Bbox canvas overlay MVP (Gap 4)
+
+**Goal.** Click an extracted field → the source document image
+highlights the matching bbox. Replaces the inline citation snippet
+as the primary "show me where this came from" affordance.
+
+**Pre-flight #3 reversed during implementation.** Original design was
+PHP-side rendering via Imagick; on `openemr/openemr:flex` Imagick
+ships **without Ghostscript** so PDF rasterization fails. New design
+renders in agent-service (which already runs `pypdfium2` for the
+VLM extractor), persists a per-page PNG cache, and exposes
+`GET /api/agent/internal/document_page/{id}?page=N`. PHP becomes
+a thin same-origin proxy.
+
+**Files:**
+- NEW: `agent-service/src/clinical_copilot/documents/page_cache.py`
+- NEW: `agent-service/tests/unit/documents/test_page_cache.py`
+- NEW: `agent-service/tests/integration/test_document_page_route.py`
+- NEW: `interface/copilot/api/document_page.php` (same-origin proxy)
+- NEW: `interface/copilot/partials/citation_overlay.php` (img + canvas + JS)
+- EDIT: `agent-service/src/clinical_copilot/documents/fetcher.py` (`encode_png_bytes` helper)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (render-and-cache after ingest; new internal route)
+- EDIT: `src/Services/Copilot/AgentHttpClient.php` (`getInternalRaw` for binary-safe forwarding)
+- EDIT: `src/Services/Copilot/ExtractedFieldHelper.php` (`collectExtractedDocumentCitations` walker)
+- EDIT: `src/Services/Copilot/Documents/FactsFormHelper.php` (`data-citation-id` on leaf rows)
+- EDIT: `interface/copilot/{lab,document}_review.php` (include partial; tag rows)
+
+**Done:**
+- [x] Disk-backed PNG cache at `data/page_renders/{document_id}/page_{N}.png`
+- [x] Render-and-cache after `run_extraction` succeeds; best-effort fail-open on unsupported formats
+- [x] Internal route gated by `X-Internal-Token`; structured 404 (`{detail: {reason, document_id, page}}`) on miss
+- [x] Same-origin proxy `document_page.php` preserves status + content-type so structured 404 reaches the browser as-is
+- [x] Overlay JS draws bbox rects scaled to image dims (devicePixelRatio aware); redraws on resize and image load
+- [x] Click-to-highlight: `data-citation-id` matched against bbox payload's `field_id`; second click clears
+- [x] `GuidelineCitation` / `PatientChartCitation` filtered out of overlay payload (no bbox)
+- [x] `pytest agent-service/tests/unit/documents/test_page_cache.py agent-service/tests/integration/test_document_page_route.py -v` green (15 tests)
+- [x] `composer phpunit-isolated -- --filter "AgentHttpClientTest|ExtractedFieldHelperTest"` green (45 tests, 123 assertions)
+- [x] `composer phpstan` clean
+
+**Manual still open:**
+- [ ] Lipid-panel review → bbox rectangles render; clicking analyte cell highlights matching rectangle
+- [ ] `curl -b "PHPSESSID=..." 'https://localhost:9300/interface/copilot/api/document_page.php?...'` returns image/png; without cookie returns 403
+- [ ] Browser network tab: only OpenEMR-origin requests; agent-service never reached directly
+
+#### PR 18b [SHIPPED 2026-05-09] — docx / xlsx / HL7 synthetic rendering
+
+**Goal.** Bbox overlay was 404'ing for HL7, docx, and xlsx because
+the agent-service renderer only knew PDFs / images / TIFFs. Adds a
+deterministic monospace text-on-page renderer; per-citation bboxes
+are computed against the same layout constants the renderer uses,
+so a citation pointing at HL7 segment N or sheet row N lights up the
+row without an OCR pass.
+
+**Files:**
+- NEW: `agent-service/src/clinical_copilot/documents/synthetic_render.py`
+- NEW: `agent-service/tests/unit/documents/test_synthetic_render.py`
+- NEW: `agent-service/tests/unit/documents/test_fetcher_synthetic.py`
+- EDIT: `agent-service/src/clinical_copilot/documents/fetcher.py` (dispatch new extensions through `render_document`)
+- EDIT: `agent-service/src/clinical_copilot/documents/extractors/{referral_docx,workbook_xlsx,_hl7_common}.py` (per-citation bboxes against layout constants)
+- EDIT: `agent-service/src/clinical_copilot/documents/ocr_bbox.py` (`RenderedPage.synthetic` short-circuits OCR-tightening)
+- EDIT: `interface/copilot/partials/citation_overlay.php` (drop "source preview not available" banner + non-renderable-types exclusion)
+
+**Done:**
+- [x] Synthetic renderer lays HL7 segments / docx paragraphs / xlsx cells onto one deterministic image per file
+- [x] Each extractor computes per-citation bboxes against the renderer's layout constants
+- [x] OCR-tightening short-circuits on synthetic pages (line spacing tighter than cross-row anchor cap; common HL7 tokens were pulling bboxes across rows)
+- [x] Verified end-to-end against Whitaker (PDF intake) and Chen (HL7 ORU): each citation lands on its own segment / paragraph / sheet row
+
+#### PR 18c [SHIPPED 2026-05-09] — OCR-based bbox tightening
+
+**Goal.** AI-emitted bboxes were row-band coarse (every observation
+row in the lipid panel had an identical `[0.07, 0.30, 0.93, 0.37]`
+bbox). Run Tesseract OCR at ingest time on each rendered page; for
+every extracted_document citation, tokenize its `raw_text`, find
+matching OCR words inside the AI's coarse hint bbox, and replace the
+citation's bbox with the union of the matched word bboxes.
+Best-effort: citations whose `raw_text` doesn't match keep the
+original coarse bbox.
+
+**Files:**
+- NEW: `agent-service/src/clinical_copilot/documents/ocr_bbox.py`
+- NEW: `agent-service/tests/unit/documents/test_ocr_bbox.py` (12 cases)
+- EDIT: `agent-service/src/clinical_copilot/main.py` (wire into ingest)
+- EDIT: `agent-service/Dockerfile` (add `tesseract-ocr` apt package)
+- EDIT: `agent-service/pyproject.toml` (`pytesseract>=0.3.13`)
+
+**Done:**
+- [x] Tesseract runs at ingest after `run_extraction`; cached implicitly via per-page OCR cache in `tighten_extracted_document_citations`
+- [x] Verified live ingest of `lipid_panel.pdf`: rows now distinct (Total Cholesterol area=0.017, HDL=0.035, LDL=0.052, Triglycerides=0.001) instead of all collapsing to 0.060
+
+**Known limit (by design):** subfield bboxes within a row
+(`.display`, `.value`, `.unit`) remain identical because the AI
+extractor emits one `raw_text` per row. Per-subfield tightness
+requires an extractor-prompt change — separate work.
+
+### PR 19 [SHIPPED 2026-05-09] — prek pre-push hook installer (Risk 1)
+
+**Goal.** A fresh clone + `composer install` automatically wires up
+`.git/hooks/pre-push` against `.pre-commit-config.yaml`. Pre-push
+validation no longer depends on contributors reading
+`CONTRIBUTING.md` and remembering to run `prek install` themselves.
+
+**Files:**
+- NEW: `scripts/install-pre-push-hook.php`
+- EDIT: `composer.json` (`scripts.post-install-cmd`)
+- EDIT: `CONTRIBUTING.md` (§Local Validation rewritten)
+
+**Done:**
+- [x] `scripts/install-pre-push-hook.php` runs via composer `post-install-cmd`
+- [x] Skips when `CI=true` so container builds and CI runners don't churn on a hook they would never run
+- [x] Skips when `.git` is absent (tarball / vendored installs) or `vendor/autoload.php` missing
+- [x] Detects prek with Symfony's `ExecutableFinder`; runs via `Symfony\Component\Process\Process` (per `openemr.forbiddenShellExecution`)
+- [x] Catches narrow `Symfony\Component\Process\Exception\RuntimeException` (per `openemr.forbiddenCatchType`); WARN emitted outside the catch (per `openemr.exitInCatchOrFinally`)
+- [x] Verified: `composer run-script post-install-cmd` rewrites `.git/hooks/pre-push` with prek's standard shim header
+- [x] Verified: `CI=true php scripts/install-pre-push-hook.php` → exit 0, no hook
+- [x] Verified: PATH stripped of prek (php available) → single WARN line, exit 0, no hook
+- [x] `composer phpstan -- scripts/install-pre-push-hook.php` clean
+
+Landed as commit `44a17bbe2` (the prek hook itself ran the full pre-commit suite — phpstan, rector, phpcs, codespell, conventional-commits — against this PR before letting it through).
 
 ---
 
@@ -1952,21 +2243,21 @@ W2_ARCHITECTURE §8.
 >
 > | Bucket | Originally planned | Actually shipped (2026-05-08) | Owner MR |
 > |---|---|---|---|
-> | `extraction-lab` | 12 | **7** | W2-03 |
-> | `extraction-intake` | 10 | **7** | W2-04 |
-> | `extraction-fax` | — | **7** | W2-MM |
-> | `extraction-referral` | — | **7** | W2-MM |
-> | `extraction-workbook` | — | **7** | W2-MM |
-> | `extraction-hl7-oru` | — | **7** | W2-MM |
-> | `extraction-hl7-adt` | — | **8** | W2-MM |
-> | `retrieval` | 8 | **23** | W2-06 |
-> | `citations` | — | **6** | W2-MM |
-> | `missing-data` | — | **4** | W2-MM |
-> | `refusals` | — | **4** | W2-MM |
-> | `reconciliation` | 8 | 0 | W2-08 (deferred) |
-> | `citation-separation` | 6 | 0 | W2-07 LangGraph (open) |
-> | `rbac` | 4 | 0 (covered by v1 `tests/eval/cases/rbac_bypass/`, 10 cases) | W2-09 (deferred) |
-> | `abstention` | 2 | 0 | W2-10 (deferred) |
+> | `extraction-lab` | 12 | **7** | PR 3 |
+> | `extraction-intake` | 10 | **7** | PR 4 |
+> | `extraction-fax` | — | **7** | Multimodal |
+> | `extraction-referral` | — | **7** | Multimodal |
+> | `extraction-workbook` | — | **7** | Multimodal |
+> | `extraction-hl7-oru` | — | **7** | Multimodal |
+> | `extraction-hl7-adt` | — | **8** | Multimodal |
+> | `retrieval` | 8 | **23** | PR 6 |
+> | `citations` | — | **6** | Multimodal |
+> | `missing-data` | — | **4** | Multimodal |
+> | `refusals` | — | **4** | Multimodal |
+> | `reconciliation` | 8 | 0 | PR 9 (deferred) |
+> | `citation-separation` | 6 | 0 | PR 8 LangGraph (open) |
+> | `rbac` | 4 | 0 (covered by v1 `tests/eval/cases/rbac_bypass/`, 10 cases) | PR 10 (deferred) |
+> | `abstention` | 2 | 0 | PR 11 (deferred) |
 > | **Total** | **50** | **65** | |
 >
 > Reading: the rubric's 50-case target is exceeded (65 cases shipped),
@@ -1979,18 +2270,18 @@ MRs. The harness uses these bucket names directly.
 
 | Bucket | Count | Owner MR |
 |---|---|---|
-| `extraction-lab` | 7 | W2-03 |
-| `extraction-intake` | 7 | W2-04 |
-| `extraction-fax` / `referral` / `workbook` / `hl7-oru` / `hl7-adt` | 36 | W2-MM |
-| `retrieval` | 23 | W2-06 |
-| `citations` | 6 | W2-MM |
-| `missing-data` | 4 | W2-MM |
-| `refusals` | 4 | W2-MM |
+| `extraction-lab` | 7 | PR 3 |
+| `extraction-intake` | 7 | PR 4 |
+| `extraction-fax` / `referral` / `workbook` / `hl7-oru` / `hl7-adt` | 36 | Multimodal |
+| `retrieval` | 23 | PR 6 |
+| `citations` | 6 | Multimodal |
+| `missing-data` | 4 | Multimodal |
+| `refusals` | 4 | Multimodal |
 | **Total** | **65** | |
 
 `phi.span_redaction` and `latency.stage_p95` are *rubric classes* that
 run *across all 65 cases*, not their own bucket. They live in the
-W2-11 + W2-12 ownership.
+PR 12 + PR 13 ownership.
 
 ---
 
@@ -1999,24 +2290,24 @@ W2-11 + W2-12 ownership.
 Tracked here so they don't leak into Week 2 scope. Each is a candidate
 for a follow-up MR after Sunday.
 
-- **W2-R1 — Third document type (referral fax or medication list).**
+- **BL-1 — Third document type (referral fax or medication list).**
   PRD2 §1 lists this as a stretch goal. Adds one schema +
   `documents/extractor.py` branch + 8 eval cases. Doesn't change
   architecture.
-- **W2-R2 — Lab trend chart widget.** Stretch goal from the PRD2
+- **BL-2 — Lab trend chart widget.** Stretch goal from the PRD2
   scenario. Pulls extracted Observation values into a small
   Chart.js / vanilla SVG widget on the chart side panel.
-- **W2-R3 — Contextual retrieval improvements.** Better chunking
+- **BL-3 — Contextual retrieval improvements.** Better chunking
   strategies (parent-doc retrieval), domain-specific filters,
-  per-user-context query rewriting. Only after W2-06 eval data shows
+  per-user-context query rewriting. Only after PR 6 eval data shows
   retrieval is the bottleneck.
-- **W2-R4 — Verifier-model second pass.** v3 PRD listed it as
+- **BL-4 — Verifier-model second pass.** v3 PRD listed it as
   post-MVP; still post-MVP for Week 2. Reconsider after the
   citation-OCR check + critic combo's eval performance is measured.
-- **W2-R5 — User-facing eval dashboard.** PRD2 §12 lists as Phase 2.
+- **BL-5 — User-facing eval dashboard.** PRD2 §12 lists as Phase 2.
   When committed eval results exceed ~5 runs, the Markdown summaries
   become hard to scan; build a dashboard then.
-- **W2-R6 — Move to a HIPAA-eligible deploy operator.** v1 carried
+- **BL-6 — Move to a HIPAA-eligible deploy operator.** v1 carried
   this; Week 2 keeps Railway. Trigger when pilot users move from demo
   to real PHI.
 
@@ -2035,9 +2326,9 @@ This file is the build plan; the contracts it implements live elsewhere.
 - `TASKS.md` — Week 1 build plan (MR R1 / R2 / R3 / R4 follow-ups
   still relevant if not yet shipped).
 - `TASKS2.md` (this file) — Week 2 build plan.
-- `COST_LATENCY.md` — Week 2 cost & latency report (shipped 2026-05-08 as part of W2-11; replaces the original plan to append to v1 `COST.md`).
+- `COST_LATENCY.md` — Week 2 cost & latency report (shipped 2026-05-08 as part of PR 12; replaces the original plan to append to v1 `COST.md`).
 - `README.md` — top-level demo, deployed URL, two-service startup;
-  Week 2 section appended in W2-11.
+  Week 2 section appended in PR 12.
 - `USERS.md` — primary user persona; unchanged.
 - `AUDIT.md` — risks + audit findings; Week 2 audit follow-ups land
   here as risks resolve.

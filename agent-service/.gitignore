@@ -36,6 +36,10 @@ data/corpus/*
 !data/corpus/dense.pkl
 !data/corpus/manifest.json
 data/extracted/
+# Per-page PNG cache written by the ingest route's render-and-cache hook
+# (PR 18 bbox overlay). PHI-derived rasterizations of uploaded documents —
+# always regenerated on next ingest; never commit.
+data/page_renders/
 
 # IDE
 .idea/

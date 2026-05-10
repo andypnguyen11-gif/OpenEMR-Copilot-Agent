@@ -1136,8 +1136,10 @@ def create_app(
         # narrows the bbox to a value-tight rectangle. Best-effort:
         # if OCR fails or finds no match, the original coarse bbox
         # survives — the overlay still draws something, just less
-        # precise. Skipped entirely when no pages rendered (HL7,
-        # docx, xlsx — formats the renderer can't rasterize).
+        # precise. Synthetic HL7/docx/xlsx pages are rendered for the
+        # overlay, but ``tighten_extracted_document_citations`` skips
+        # OCR on those pages and preserves the extractor's deterministic
+        # line bboxes.
         facts_dump = result.facts.model_dump(mode="json")
         if rendered_pages:
             try:

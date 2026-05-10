@@ -1,5 +1,12 @@
 # Copilot submission remediation — Week 2 task tracker
 
+> **Superseded 2026-05-09.** All six remediation PRs landed; tracking has moved
+> into `TASKS2.md § Post-demo remediation (PR 14–19)`, where the work is renumbered
+> to flat PR identifiers (this file's PR 1 → TASKS2.md PR 14, …, PR 6 → PR 19).
+> This file is preserved as the **design archive** — pre-flight findings, design
+> reversals (e.g. Pre-flight #3 → render in agent-service), and the Option 1
+> reframe for citations live here in their original form.
+
 Companion to `plans/copilot_submission_remediation.md`. Source-of-truth for which
 PR each item ships in. Check boxes only after the code lands AND the listed
 verification command passes — per memory, checkboxes drift if marked optimistically.
