@@ -61,3 +61,38 @@ body {
   font-weight: 500;
   color: #111827;
 }
+
+/* Login screen — mirrors upstream interface/login/login.php exactly:
+   white background, no card border, OpenEMR logo centered at top,
+   tagline below, single primary action. The body's gray dashboard
+   background is overridden inside .login-shell so the login page
+   reads as the upstream login page would. */
+.login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  padding: 2rem 1rem;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 520px;
+  border: none;
+  box-shadow: none;
+  background-color: transparent;
+}
+
+.login-logo {
+  max-width: 100%;
+  height: auto;
+}
+
+.login-tagline {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
