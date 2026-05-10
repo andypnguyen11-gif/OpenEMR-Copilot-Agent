@@ -18,7 +18,9 @@ interface AuthContextValue {
   setSession: (next: AuthState) => void
   clearSession: () => void
   // Returns a usable access token, refreshing single-flight if expired.
-  getAccessToken: () => Promise<string>
+  // Pass `force=true` to bypass the freshness check (for diagnostics or the
+  // demo "Force refresh" button — production callers leave it false).
+  getAccessToken: (force?: boolean) => Promise<string>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -42,12 +44,12 @@ export function AuthProvider({ config, clientId, children }: AuthProviderProps) 
   const setSession = useCallback((next: AuthState) => setState(next), [])
   const clearSession = useCallback(() => setState(null), [])
 
-  const getAccessToken = useCallback(async (): Promise<string> => {
+  const getAccessToken = useCallback(async (force = false): Promise<string> => {
     const current = stateRef.current
     if (!current) {
       throw new Error('Not authenticated')
     }
-    if (current.expiresAt > Date.now() + EXPIRY_SKEW_MS) {
+    if (!force && current.expiresAt > Date.now() + EXPIRY_SKEW_MS) {
       return current.accessToken
     }
     if (!refreshInFlightRef.current) {

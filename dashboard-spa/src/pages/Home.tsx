@@ -33,8 +33,10 @@ export function Home() {
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
                 onClick={() => {
-                  void getAccessToken().then((t) =>
-                    alert(`Refreshed token (first 20 chars): ${t.slice(0, 20)}…`),
+                  void getAccessToken(true).then((t) =>
+                    alert(
+                      `Forced refresh hit /oauth2/default/token.\nNew access token (first 20 chars): ${t.slice(0, 20)}…`,
+                    ),
                   )
                 }}
               >

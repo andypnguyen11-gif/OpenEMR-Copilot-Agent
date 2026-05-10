@@ -135,6 +135,26 @@ describe('getAccessToken', () => {
     },
   )
 
+  it('force=true bypasses the freshness check and fires /token even on a fresh token', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            access_token: 'access-forced',
+            refresh_token: 'refresh-rotated',
+            expires_in: 3600,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    act(() => result.current.setSession(FRESH))
+    const token = await result.current.getAccessToken(true)
+    expect(token).toBe('access-forced')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('after refresh resolves, a fresh subsequent call does not refire fetch', async () => {
     const fetchMock = vi.fn(
       async () =>

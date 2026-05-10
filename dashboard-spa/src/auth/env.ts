@@ -38,7 +38,10 @@ export function readEnv(): AppEnv {
   }
   const redirectUri = `${window.location.origin}/callback`
   const postLogoutRedirectUri = `${window.location.origin}/`
-  const audience = `${baseUrl}/apis/default/fhir/`
+  // OpenEMR's expected `aud` is the FHIR base WITHOUT a trailing slash —
+  // see CustomAuthCodeGrant.php and ServerConfig::getFhirUrl(). A trailing
+  // slash gets a 400 invalid_request "Aud parameter did not match".
+  const audience = `${baseUrl}/apis/default/fhir`
   return { baseUrl, clientId, redirectUri, postLogoutRedirectUri, scope: SCOPE, audience }
 }
 
