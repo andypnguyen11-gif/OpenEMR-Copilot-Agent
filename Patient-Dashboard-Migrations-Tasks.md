@@ -439,6 +439,44 @@ deliverable.
 
 ---
 
+## Pre-prod-deploy checklist
+
+Run through these **before** the first prod deploy of the SPA. Each PR
+above only registers / wires for **dev** (localhost). Prod is a separate
+environment with its own OpenEMR DB and its own OAuth client registry —
+nothing from dev carries over.
+
+- [ ] **Decide where the prod SPA is hosted.** Options: same Railway service
+      as OpenEMR (path-mounted), separate Railway static service, Cloudflare
+      Pages, Vercel, etc. The redirect_uri for the prod OAuth client depends
+      on this decision — register it once you know the URL.
+- [ ] **Register a separate public OAuth client in prod OpenEMR admin**
+      (https://openemr-production-6c31.up.railway.app/ — Admin → System →
+      API Clients). Same form as the dev registration in PR 2:
+  - [ ] Application Type: **Public**
+  - [ ] Redirect URI: `https://<prod-spa-url>/callback` (HTTPS only — prod
+        OAuth refuses HTTP redirects outside localhost)
+  - [ ] Logout URI: `https://<prod-spa-url>/`
+  - [ ] Same scope set as dev
+  - [ ] If created with `is_enabled=0`, flip to enabled
+  - [ ] Copy the prod `client_id` (different from dev — never share)
+- [ ] **Set Railway env vars** on the SPA service:
+  - [ ] `VITE_OPENEMR_BASE_URL=https://openemr-production-6c31.up.railway.app`
+  - [ ] `VITE_OAUTH_CLIENT_ID=<prod-client-id-from-step-above>`
+  - [ ] These are **build-time** vars for Vite — must be set before `npm run
+        build` runs in CI/CD, not just at SPA runtime
+- [ ] **Confirm CORS / cert** on prod OpenEMR allows the SPA origin to call
+      `/oauth2/default/*` and `/apis/default/fhir/*` cross-origin. The dev
+      stack relaxes this; prod may need an explicit allowlist entry.
+- [ ] **Smoke test the prod auth flow** end-to-end with a non-admin clinician
+      account before announcing.
+- [ ] **Verify the boundary check on prod build artifact:** `dist/` contains
+      no references to localhost or dev URLs (grep `dist/` for `localhost`,
+      `9300`, `5173`, dev `client_id` — all should be absent). Catches the
+      case where someone shipped a build with `.env.local` baked in.
+
+---
+
 ## Cross-PR conventions
 
 - **Branch naming:** `dashboard-port/pr-NN-short-slug` (e.g. `dashboard-port/pr-02-oauth-pkce`)
