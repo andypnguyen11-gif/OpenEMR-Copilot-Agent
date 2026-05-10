@@ -205,7 +205,9 @@ class StaleChronicLabRule(DiscrepancyRule):
 
 
 def _problem_matches(problem: ProblemRecord, keywords: Sequence[str]) -> bool:
-    haystacks = (problem.display.lower(), problem.code.lower())
+    haystacks: tuple[str, ...] = (problem.display.lower(),)
+    if problem.code is not None:
+        haystacks = (*haystacks, problem.code.lower())
     for keyword in keywords:
         for haystack in haystacks:
             if keyword in haystack:

@@ -22,7 +22,18 @@ class _Record(BaseModel):
 
 class ProblemRecord(_Record):
     source_id: str = Field(min_length=1)
-    code: str
+    code: str | None = None
+    """SNOMED / ICD-10 code from FHIR ``Condition.code.coding[].code``.
+
+    ``None`` when the source resource only carries ``code.text`` (the
+    common shape for Synthea-derived patients and any Condition stored
+    in OpenEMR's ``lists`` table without a coded entry). The
+    human-readable label still lands on :attr:`display`, which is the
+    field the model and the discrepancy rules anchor on; ``code`` is
+    advisory only — used by ``stale_chronic_lab`` to widen the keyword
+    haystack and by callers that prefer machine-readable codes when
+    available.
+    """
     display: str
     onset_date: str | None = None
     status: str

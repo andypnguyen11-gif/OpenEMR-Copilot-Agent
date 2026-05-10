@@ -54,13 +54,28 @@ class GetProblemsFhirTool(FhirBackedTool):
 
 
 def project_condition_to_record(condition: Condition) -> ProblemRecord | None:
-    code = condition.code.primary_code() if condition.code else None
-    display = condition.code.preferred_display() if condition.code else None
-    if not code or not display:
+    """Project a FHIR :class:`Condition` to a :class:`ProblemRecord`.
+
+    Drops only when the condition has no human-readable label —
+    ``preferred_display()`` already falls through ``code.text`` →
+    ``coding[].display``, so the only way to fail is a Condition with
+    no code, no text, and no display. ``code`` (SNOMED / ICD-10) is
+    advisory and may be ``None`` when OpenEMR's source resource only
+    carries ``code.text`` — common for Synthea fixtures and any
+    Condition entered through the ``lists`` table without a coded
+    entry. Surfacing those records (with display only) is what makes
+    the "what active problems does this patient have?" turn answerable
+    against a real chart instead of silently abstaining.
+    """
+
+    if condition.code is None:
+        return None
+    display = condition.code.preferred_display()
+    if not display:
         return None
     return ProblemRecord(
         source_id=reference_id("Condition", condition.id),
-        code=code,
+        code=condition.code.primary_code(),  # may be None — advisory
         display=display,
         onset_date=_onset_date(condition),
         status=_status(condition),

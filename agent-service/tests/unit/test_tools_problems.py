@@ -129,6 +129,38 @@ def test_drops_condition_with_no_code_or_display(
     assert result.records[0].source_id == "Condition/p101-cond-1"
 
 
+def test_keeps_text_only_condition_without_coding(
+    bridge: AsyncBridge,
+    audit: RecordingAuditWriter,
+) -> None:
+    """OpenEMR's FHIR layer commonly returns ``Condition.code`` carrying
+    only ``text`` — Synthea fixtures and any Condition stored in the
+    ``lists`` table without a coded entry both surface this shape. The
+    mapper must keep these (with ``code=None`` on the resulting record)
+    rather than silently drop them, otherwise the chart panel shows
+    problems while ``get_problems`` returns nothing — the symptom that
+    surfaced this bug on the prod Olivia/Bednar smoke."""
+
+    text_only = Condition(
+        id="p101-cond-text",
+        code=CodeableConcept(coding=[], text="Hashimoto's thyroiditis"),
+        clinicalStatus=None,
+        onsetDateTime=None,
+        onsetPeriod=None,
+    )
+    fhir = StubFhirClient(conditions=lambda *, patient_id: [text_only])
+    tool = GetProblemsFhirTool(fhir=fhir, bridge=bridge, audit=audit, audit_salt=AUDIT_SALT)
+
+    result = tool.execute(claims=claims_for(), patient_id=PATIENT_ID, request_id="req-text")
+
+    assert len(result.records) == 1
+    record = expect_record(result.records[0], ProblemRecord)
+    assert record.source_id == "Condition/p101-cond-text"
+    assert record.code is None  # advisory; text-only Condition has no machine code
+    assert record.display == "Hashimoto's thyroiditis"
+    assert record.status == "unknown"  # falls through when clinicalStatus is missing
+
+
 def test_status_falls_back_to_unknown_when_clinical_status_missing(
     bridge: AsyncBridge,
     audit: RecordingAuditWriter,
