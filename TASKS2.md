@@ -208,7 +208,7 @@ default-off until rollout verification:
   node with `parent_run_id` linkage remain open; plan archive in
   `plans/week2-langgraph-supervisor.md`.
 
-- [ ] **[build] OpenEMR chart persistence — confirmation surface (Chart-write).**
+- [x] **[build] OpenEMR chart persistence — confirmation surface (Chart-write).**
   The write path is in place (`save_document.php` → `ChartWriteCoordinator`
   → `ChartWriteService::writeAllergies/Medications/ActiveProblems/Reminders`
   → `lists` / `dated_reminders` / `procedure_*` tables). What's missing:
@@ -217,6 +217,12 @@ default-off until rollout verification:
   export is **out of scope for Sunday submission** — declare it in the
   submission narrative. The idempotency story (re-clicking save must
   not duplicate rows) is split out below.
+  **Landed:** `interface/copilot/save_success.php:243-279` renders
+  "What landed in the chart" with per-section row counts via
+  `src/Services/Copilot/ChartWrite/ChartWriteSummary.php` (counts() +
+  skipped() rollup); empty-state copy handles fax_tiff and
+  no-rows-written cases. Abstained-count and audit-row pointer not
+  surfaced — minor gap vs. the example wording, not blocking.
 
 - [x] **[build] Idempotent chart-write save endpoint (Chart-write
   idempotency story).** A documents-side conditional UPDATE on
