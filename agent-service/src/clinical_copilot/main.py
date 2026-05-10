@@ -55,6 +55,7 @@ from clinical_copilot.documents.extractor import (
     extract as run_extraction,
 )
 from clinical_copilot.documents.fetcher import encode_png_bytes, render_document
+from clinical_copilot.documents.ocr_bbox import tighten_extracted_document_citations
 from clinical_copilot.logging import configure_logging, get_logger
 from clinical_copilot.observability import TraceRecord
 from clinical_copilot.observability.metrics import DEFAULT_WINDOW, MAX_WINDOW
@@ -1109,8 +1110,10 @@ def create_app(
             # extractor's vision model still tolerated, disk full)
             # leaves the cache empty and the page route's structured
             # 404 takes over from there. Never let it fail the ingest.
+            rendered_pages: list = []
             try:
-                for rendered in render_document(tmp_path):
+                rendered_pages = render_document(tmp_path)
+                for rendered in rendered_pages:
                     page_cache.write(
                         document_id,
                         rendered.page_number,
@@ -1124,10 +1127,33 @@ def create_app(
 
         elapsed_ms = int((time.perf_counter() - start) * 1000)
 
+        # OCR-tighten the extractor's coarse per-field bboxes against
+        # the rendered page images. The Anthropic vision extractor
+        # emits one page-chunk-sized bbox per field and reuses it
+        # across every field on the chunk, which makes the bbox
+        # overlay's click-to-highlight functionally meaningless.
+        # Tesseract finds each citation's raw_text on the page and
+        # narrows the bbox to a value-tight rectangle. Best-effort:
+        # if OCR fails or finds no match, the original coarse bbox
+        # survives — the overlay still draws something, just less
+        # precise. Skipped entirely when no pages rendered (HL7,
+        # docx, xlsx — formats the renderer can't rasterize).
+        facts_dump = result.facts.model_dump(mode="json")
+        if rendered_pages:
+            try:
+                facts_dump = tighten_extracted_document_citations(
+                    facts_dump, rendered_pages,
+                )
+            except Exception:  # noqa: BLE001 - best-effort
+                facts_dump = result.facts.model_dump(mode="json")
+
         # Persist via the existing JSON-on-disk store (same shape the
         # demo CLI writes). The PHP review page reads through the
         # ``GET /api/agent/internal/extracted/{id}`` route below.
-        facts_store.write(result.facts)
+        # ``validate`` round-trips the (possibly OCR-tightened) dict
+        # through the typed-union schema so a malformed dict never
+        # silently lands on disk.
+        facts_store.write(facts_store.validate(facts_dump))
 
         # Trace row for the document-ingest path. ``retrieval_hits`` is
         # NULL — extraction never invokes the corpus retriever.
@@ -1137,7 +1163,6 @@ def create_app(
         # for now (extractor token capture is a follow-up); fail-open
         # inside :meth:`TracesService.record` so a DB hiccup never
         # surfaces here.
-        facts_dump = result.facts.model_dump(mode="json")
         resolved_state.traces_service.record(
             TraceRecord(
                 request_id=uuid.uuid4().hex,
