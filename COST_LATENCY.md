@@ -1,7 +1,7 @@
 # Cost & Latency Report — Clinical Co-Pilot Week 2
 
 **Status:** Sunday-submission deliverable per assignment PRD
-**Last updated:** 2026-05-08
+**Last updated:** 2026-05-10
 **Scope:** Agent service (`agent-service/`) running against Anthropic
 Messages API, FHIR sandbox + Synthea-derived demo patients on Railway.
 
@@ -11,9 +11,15 @@ extraction, and the 65-case eval gate) plus the latency profile of
 each. Numbers are derived from observed call shapes in the codebase
 plus published Anthropic rates; per-turn cost is bounded by the
 supervisor's 4-iteration cap and the per-call `max_tokens` settings
-listed below. The demo runs `LANGSMITH_TRACING=false`, so
-LangSmith-side cost telemetry is not yet wired (re-enabling it is
-W2-12 work, deferred).
+listed below. The deployed agent-service runs with
+`LANGSMITH_TRACING=true`; the `clinical-copilot` LangSmith project
+captures per-trace input/output token counts and (via Anthropic
+model pricing) auto-computes per-trace USD cost on every demo turn
+and ingest call. The redaction layer at
+`agent-service/src/clinical_copilot/observability/redaction.py`
+strips PHI from inputs/outputs before they leave the process — see
+`tests/unit/test_phi_redaction.py` and
+`tests/unit/observability/test_langsmith_safe.py` for coverage.
 
 ---
 
@@ -134,10 +140,14 @@ roughly $0.020.
 
 ## 5. Dev spend to date
 
-`LANGSMITH_TRACING=false` for the demo path (W2-12 deferred), so
-exact tallies aren't available from a console. Dev spend estimated
-from the eval-gate runs + iterative extraction-prompt tuning + the
-multimodal-expansion authoring loop:
+LangSmith trace-level cost is now live on the deployed
+agent-service (`clinical-copilot` project), so post-flip turns
+have exact per-trace USD attributed by LangSmith. The numbers
+below are the back-of-envelope estimate for the W2 dev loop
+*before* the flag was on (eval-gate runs, extraction-prompt
+tuning, multimodal-expansion authoring). The Anthropic console
+remains the canonical total; LangSmith is the per-turn breakdown
+going forward.
 
 | Activity | Estimated calls | Estimated cost |
 |---|---:|---:|
