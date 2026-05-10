@@ -7,7 +7,15 @@ export interface AppEnv {
   redirectUri: string
   postLogoutRedirectUri: string
   scope: string
+  // OAuth `aud` parameter — the absolute FHIR base OpenEMR validates against
+  // CustomAuthCodeGrant. Always points at OpenEMR directly, never a proxy.
   audience: string
+  // Base URL useFhirClient uses to construct request URLs. In dev this is a
+  // relative path served via Vite's proxy so cross-origin preflights don't
+  // hit OpenEMR's CORSListener (which 404s on OPTIONS for FHIR resource
+  // routes). In prod it can be set absolute via VITE_FHIR_BASE_URL when the
+  // SPA host has CORS configured at OpenEMR.
+  fhirBaseUrl: string
 }
 
 const SCOPE = [
@@ -42,7 +50,21 @@ export function readEnv(): AppEnv {
   // see CustomAuthCodeGrant.php and ServerConfig::getFhirUrl(). A trailing
   // slash gets a 400 invalid_request "Aud parameter did not match".
   const audience = `${baseUrl}/apis/default/fhir`
-  return { baseUrl, clientId, redirectUri, postLogoutRedirectUri, scope: SCOPE, audience }
+  // Default to a relative path so dev requests flow through Vite's `/apis`
+  // proxy and avoid the cross-origin preflight that OpenEMR's CORSListener
+  // currently fails (returns 404 on OPTIONS for FHIR resource routes). Prod
+  // can override with an absolute URL when the OpenEMR origin grants CORS.
+  const fhirBaseUrl =
+    import.meta.env.VITE_FHIR_BASE_URL || '/apis/default/fhir'
+  return {
+    baseUrl,
+    clientId,
+    redirectUri,
+    postLogoutRedirectUri,
+    scope: SCOPE,
+    audience,
+    fhirBaseUrl,
+  }
 }
 
 export function discoveryUrl(baseUrl: string): string {
