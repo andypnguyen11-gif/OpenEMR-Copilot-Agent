@@ -155,7 +155,14 @@ def tighten_extracted_document_citations(
         return facts_dict
 
     # Cache: page_number → ocr_words. Lazy so a facts tree that doesn't
-    # touch a page never pays for OCR'ing it.
+    # touch a page never pays for OCR'ing it. Synthetic pages (HL7 /
+    # docx / xlsx — see :class:`RenderedPage.synthetic`) carry exact
+    # bboxes from the extractor: their line spacing (~1.5% of page
+    # height) is below the cross-row anchor cap, so OCR-tightening
+    # bleeds bboxes into adjacent rows on tokens like ``OBX`` or
+    # ``Cholesterol`` that repeat across HL7 segments. Skip OCR on
+    # those pages and let the extractor's bboxes pass through
+    # unchanged.
     pages_by_number = {p.page_number: p for p in rendered_pages}
     ocr_cache: dict[int, list[OcrWord]] = {}
 
@@ -165,6 +172,9 @@ def tighten_extracted_document_citations(
         page = pages_by_number.get(page_number)
         if page is None:
             return None
+        if page.synthetic:
+            ocr_cache[page_number] = []
+            return ocr_cache[page_number]
         ocr_cache[page_number] = ocr_page(page.image)
         return ocr_cache[page_number]
 

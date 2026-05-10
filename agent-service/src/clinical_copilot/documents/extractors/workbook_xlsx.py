@@ -45,6 +45,7 @@ from clinical_copilot.documents.schemas.workbook_xlsx import (
     WorkbookPatientInfo,
     WorkbookXlsxFacts,
 )
+from clinical_copilot.documents.synthetic_render import compute_line_bbox
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 # Field-name → schema-attr mapping for the Patient sheet's vertical
@@ -395,22 +396,64 @@ def _build_header_index(ws: Worksheet) -> dict[str, int]:
     return out
 
 
+# Cache of (workbook_id, sheet_title) → list of 1-based source row
+# numbers that the synthetic-text renderer keeps for that sheet
+# (rows with at least one non-empty cell; matches the iteration in
+# :func:`fetcher._render_xlsx`). Keyed off ``id(ws.parent)`` so a
+# fresh workbook on a re-extraction doesn't get a stale entry.
+_KEPT_ROWS_CACHE: dict[tuple[int, str], list[int]] = {}
+
+
+def _kept_rows(ws: Worksheet) -> list[int]:
+    """Return the 1-based source row numbers the renderer keeps for
+    ``ws``. Cached per ``(workbook_id, sheet_title)`` so a workbook
+    with a 5000-row sheet doesn't re-walk on every cite.
+    """
+
+    cache_key = (id(ws.parent), ws.title)
+    cached = _KEPT_ROWS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    rows: list[int] = []
+    for row in ws.iter_rows():
+        if any(cell.value not in (None, "") for cell in row):
+            rows.append(row[0].row)
+    _KEPT_ROWS_CACHE[cache_key] = rows
+    return rows
+
+
 def _cite(document_id: str, ws: Worksheet, cell: Cell, *, path: str) -> SourceCitation:
     """SourceCitation for a workbook cell, bound to a leaf path.
 
-    The ``page`` slot encodes the 1-indexed sheet number; ``raw_text``
-    carries the ``Sheet!Cell`` reference for the review-page click-to-
-    source UX. ``path`` is the JSON-pointer-style schema-walk position
-    of the leaf this citation belongs to (e.g. ``"patient.name"``,
-    ``"medications[2].sig"``) and is bound onto the citation's
-    ``field_or_chunk_id``.
+    ``page`` is the 1-indexed sheet number, matching the per-sheet
+    page produced by the synthetic-text renderer. ``bbox`` is the
+    normalized line band of the cell's row in that page, computed
+    from the row's position among kept (non-empty) rows on the
+    sheet. ``raw_text`` carries the ``Sheet!Cell`` reference for the
+    review-page click-to-source UX. ``path`` is the JSON-pointer-
+    style schema-walk position of the leaf this citation belongs to
+    (e.g. ``"patient.name"``, ``"medications[2].sig"``) and is
+    bound onto the citation's ``field_or_chunk_id``.
+
+    Cells whose row is empty by the renderer's lights (no non-empty
+    cells anywhere on the row, which can only happen when the
+    extractor cites a programmatically-empty placeholder) get the
+    full-page bbox as a safe fallback — the overlay still draws
+    something rather than throwing.
     """
 
     sheet_index = ws.parent.sheetnames.index(ws.title) + 1
+    kept = _kept_rows(ws)
+    try:
+        line_index = kept.index(cell.row)
+    except ValueError:
+        bbox: tuple[float, float, float, float] = (0.0, 0.0, 1.0, 1.0)
+    else:
+        bbox = compute_line_bbox(line_index, len(kept))
     return SourceCitation(
         document_id=document_id,
         page=sheet_index,
-        bbox=(0.0, 0.0, 1.0, 1.0),
+        bbox=bbox,
         confidence=1.0,
         raw_text=f"{ws.title}!{cell.coordinate}",
         field_or_chunk_id=path,

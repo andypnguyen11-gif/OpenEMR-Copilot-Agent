@@ -38,6 +38,7 @@ from docx.document import Document as DocxDocument
 
 from clinical_copilot.documents.schemas.citation import ExtractedField, SourceCitation
 from clinical_copilot.documents.schemas.referral_docx import ReferralDocxFacts
+from clinical_copilot.documents.synthetic_render import compute_line_bbox
 from clinical_copilot.schemas.abstain import RuntimeAbstainReason
 
 # ---------------------------------------------------------------------
@@ -86,10 +87,18 @@ _RE_DEAR = re.compile(r"^Dear\s+", re.I)
 
 @dataclass(frozen=True, slots=True)
 class _Paragraph:
-    """One paragraph as far as the extractor cares about it."""
+    """One paragraph as far as the extractor cares about it.
 
-    index: int  # 1-based for citation use
+    ``index`` is the 1-based position in the *kept* (non-empty)
+    paragraph sequence, so it lines up with the synthetic renderer's
+    line index. ``total`` is the total number of kept paragraphs in
+    the document, needed by :func:`compute_line_bbox` to normalize
+    the citation's y-band against the rendered page extent.
+    """
+
+    index: int
     text: str
+    total: int
 
 
 def extract_referral_docx(
@@ -104,10 +113,11 @@ def extract_referral_docx(
 
     del client, model  # this extractor is deterministic / text-only
     doc: DocxDocument = Document(str(document_path))
+    kept_texts = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    total = len(kept_texts)
     paragraphs: list[_Paragraph] = [
-        _Paragraph(index=i + 1, text=p.text.strip())
-        for i, p in enumerate(doc.paragraphs)
-        if p.text.strip()
+        _Paragraph(index=i + 1, text=text, total=total)
+        for i, text in enumerate(kept_texts)
     ]
     if not paragraphs:
         raise ValueError(f"docx is empty / contains no text paragraphs: {document_path}")
@@ -258,19 +268,20 @@ def extract_referral_docx(
 def _cite(document_id: str, para: _Paragraph, *, path: str) -> SourceCitation:
     """Build a SourceCitation for a docx paragraph, bound to a leaf path.
 
-    ``page`` is overloaded to carry the 1-based paragraph index;
-    ``bbox`` is degenerate (full unit square) because paragraph-level
-    pixel coordinates do not exist for text-only docx content. ``path``
-    is the JSON-pointer-style schema-walk position of the leaf this
-    citation belongs to (e.g. ``"reason_for_referral"``,
-    ``"current_medications[3]"``) and is bound onto the citation's
-    ``field_or_chunk_id``.
+    ``page`` is fixed at 1 because the synthetic-text renderer lays
+    every paragraph on a single image. ``bbox`` is the normalized
+    line band the paragraph occupies on that image, computed from
+    the paragraph's 1-based position and the document's total kept-
+    paragraph count. ``path`` is the JSON-pointer-style schema-walk
+    position of the leaf this citation belongs to (e.g.
+    ``"reason_for_referral"``, ``"current_medications[3]"``) and is
+    bound onto the citation's ``field_or_chunk_id``.
     """
 
     return SourceCitation(
         document_id=document_id,
-        page=para.index,
-        bbox=(0.0, 0.0, 1.0, 1.0),
+        page=1,
+        bbox=compute_line_bbox(para.index - 1, para.total),
         confidence=1.0,
         raw_text=para.text,
         field_or_chunk_id=path,

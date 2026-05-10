@@ -41,17 +41,7 @@ use OpenEMR\Services\Copilot\ExtractedFieldHelper;
 /** @var string $webroot */
 /** @var string|null $documentType */
 
-// Document types whose source bytes the agent-service renderer cannot
-// rasterize to PNG: Word/Excel/HL7 streams. The extractor still emits
-// citations carrying ``page`` numbers (docx page-breaks, xlsx sheet
-// indices, HL7 segment positions) but those don't correspond to any
-// renderable raster page. Showing broken-image placeholders for every
-// cited page reads as a transient cache miss; the explanatory note
-// below is the right UX until docx/xlsx → PDF conversion lands as a
-// follow-up. PDF / intake PDF / TIFF still render normally.
-$nonRenderableTypes = ['referral_docx', 'workbook_xlsx', 'hl7_oru', 'hl7_adt'];
 $documentTypeLocal = $documentType ?? '';
-$documentTypeIsRenderable = !in_array($documentTypeLocal, $nonRenderableTypes, true);
 
 $citations = ExtractedFieldHelper::collectExtractedDocumentCitations($facts);
 
@@ -87,14 +77,6 @@ $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERRO
 <section class="copilot-citation-overlay" data-document-id="<?php echo htmlspecialchars($documentId, ENT_QUOTES, 'UTF-8'); ?>">
 <?php if ($citationsByPage === []): ?>
     <p class="overlay-empty">No bbox citations were extracted for this document.</p>
-<?php elseif (!$documentTypeIsRenderable): ?>
-    <p class="overlay-empty">
-        Source preview is not available for <code><?php echo htmlspecialchars($documentTypeLocal, ENT_QUOTES, 'UTF-8'); ?></code>
-        documents — the citations on each field reference document
-        positions (page / sheet / HL7 segment) but the source bytes
-        can't be rendered to an image. Use the 📎 citation snippet on
-        each row to verify the extracted value against the original.
-    </p>
 <?php else: ?>
     <p class="overlay-help">Click a row in the form to highlight its citation on the page.</p>
     <?php foreach ($citationsByPage as $pageNumber => $entries): ?>

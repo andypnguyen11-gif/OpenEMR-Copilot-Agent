@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 
 from clinical_copilot.documents.schemas.citation import SourceCitation
+from clinical_copilot.documents.synthetic_render import compute_line_bbox
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,22 +29,40 @@ class Segment:
     ``fields[0] == "MSH"``, ``fields[1]`` is the encoding chars, and
     ``fields[2]`` is the sending app — matching the spec, off-by-one
     from a "field 1 is the first data field" reading.
+
+    ``total_lines`` is the number of source lines (including blanks)
+    in the file this segment was split from. The citation builder
+    uses it to compute a normalized bbox that lines up with the
+    synthetic-text page render — :func:`cite` would otherwise have
+    to guess the page extent.
     """
 
     name: str
     fields: list[str]
     line_number: int
     raw: str
+    total_lines: int
 
 
 def split_segments(raw: str) -> list[Segment]:
     """Split on ``\\r`` (HL7 standard), tolerating ``\\n``/``\\r\\n``
     that appear when an HL7 file has been opened-and-saved by a
-    text editor on a non-HL7-aware machine."""
+    text editor on a non-HL7-aware machine.
+
+    ``Segment.total_lines`` is set to the same line count the
+    synthetic-text renderer will produce (trailing blanks dropped,
+    interior blanks preserved) so :func:`cite` can position bboxes
+    against the rendered image without re-reading the source.
+    """
 
     normalized = raw.replace("\r\n", "\r").replace("\n", "\r")
+    raw_lines = normalized.split("\r")
+    while raw_lines and raw_lines[-1] == "":
+        raw_lines.pop()
+    total_lines = len(raw_lines)
+
     out: list[Segment] = []
-    for index, line in enumerate(normalized.split("\r")):
+    for index, line in enumerate(raw_lines):
         if not line.strip():
             continue
         fields = line.split("|")
@@ -53,6 +72,7 @@ def split_segments(raw: str) -> list[Segment]:
                 fields=fields,
                 line_number=index + 1,
                 raw=line,
+                total_lines=total_lines,
             )
         )
     return out
@@ -72,18 +92,23 @@ def find_all_segments(segments: list[Segment], name: str) -> list[Segment]:
 def cite(document_id: str, segment: Segment, *, path: str) -> SourceCitation:
     """SourceCitation for one segment, bound to a schema-walk path.
 
-    ``page`` overloads the citation slot to encode the 1-based segment
-    number; ``raw_text`` carries the verbatim segment (capped at 240
-    chars so a long OBX still fits). ``path`` is the JSON-pointer-style
-    schema-walk position of the leaf this citation belongs to (e.g.
-    ``"patient_name"``, ``"observations[2].value"``) and is bound onto
-    the citation's ``field_or_chunk_id``.
+    ``page`` is fixed at 1 because the synthetic-text renderer lays
+    every segment on a single image; ``bbox`` is the normalized line
+    band the segment occupies on that image, computed from the
+    segment's 1-based ``line_number`` against
+    :func:`synthetic_render.compute_line_bbox`. ``raw_text`` carries
+    the verbatim segment (capped at 240 chars so a long OBX still
+    fits). ``path`` is the JSON-pointer-style schema-walk position of
+    the leaf this citation belongs to (e.g. ``"patient_name"``,
+    ``"observations[2].value"``) and is bound onto the citation's
+    ``field_or_chunk_id``.
     """
 
+    bbox = compute_line_bbox(segment.line_number - 1, segment.total_lines)
     return SourceCitation(
         document_id=document_id,
-        page=segment.line_number,
-        bbox=(0.0, 0.0, 1.0, 1.0),
+        page=1,
+        bbox=bbox,
         confidence=1.0,
         raw_text=segment.raw[:240],
         field_or_chunk_id=path,

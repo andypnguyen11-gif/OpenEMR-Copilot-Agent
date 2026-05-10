@@ -25,13 +25,18 @@ from clinical_copilot.documents.ocr_bbox import (
 )
 
 
-def _make_page(page_number: int, size: tuple[int, int] = (800, 1000)) -> RenderedPage:
+def _make_page(
+    page_number: int,
+    size: tuple[int, int] = (800, 1000),
+    synthetic: bool = False,
+) -> RenderedPage:
     image = Image.new("RGB", size, color="white")
     return RenderedPage(
         page_number=page_number,
         image=image,
         width_px=size[0],
         height_px=size[1],
+        synthetic=synthetic,
     )
 
 
@@ -491,6 +496,55 @@ def test_tighten_does_not_pull_tokens_across_adjacent_table_rows(
     assert new_bbox[3] < 0.65, (
         f"bbox bottom {new_bbox[3]:.4f} should stay above the next row at 0.654"
     )
+
+
+def test_tighten_skips_synthetic_pages_and_preserves_original_bbox(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: HL7 / docx / xlsx pages produced by the synthetic
+    text-on-page renderer carry exact, deterministic bboxes from the
+    extractor. Running OCR-tightening on them bleeds bboxes across
+    adjacent rows because the line spacing (~0.015 of page height)
+    is tighter than the cross-row anchor cap (0.022) and tokens like
+    ``OBX`` / ``Cholesterol`` / ``LN`` repeat across HL7 segments.
+    The synthetic flag must short-circuit OCR-tightening so the
+    extractor's bbox passes through unchanged.
+    """
+
+    facts = {
+        "obs_a": {
+            "value": "first row",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                bbox=[0.034, 0.115, 0.962, 0.130],
+                raw_text="OBX|2|NM|2089-1^Cholesterol in LDL [Mass/volume]^LN||140",
+            ),
+        },
+        "obs_b": {
+            "value": "next row",
+            "abstain_reason": None,
+            "citation": _citation(
+                page=1,
+                bbox=[0.034, 0.130, 0.962, 0.145],
+                raw_text="OBX|3|NM|2085-9^Cholesterol in HDL [Mass/volume]^LN||48",
+            ),
+        },
+    }
+    # If OCR were called, this would pull tokens across rows and
+    # collapse both bboxes onto one. The fail() here proves the
+    # synthetic short-circuit is wired.
+    monkeypatch.setattr(
+        ocr_bbox,
+        "ocr_page",
+        lambda _img: pytest.fail("ocr_page must not run on synthetic pages"),
+    )
+
+    out = tighten_extracted_document_citations(
+        facts, [_make_page(1, synthetic=True)],
+    )
+    assert out["obs_a"]["citation"]["bbox"] == [0.034, 0.115, 0.962, 0.130]
+    assert out["obs_b"]["citation"]["bbox"] == [0.034, 0.130, 0.962, 0.145]
 
 
 @pytest.mark.skipif(
