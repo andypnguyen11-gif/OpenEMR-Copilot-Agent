@@ -39,7 +39,7 @@ export function AllergiesCard({ patientId }: Props) {
   }, [fhir, patientId])
 
   return (
-    <CardBase title="Allergies">
+    <CardBase title="Allergies" cardId="allergies">
       <Body data={data} error={error} />
     </CardBase>
   )

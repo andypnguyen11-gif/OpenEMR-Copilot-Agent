@@ -70,7 +70,7 @@ export function LabResultsCard({ patientId }: Props) {
   }, [fhir, patientId])
 
   return (
-    <CardBase title="Lab Results">
+    <CardBase title="Lab Results" cardId="lab-results">
       <Body data={data} error={error} />
     </CardBase>
   )

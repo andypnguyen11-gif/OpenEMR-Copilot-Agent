@@ -90,3 +90,11 @@ export function useAuth(): AuthContextValue {
   }
   return ctx
 }
+
+// Non-throwing variant — returns null when no AuthProvider is in scope.
+// CardBase uses this so its existing standalone unit tests (which don't
+// mount an AuthProvider) keep working while production renders inside the
+// provider tree get full persistence behavior.
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext)
+}

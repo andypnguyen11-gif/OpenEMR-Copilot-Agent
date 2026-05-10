@@ -1,9 +1,17 @@
 import { useId, useState, type ReactNode } from 'react'
+import { useOptionalAuth } from '../auth/AuthContext'
+import { decodeIdTokenSub } from '../auth/idToken'
+import {
+  DEFAULT_COLLAPSED,
+  getCollapsed,
+  setCollapsed,
+} from '../prefs/collapseStore'
 
 // Mirrors templates/patient/card/card_base.html.twig — Bootstrap 4.6 card
 // with a clickable header that toggles the body's collapsed state. Upstream
 // drives the collapse via Bootstrap's data-toggle JS; we drive it from React
-// state so PR 9 can layer localStorage persistence on top via collapseStore.
+// state so the optional `cardId` prop can persist preferences via
+// collapseStore. Tests without an AuthProvider see persistence as a no-op.
 //
 // Edit/Add buttons from the Twig version are deliberately omitted: this
 // port is read-only (PATIENT_DASHBOARD_MIGRATION.md §0).
@@ -14,18 +22,42 @@ interface Props {
   initiallyCollapsed?: boolean
   // Optional — useful for tests / aria. Defaults to a stable React id.
   id?: string
+  // When set, collapse state persists via collapseStore namespaced by
+  // user.sub from the id_token. Falls back to "anonymous" when no id_token
+  // is present (e.g., scope omitted) so the SPA still works without
+  // OpenID. Omit cardId entirely to keep CardBase uncontrolled.
+  cardId?: string
 }
 
 export function CardBase({
   title,
   children,
-  initiallyCollapsed = false,
+  initiallyCollapsed = DEFAULT_COLLAPSED,
   id,
+  cardId,
 }: Props) {
   const reactId = useId()
   const bodyId = id ?? `card-body-${reactId}`
-  const [collapsed, setCollapsed] = useState(initiallyCollapsed)
+  const auth = useOptionalAuth()
+  const userKey = userKeyFromIdToken(auth?.state?.idToken)
+  const persistenceEnabled = cardId !== undefined && userKey !== null
+
+  const [collapsed, setCollapsedState] = useState(() =>
+    persistenceEnabled
+      ? getCollapsed(userKey, cardId)
+      : initiallyCollapsed,
+  )
   const expanded = !collapsed
+
+  const handleToggle = () => {
+    setCollapsedState((prev) => {
+      const next = !prev
+      if (persistenceEnabled) {
+        setCollapsed(userKey, cardId, next)
+      }
+      return next
+    })
+  }
 
   return (
     <section className="card mb-3">
@@ -36,7 +68,7 @@ export function CardBase({
             className="btn btn-link text-left font-weight-bolder p-0"
             aria-expanded={expanded}
             aria-controls={bodyId}
-            onClick={() => setCollapsed((c) => !c)}
+            onClick={handleToggle}
           >
             {title}
             <Chevron expanded={expanded} />
@@ -51,6 +83,14 @@ export function CardBase({
       </div>
     </section>
   )
+}
+
+// "anonymous" when there's no id_token (login pre-OpenID or SMART without
+// `openid` scope). Returning the literal string keeps collapseStore happy
+// with a single key shape.
+function userKeyFromIdToken(idToken: string | undefined): string {
+  if (idToken === undefined) return 'anonymous'
+  return decodeIdTokenSub(idToken) ?? 'anonymous'
 }
 
 // Inline SVG chevron so we don't depend on font-awesome. Rotates 180° when

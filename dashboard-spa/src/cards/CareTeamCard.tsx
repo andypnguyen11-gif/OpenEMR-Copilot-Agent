@@ -117,7 +117,7 @@ export function CareTeamCard({ patientId }: Props) {
   }, [fhir, patientId])
 
   return (
-    <CardBase title="Care Team">
+    <CardBase title="Care Team" cardId="care-team">
       <Body data={data} error={error} />
     </CardBase>
   )

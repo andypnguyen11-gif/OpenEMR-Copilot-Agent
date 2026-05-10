@@ -37,7 +37,7 @@ export function ProblemsCard({ patientId }: Props) {
   }, [fhir, patientId])
 
   return (
-    <CardBase title="Problem List">
+    <CardBase title="Problem List" cardId="problems">
       <Body data={data} error={error} />
     </CardBase>
   )
