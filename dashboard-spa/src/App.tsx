@@ -6,7 +6,8 @@ import { discoveryUrl, readEnv } from './auth/env'
 import { RequireAuth } from './auth/routes'
 import { Login } from './pages/Login'
 import { Callback } from './pages/Callback'
-import { Home } from './pages/Home'
+import { HomeRedirect } from './pages/HomeRedirect'
+import { Dashboard } from './pages/Dashboard'
 
 function App() {
   const [config, setConfig] = useState<DiscoveryConfig | null>(null)
@@ -61,10 +62,18 @@ function App() {
           <Route path="/login" element={<Login config={config} />} />
           <Route path="/callback" element={<Callback config={config} />} />
           <Route
+            path="/patients/:id"
+            element={
+              <RequireAuth>
+                <Dashboard />
+              </RequireAuth>
+            }
+          />
+          <Route
             path="/"
             element={
               <RequireAuth>
-                <Home />
+                <HomeRedirect />
               </RequireAuth>
             }
           />

@@ -39,6 +39,13 @@ and it is deliberately out of scope per this read-only framing — *not* an API
 limitation. FHIR `CareTeam` writes are technically feasible against OpenEMR;
 this is a scope decision, not a constraint. See §7 for the explicit defense.
 
+**Patient context** comes from OpenEMR's SMART launch flow; switching
+patients is handled by restarting authorization. The SPA does not own a
+patient picker — that is a server-side responsibility under the SMART
+standalone-launch pattern, and a direct consequence of the public-client /
+no-BFF decision in §3. See §5 and §7 for the explicit tradeoff and the
+"Switch patient" UX that surfaces it to the user.
+
 ---
 
 ## §1 Why port at all
@@ -234,6 +241,13 @@ What the port produces that the legacy stack doesn't:
   still alive (~1s on local dev, expected); a full re-login otherwise.
 - No SSR. No first paint without JavaScript. The fallback is the static
   `index.html` shell with the React mount point.
+- **Multi-patient navigation requires re-auth.** Public-client SMART
+  standalone-launch binds the access token to one patient per session, so
+  switching patients restarts authorization to invoke OpenEMR's SMART
+  picker. The legacy PHP dashboard let a clinician click between patients
+  freely within one session. This is the most visible cost of the
+  "no-BFF, no-confidential-client" decision in §3, and the SPA surfaces
+  it explicitly as a "Switch patient" button rather than hiding it.
 
 **Perf numbers (TBD — finalized in PR 10):**
 
@@ -282,6 +296,14 @@ Screenshots will live under `dashboard-spa/parity-matrix/`.
   no backend to persist to; `localStorage` keyed by `${user.sub}:${cardId}`
   is the closest substitute. Different browser → different state. Direct
   consequence of the §3 decision.
+- **Multi-patient navigation requires re-auth.** Legacy lets a clinician
+  click between patients freely in one session. The public-client
+  SMART standalone-launch model binds an access token to one patient per
+  session — switching patients goes through OpenEMR's SMART picker as a
+  fresh OAuth round-trip. Surfaced explicitly as a "Switch patient"
+  button, not hidden. This is the dominant trade we made for "no new
+  infra" in §3, called out here so a reviewer doesn't discover it as a
+  surprise.
 - **`hide_dashboard_cards` global is unsupported.** OpenEMR has an admin
   global that can hide specific dashboard cards site-wide. The SPA does
   not read OpenEMR globals (no DB access by §0 boundary).

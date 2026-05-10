@@ -163,41 +163,65 @@ memory; refresh-on-401 works single-flight; logout clears state.
 
 ---
 
-## PR 3 — FHIR client + patient picker
+## PR 3 — FHIR client + patient context + switch flow
 
-**Goal:** authenticated user lands on `/patients`, can search by name or MRN,
-clicks a result, navigates to `/patients/:id` (empty dashboard shell).
+**Goal:** authenticated user lands directly at `/patients/:id` where `:id` is
+the patient bound by OpenEMR's SMART launch flow (`state.patient`).
+Dashboard shell renders. A "Switch patient" button restarts authorization
+to pick a different patient via OpenEMR's SMART picker.
+
+**Architecture note:** Patient context comes from OpenEMR's SMART launch
+flow; switching patients is handled by restarting authorization. The SPA
+does *not* have its own picker — `user/*.read` scopes are gated to
+confidential clients per SMART, and we deliberately stay public-client (no
+BFF) per the `PATIENT_DASHBOARD_MIGRATION.md` §3 architecture. This is a
+spec-aligned design choice, not a missing feature.
 
 - [ ] Implement `fhir/client.ts`:
   - [ ] `fhirRead<T>(resourceType, id)` — `GET /apis/default/fhir/{resourceType}/{id}`
   - [ ] `fhirSearch<T>(resourceType, params)` — returns flattened array (not Bundle)
-  - [ ] 401 → single-flight refresh → one retry
+  - [ ] Pulls Bearer token from `AuthContext.getAccessToken()`
+  - [ ] 401 → single-flight refresh (already in AuthContext) → one retry
   - [ ] 403 → log warning, return `[]` (out-of-scope ≠ error)
   - [ ] Bundle.type assertion: skip (OpenEMR returns `'collection'` not `'searchset'`)
   - [ ] `_count=200` default; document the cap
 - [ ] Implement `fhir/types.ts` — narrow `@types/fhir` where it's too loose
-- [ ] Implement `pages/PatientPicker.tsx`:
-  - [ ] Search input → `Patient?name=...` or `Patient?identifier=...`
-  - [ ] Results list with name, DOB, MRN
-  - [ ] Click → navigate to `/patients/{id}`
-- [ ] Implement `pages/Dashboard.tsx` — placeholder shell with "Patient {id}" heading
+- [ ] Implement `pages/HomeRedirect.tsx`:
+  - [ ] Read `state.patient` from `AuthContext`
+  - [ ] If present → `<Navigate to={"/patients/" + state.patient} replace />`
+  - [ ] If absent (no SMART launch context) → `<Navigate to="/login" replace />`
+- [ ] Implement `pages/Dashboard.tsx`:
+  - [ ] Reads `:id` from `useParams()`
+  - [ ] Placeholder shell with "Patient {id}" heading + space for header + 6 cards
+  - [ ] Renders `<SwitchPatientButton />` in the top right
+- [ ] Implement `components/SwitchPatientButton.tsx`:
+  - [ ] Calls `clearSession()` on click
+  - [ ] `RequireAuth` then redirects to `/login` → OpenEMR's SMART picker
 - [ ] **Tests:**
-  - [ ] `src/fhir/client.test.ts` (mock `fetch`):
+  - [ ] `src/fhir/client.test.ts` (mock `fetch` + mock `getAccessToken`):
+    - [ ] Bearer header set from `getAccessToken()`
     - [ ] 200 Bundle → entries flattened to `T[]`
-    - [ ] 401 → triggers single refresh → retries once → returns data
+    - [ ] 401 → triggers single refresh → retries once with new token → returns data
     - [ ] 401 after retry → rejects (no infinite loop)
-    - [ ] 403 → resolves to `[]`, logs warning, does not throw
-    - [ ] `_count=200` is the default when not specified
-  - [ ] `src/pages/PatientPicker.test.tsx` — typing a name issues
-        `Patient?name=…`; typing digits/MRN issues `Patient?identifier=…`;
-        clicking a result calls `navigate('/patients/{id}')`
-- [ ] **Verify:** logged-in user sees patient list; clicking navigates to `/patients/:id`;
-      no console errors; network tab shows Bearer-authenticated FHIR calls
+    - [ ] 403 → resolves to `[]`, does not throw
+    - [ ] `_count=200` default applied when caller omits it
+    - [ ] `fhirRead` builds the correct URL `${baseUrl}/{resourceType}/{id}`
+  - [ ] `src/pages/HomeRedirect.test.tsx` — with `state.patient`, navigates to
+        `/patients/{id}`; without it, navigates to `/login`
+  - [ ] `src/components/SwitchPatientButton.test.tsx` — click calls
+        `clearSession`
+- [ ] **Verify:** log in → land directly at `/patients/{patient-uuid}` with the
+      patient ID matching what OpenEMR's SMART picker chose; click "Switch
+      patient" → redirected through OAuth flow → returns with new patient
+      context
 
-**New files:** `src/fhir/client.ts`, `src/fhir/types.ts`, `src/pages/PatientPicker.tsx`,
-`src/pages/Dashboard.tsx`, `src/fhir/client.test.ts`, `src/pages/PatientPicker.test.tsx`.
-**Edited files:** `src/App.tsx` (add `/patients` and `/patients/:id` routes, both
-`<RequireAuth>`-wrapped).
+**New files:** `src/fhir/client.ts`, `src/fhir/types.ts`,
+`src/pages/HomeRedirect.tsx`, `src/pages/Dashboard.tsx`,
+`src/components/SwitchPatientButton.tsx`, `src/fhir/client.test.ts`,
+`src/pages/HomeRedirect.test.tsx`, `src/components/SwitchPatientButton.test.tsx`.
+**Edited files:** `src/App.tsx` (replace `/` route with `<HomeRedirect>`, add
+`/patients/:id` route, all gated by `<RequireAuth>`); remove `Home.tsx` and
+its import (the placeholder served PR 2's verification, no longer needed).
 
 ---
 
