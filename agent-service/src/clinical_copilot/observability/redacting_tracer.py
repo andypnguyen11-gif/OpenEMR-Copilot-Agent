@@ -77,7 +77,32 @@ def _strict_drop(_payload: object) -> dict[str, Any]:
     return {"redacted": True}
 
 
-def _redact_llm_inputs(inputs: object) -> dict[str, Any]:
+def _looks_like_raw_llm_inputs(inputs: object) -> bool:
+    """Detect inputs that match ``Anthropic.messages.create`` kwargs.
+
+    The Client-level ``hide_inputs`` callable fires on every span on its
+    way through ``Client.create_run`` / ``Client.update_run`` — not just
+    LLM spans. By the time hide_inputs sees a supervisor-node, orchestrator,
+    or gateway LLM span, that span's own ``@traceable(process_inputs=…)``
+    has already produced a safe allowlist shape (counts, hashes, lengths).
+    We must not re-run the LLM-shape redactor on those — it would drop
+    every safe key and replace them with an empty dict.
+
+    Only the wrap_anthropic-emitted span carries raw ``.messages.create``
+    kwargs (``messages`` as a list of ``{role, content}`` dicts), so use
+    that as the trigger.
+    """
+
+    if not isinstance(inputs, dict):
+        return False
+    messages = inputs.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return False
+    first = messages[0]
+    return isinstance(first, dict) and "role" in first and "content" in first
+
+
+def _redact_llm_inputs(inputs: object) -> Any:
     """Redactor for ``llm`` run inputs from any source.
 
     Covers both ``@traceable_llm_complete`` (kwargs from
@@ -89,7 +114,15 @@ def _redact_llm_inputs(inputs: object) -> dict[str, Any]:
     turns, and any prior assistant tool-result blocks — every one of
     which can contain PHI. The allowlist surfaces lengths and counts
     only.
+
+    Installed both as a ``@traceable(process_inputs=…)`` and as a
+    ``Client(hide_inputs=…)``. When invoked at upload time (the Client
+    path) the inputs may already be an upstream redactor's safe-shape
+    output — in that case pass through unchanged.
     """
+
+    if not _looks_like_raw_llm_inputs(inputs):
+        return inputs
 
     redacted: dict[str, Any] = {}
     if not isinstance(inputs, dict):
@@ -138,7 +171,36 @@ def _redact_llm_inputs(inputs: object) -> dict[str, Any]:
     return redacted
 
 
-def _redact_llm_outputs(outputs: object) -> dict[str, Any]:
+def _looks_like_raw_llm_outputs(outputs: object) -> bool:
+    """Detect outputs that match wrap_anthropic's ``_message_to_outputs``
+    dump or our gateway's ``LlmTurn`` dataclass.
+
+    Same rationale as :func:`_looks_like_raw_llm_inputs`: hide_outputs
+    runs on every span and must pass through already-redacted payloads
+    so the upstream allowlist survives. The two raw shapes we redact
+    here are:
+
+    * ``LlmTurn`` instance — has ``text`` + ``tool_uses`` attributes.
+    * wrap_anthropic dict — has ``content`` as a list of block dicts
+      (each with a ``type``), or the ``output`` fallback key
+      ``_process_chat_completion`` returns when ``model_dump`` raises.
+    """
+
+    if hasattr(outputs, "text") and hasattr(outputs, "tool_uses"):
+        return True
+    if not isinstance(outputs, dict):
+        return False
+    if "output" in outputs and isinstance(outputs.get("output"), (dict, list)):
+        return True
+    content = outputs.get("content")
+    if isinstance(content, list) and content:
+        first = content[0]
+        if isinstance(first, dict) and "type" in first:
+            return True
+    return False
+
+
+def _redact_llm_outputs(outputs: object) -> Any:
     """Redactor for ``llm`` run outputs from any source.
 
     Covers both the ``LlmTurn`` dataclass our gateway returns (with
@@ -149,7 +211,15 @@ def _redact_llm_outputs(outputs: object) -> dict[str, Any]:
     pipeline — surface its length only. Token usage is preserved in the
     LangChain-standard ``usage_metadata`` shape so the LangSmith Tokens
     and Cost columns compute.
+
+    Installed both as a ``@traceable(process_outputs=…)`` and as a
+    ``Client(hide_outputs=…)``. When invoked at upload time on a span
+    whose own ``process_outputs`` already produced a safe shape (gateway
+    LLM span, supervisor node, orchestrator), pass through.
     """
+
+    if not _looks_like_raw_llm_outputs(outputs):
+        return outputs
 
     redacted: dict[str, Any] = {
         "stop_reason": None,

@@ -249,6 +249,120 @@ def test_apply_redaction_strips_phi_from_llm_run() -> None:
     assert run.outputs["usage_metadata"]["total_tokens"] == 300
 
 
+def test_llm_redactor_passes_through_already_redacted_supervisor_inputs() -> None:
+    """When installed as ``Client.hide_inputs``, the llm redactor runs on
+    *every* span at upload — including parent supervisor-node spans whose
+    own ``process_inputs`` already produced an allowlist shape. Those
+    must pass through unchanged so the safe fields survive."""
+
+    from clinical_copilot.observability.redacting_tracer import _redact_llm_inputs
+
+    already_redacted = {
+        "request_id": "req-123",
+        "patient_id_hash": "abc123",
+        "user_query_length": 42,
+        "sub_query_count": 2,
+        "draft_count": 1,
+    }
+
+    assert _redact_llm_inputs(already_redacted) is already_redacted
+
+
+def test_llm_redactor_passes_through_already_redacted_gateway_inputs() -> None:
+    """Gateway LLM span's ``process_inputs`` emits a shape with
+    ``message_count`` / ``message_roles`` but no raw ``messages`` list.
+    hide_inputs must not mangle it."""
+
+    from clinical_copilot.observability.redacting_tracer import _redact_llm_inputs
+
+    gateway_redacted = {
+        "model": "claude-sonnet-4-6",
+        "system_prompt_length": 1200,
+        "tool_def_names": ["get_observations", "get_conditions"],
+        "message_count": 3,
+        "message_roles": ["user", "assistant", "user"],
+    }
+
+    assert _redact_llm_inputs(gateway_redacted) is gateway_redacted
+
+
+def test_llm_redactor_still_redacts_raw_wrap_anthropic_inputs() -> None:
+    """Sanity: the shape detector still triggers on raw .messages.create
+    kwargs — the case that was actually leaking PHI in production."""
+
+    from clinical_copilot.observability.redacting_tracer import _redact_llm_inputs
+
+    raw_inputs = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 512,
+        "system": "You are the synthesizer. Patient context follows.",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Worker drafts: Hashimoto's thyroiditis on levothyroxine ...",
+            },
+        ],
+    }
+    redacted = _redact_llm_inputs(raw_inputs)
+    assert isinstance(redacted, dict)
+    assert redacted is not raw_inputs
+    flat = repr(redacted)
+    for sentinel in ["Hashimoto", "levothyroxine", "Patient context"]:
+        assert sentinel not in flat, f"{sentinel} survived: {flat}"
+    assert redacted["model"] == "claude-sonnet-4-6"
+    assert redacted["message_count"] == 1
+
+
+def test_llm_redactor_passes_through_already_redacted_outputs() -> None:
+    """Outputs already shaped by the gateway's ``process_outputs`` (has
+    ``text_length`` / ``tool_use_count`` / ``usage_metadata`` but no raw
+    ``content`` list) must survive a second pass."""
+
+    from clinical_copilot.observability.redacting_tracer import _redact_llm_outputs
+
+    gateway_redacted = {
+        "stop_reason": "end_turn",
+        "text_length": 137,
+        "tool_use_names": ["get_observations"],
+        "tool_use_count": 1,
+        "usage_metadata": {"input_tokens": 100, "output_tokens": 50, "total_tokens": 150},
+    }
+
+    assert _redact_llm_outputs(gateway_redacted) is gateway_redacted
+
+
+def test_llm_redactor_still_redacts_raw_wrap_anthropic_outputs() -> None:
+    """Sanity: raw Anthropic Message dump (with ``content`` list of blocks
+    and top-level ``usage_metadata``) must still be redacted."""
+
+    from clinical_copilot.observability.redacting_tracer import _redact_llm_outputs
+
+    raw_outputs = {
+        "id": "msg_01",
+        "model": "claude-sonnet-4-6",
+        "role": "assistant",
+        "stop_reason": "end_turn",
+        "content": [
+            {"type": "text", "text": "Patient Olivia: TSH 8.4 (Hashimoto's confirmed)."},
+        ],
+        "usage_metadata": {
+            "input_tokens": 1234,
+            "output_tokens": 567,
+            "total_tokens": 1801,
+        },
+    }
+    redacted = _redact_llm_outputs(raw_outputs)
+    assert isinstance(redacted, dict)
+    assert redacted is not raw_outputs
+    flat = repr(redacted)
+    for sentinel in ["Olivia", "TSH", "Hashimoto"]:
+        assert sentinel not in flat, f"{sentinel} survived: {flat}"
+    assert redacted["usage_metadata"]["total_tokens"] == 1801
+    assert redacted["text_length"] == len(
+        "Patient Olivia: TSH 8.4 (Hashimoto's confirmed)."
+    )
+
+
 def test_apply_redaction_fails_closed_on_redactor_crash(monkeypatch: pytest.MonkeyPatch) -> None:
     """If the dispatched redactor raises (unexpected payload shape), the
     payload must be dropped rather than passed through raw."""

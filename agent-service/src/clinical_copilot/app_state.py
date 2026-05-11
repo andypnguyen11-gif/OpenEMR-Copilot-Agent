@@ -335,11 +335,27 @@ def build_app_state(
         # wrap_anthropic uses langsmith's @traceable internally → its
         # spans go through langsmith.run_helpers → RunTree → Client,
         # NOT through LangChainTracer. So our RedactingLangChainTracer
-        # subclass cannot redact them. Instead we pass a dedicated
-        # Client with hide_inputs / hide_outputs callables via
-        # tracing_extra.client; the callables apply our llm-shape
-        # redactor before upload, so PHI in the synthesizer's prompt
-        # (chart facts, drafts) never reaches LangSmith.
+        # subclass cannot redact them.
+        #
+        # We need wrap_client's hide_inputs/hide_outputs to apply to the
+        # ChatAnthropic span. ``tracing_extra={"client": wrap_client}``
+        # alone is not enough: when the wrap_anthropic span is created
+        # inside a parent ``@traceable`` (e.g. ``traceable_supervisor_node``),
+        # ``run_helpers._setup_run`` falls into the parent_run branch
+        # (run_helpers.py:1658) and calls ``parent_run.create_child(...)``,
+        # which inherits the parent RunTree's ``ls_client`` (run_trees.py:588)
+        # and silently drops the per-call client. The hide callables we
+        # configured on ``wrap_client`` then never fire, and the synthesizer's
+        # prompt — chart facts, drafts, patient names — uploads raw.
+        #
+        # ``langsmith.configure(client=wrap_client)`` sets
+        # ``run_trees._CLIENT`` so every RunTree (top-level *and* every
+        # ``create_child`` descendant via inheritance) uses our client.
+        # The shape-dispatch in _redact_llm_inputs/_redact_llm_outputs
+        # keeps already-redacted parent payloads (supervisor node,
+        # orchestrator, gateway llm) intact — only raw wrap_anthropic
+        # spans get rewritten.
+        import langsmith as ls
         from langsmith import Client as LangSmithClient
         from langsmith.wrappers import wrap_anthropic
 
@@ -352,6 +368,7 @@ def build_app_state(
             hide_inputs=_redact_llm_inputs,
             hide_outputs=_redact_llm_outputs,
         )
+        ls.configure(client=wrap_client)
         client = wrap_anthropic(
             Anthropic(api_key=settings.llm_api_key),
             tracing_extra={"client": wrap_client},
