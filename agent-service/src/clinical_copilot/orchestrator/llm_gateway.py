@@ -127,6 +127,23 @@ class AnthropicLlmGateway:
         tools: Sequence[dict[str, Any]],
         messages: Sequence[dict[str, Any]],
     ) -> LlmTurn:
+        # LangSmith looks at extra.metadata.ls_model_name + ls_provider on
+        # an llm run to compute cost from the recorded token usage. The
+        # input redactor surfaces the model in inputs.model, but cost
+        # lookup specifically reads metadata. add_metadata is a no-op
+        # when LANGSMITH_TRACING is unset (no current run tree), so this
+        # costs nothing in dev/test.
+        from langsmith.run_helpers import get_current_run_tree
+
+        run = get_current_run_tree()
+        if run is not None:
+            run.add_metadata(
+                {
+                    "ls_provider": "anthropic",
+                    "ls_model_name": self.model,
+                }
+            )
+
         system_blocks = [
             {
                 "type": "text",
