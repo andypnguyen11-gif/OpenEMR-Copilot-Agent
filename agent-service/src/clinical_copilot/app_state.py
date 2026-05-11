@@ -330,12 +330,32 @@ def build_app_state(
         # that go through gateway.complete (decorated with
         # @traceable_llm_complete) produce llm spans — and most of the
         # supervisor nodes go through the raw SDK, leaving the LangSmith
-        # Tokens/Cost columns blank for chat queries. PHI in the
-        # request/response payloads is scrubbed at the tracer level by
-        # RedactingLangChainTracer's llm-run redactor.
+        # Tokens/Cost columns blank for chat queries.
+        #
+        # wrap_anthropic uses langsmith's @traceable internally → its
+        # spans go through langsmith.run_helpers → RunTree → Client,
+        # NOT through LangChainTracer. So our RedactingLangChainTracer
+        # subclass cannot redact them. Instead we pass a dedicated
+        # Client with hide_inputs / hide_outputs callables via
+        # tracing_extra.client; the callables apply our llm-shape
+        # redactor before upload, so PHI in the synthesizer's prompt
+        # (chart facts, drafts) never reaches LangSmith.
+        from langsmith import Client as LangSmithClient
         from langsmith.wrappers import wrap_anthropic
 
-        client = wrap_anthropic(Anthropic(api_key=settings.llm_api_key))
+        from clinical_copilot.observability.redacting_tracer import (
+            _redact_llm_inputs,
+            _redact_llm_outputs,
+        )
+
+        wrap_client = LangSmithClient(
+            hide_inputs=_redact_llm_inputs,
+            hide_outputs=_redact_llm_outputs,
+        )
+        client = wrap_anthropic(
+            Anthropic(api_key=settings.llm_api_key),
+            tracing_extra={"client": wrap_client},
+        )
         slow_llm = AnthropicLlmGateway(client=client, model=settings.model_slow)
         fast_llm = AnthropicLlmGateway(client=client, model=settings.model_fast)
         # Reuse the same Anthropic client for the supervisor and the
