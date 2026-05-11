@@ -18,6 +18,7 @@ salt. That match is what lets investigators join a LangSmith trace's
 
 from __future__ import annotations
 
+import os
 from typing import Any, Callable
 
 from langsmith import traceable
@@ -34,11 +35,39 @@ from clinical_copilot.observability.redaction import (
     redact_tool_outputs,
 )
 
+# Hold a strong reference to the installed tracer so a subsequent GC
+# pass can't drop it from the ContextVar slot. ``configure_tracing`` is
+# called once at startup; this slot is the canonical place we own that
+# reference for the lifetime of the process.
+_INSTALLED_TRACER: Any = None
+
 
 def configure_tracing(*, audit_salt: str) -> None:
-    """Bind the redaction salt to the runtime audit salt."""
+    """Bind the redaction salt to the runtime audit salt and install the
+    redacting LangChain tracer.
+
+    The tracer install only runs when LangSmith tracing is enabled in
+    the env (``LANGSMITH_TRACING`` / ``LANGCHAIN_TRACING_V2``). Test and
+    dev runs without those env vars stay fast — no tracer construction,
+    no extra context-var manipulation.
+    """
+
+    global _INSTALLED_TRACER
 
     configure_redaction_salt(audit_salt)
+
+    if os.environ.get("LANGSMITH_TRACING") or os.environ.get("LANGCHAIN_TRACING_V2"):
+        # Imported lazily to keep this module import-clean in environments
+        # that don't have langchain_core installed (it's a transitive dep
+        # of langgraph, but we don't want to assume).
+        from clinical_copilot.observability.redacting_tracer import (
+            install_redacting_tracer,
+        )
+
+        project = os.environ.get("LANGSMITH_PROJECT") or os.environ.get(
+            "LANGCHAIN_PROJECT"
+        )
+        _INSTALLED_TRACER = install_redacting_tracer(project_name=project)
 
 
 traceable_orchestrator_run = traceable(
