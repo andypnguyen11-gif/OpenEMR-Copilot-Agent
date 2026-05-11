@@ -19,7 +19,7 @@ salt. That match is what lets investigators join a LangSmith trace's
 from __future__ import annotations
 
 import os
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from langsmith import traceable
 
@@ -35,6 +35,9 @@ from clinical_copilot.observability.redaction import (
     redact_tool_outputs,
 )
 
+if TYPE_CHECKING:
+    from langsmith import Client
+
 # Hold a strong reference to the installed tracer so a subsequent GC
 # pass can't drop it from the ContextVar slot. ``configure_tracing`` is
 # called once at startup; this slot is the canonical place we own that
@@ -42,7 +45,7 @@ from clinical_copilot.observability.redaction import (
 _INSTALLED_TRACER: Any = None
 
 
-def configure_tracing(*, audit_salt: str) -> None:
+def configure_tracing(*, audit_salt: str, client: Client | None = None) -> None:
     """Bind the redaction salt to the runtime audit salt and install the
     redacting LangChain tracer.
 
@@ -50,6 +53,16 @@ def configure_tracing(*, audit_salt: str) -> None:
     the env (``LANGSMITH_TRACING`` / ``LANGCHAIN_TRACING_V2``). Test and
     dev runs without those env vars stay fast — no tracer construction,
     no extra context-var manipulation.
+
+    ``client`` is the hide-enabled LangSmith Client built in
+    ``app_state.create_app_state``. Passing it through here is what
+    ensures LangGraph auto-traced runs (uploaded via
+    ``LangChainTracer._persist_run_single``) end up tagged with our
+    Client — without it the tracer caches a default ``Client`` at
+    construction and forces ``run.ls_client = self.client`` on every
+    run it persists (langchain.py:242), so any subsequent
+    ``ls.configure(client=…)`` cannot retroactively redirect those
+    uploads.
     """
 
     global _INSTALLED_TRACER
@@ -67,7 +80,10 @@ def configure_tracing(*, audit_salt: str) -> None:
         project = os.environ.get("LANGSMITH_PROJECT") or os.environ.get(
             "LANGCHAIN_PROJECT"
         )
-        _INSTALLED_TRACER = install_redacting_tracer(project_name=project)
+        _INSTALLED_TRACER = install_redacting_tracer(
+            project_name=project,
+            client=client,
+        )
 
 
 traceable_orchestrator_run = traceable(

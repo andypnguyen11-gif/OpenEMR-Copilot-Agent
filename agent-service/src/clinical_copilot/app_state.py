@@ -198,7 +198,44 @@ def build_app_state(
     Tests / eval rely on this; production never passes one.
     """
 
-    configure_tracing(audit_salt=settings.audit_salt)
+    # Build the hide-enabled LangSmith Client first, before anything that
+    # might construct or cache a default one. The two pitfalls this order
+    # closes:
+    #
+    # 1. ``LangChainTracer.__init__`` (called inside ``configure_tracing``
+    #    via ``install_redacting_tracer``) does ``self.client = client or
+    #    get_client()``. Without a client argument, ``get_client()``
+    #    materializes a default no-hide ``Client`` and caches it on
+    #    ``run_trees._CLIENT``. ``_persist_run_single`` then forces
+    #    ``run.ls_client = self.client`` on every LangGraph auto-traced
+    #    run (langchain.py:242), so any subsequent ``ls.configure(...)``
+    #    is too late.
+    # 2. ``ls.configure(client=wrap_client)`` only affects ``run_trees._CLIENT``
+    #    (the lazy ``get_cached_client()`` fallback). It does not set
+    #    ``_context._CLIENT`` (the ContextVar that ``_setup_run`` reads
+    #    on every new @traceable span), so child runs inheriting
+    #    ``ls_client`` from a parent created before ``ls.configure``
+    #    retain the no-hide client.
+    #
+    # Building wrap_client first, passing it into ``configure_tracing``
+    # (→ RedactingLangChainTracer(client=...)), and then calling
+    # ``ls.configure(client=wrap_client)`` covers both paths: the
+    # LangChainTracer push path and the langsmith @traceable lazy-fallback
+    # path now both resolve to the same hide-enabled Client.
+    import langsmith as ls
+    from langsmith import Client as LangSmithClient
+
+    from clinical_copilot.observability.redacting_tracer import (
+        _redact_llm_inputs,
+        _redact_llm_outputs,
+    )
+
+    wrap_client = LangSmithClient(
+        hide_inputs=_redact_llm_inputs,
+        hide_outputs=_redact_llm_outputs,
+    )
+    ls.configure(client=wrap_client)
+    configure_tracing(audit_salt=settings.audit_salt, client=wrap_client)
 
     nonce_store = NonceStore(ttl_seconds=NONCE_TTL_SECONDS)
     jwt_verifier = JwtVerifier(
@@ -332,43 +369,15 @@ def build_app_state(
         # supervisor nodes go through the raw SDK, leaving the LangSmith
         # Tokens/Cost columns blank for chat queries.
         #
-        # wrap_anthropic uses langsmith's @traceable internally → its
-        # spans go through langsmith.run_helpers → RunTree → Client,
-        # NOT through LangChainTracer. So our RedactingLangChainTracer
-        # subclass cannot redact them.
-        #
-        # We need wrap_client's hide_inputs/hide_outputs to apply to the
-        # ChatAnthropic span. ``tracing_extra={"client": wrap_client}``
-        # alone is not enough: when the wrap_anthropic span is created
-        # inside a parent ``@traceable`` (e.g. ``traceable_supervisor_node``),
-        # ``run_helpers._setup_run`` falls into the parent_run branch
-        # (run_helpers.py:1658) and calls ``parent_run.create_child(...)``,
-        # which inherits the parent RunTree's ``ls_client`` (run_trees.py:588)
-        # and silently drops the per-call client. The hide callables we
-        # configured on ``wrap_client`` then never fire, and the synthesizer's
-        # prompt — chart facts, drafts, patient names — uploads raw.
-        #
-        # ``langsmith.configure(client=wrap_client)`` sets
-        # ``run_trees._CLIENT`` so every RunTree (top-level *and* every
-        # ``create_child`` descendant via inheritance) uses our client.
-        # The shape-dispatch in _redact_llm_inputs/_redact_llm_outputs
-        # keeps already-redacted parent payloads (supervisor node,
-        # orchestrator, gateway llm) intact — only raw wrap_anthropic
-        # spans get rewritten.
-        import langsmith as ls
-        from langsmith import Client as LangSmithClient
+        # Reuses ``wrap_client`` constructed at the top of this function
+        # (which is also wired into the LangChainTracer and into the
+        # global langsmith client). Same Client across both paths means
+        # hide_inputs / hide_outputs fire on every span regardless of
+        # whether it was emitted by LangGraph's auto-tracing, our
+        # @traceable_supervisor_node, the gateway @traceable_llm_complete,
+        # or wrap_anthropic.
         from langsmith.wrappers import wrap_anthropic
 
-        from clinical_copilot.observability.redacting_tracer import (
-            _redact_llm_inputs,
-            _redact_llm_outputs,
-        )
-
-        wrap_client = LangSmithClient(
-            hide_inputs=_redact_llm_inputs,
-            hide_outputs=_redact_llm_outputs,
-        )
-        ls.configure(client=wrap_client)
         client = wrap_anthropic(
             Anthropic(api_key=settings.llm_api_key),
             tracing_extra={"client": wrap_client},

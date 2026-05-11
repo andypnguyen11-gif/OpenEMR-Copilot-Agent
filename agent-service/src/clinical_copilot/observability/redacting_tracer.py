@@ -41,6 +41,7 @@ from __future__ import annotations
 from typing import Any, Callable, Final
 
 from langchain_core.tracers.langchain import LangChainTracer
+from langsmith import Client
 from langsmith.schemas import Run
 
 from clinical_copilot.observability.redaction import (
@@ -374,7 +375,11 @@ class RedactingLangChainTracer(LangChainTracer):
                 run.outputs = _strict_drop(None)
 
 
-def install_redacting_tracer(*, project_name: str | None = None) -> RedactingLangChainTracer:
+def install_redacting_tracer(
+    *,
+    project_name: str | None = None,
+    client: Client | None = None,
+) -> RedactingLangChainTracer:
     """Set the redacting tracer as the default for this process.
 
     LangChain's ``_get_trace_callbacks`` reads
@@ -384,10 +389,22 @@ def install_redacting_tracer(*, project_name: str | None = None) -> RedactingLan
     caller can hold a reference (the var holds a weak-ish ContextVar;
     keeping a strong reference avoids surprise GC in long-running
     processes).
+
+    When ``client`` is supplied (the production path), it becomes
+    ``LangChainTracer.client`` and is forced onto every run this tracer
+    persists. Without it, ``LangChainTracer.__init__`` falls back to
+    ``langchain_core.tracers.langchain.get_client()`` — which caches a
+    default no-hide ``Client`` and pins it via
+    ``run.ls_client = self.client`` in ``_persist_run_single``
+    (langchain.py:242), defeating any later
+    ``ls.configure(client=…)``. Passing the hide-enabled client here
+    is the only way to keep LangGraph auto-traced spans
+    (chain ``LangGraph``, ``ChannelWrite<…>``, the duplicated supervisor
+    node spans) using it.
     """
 
     from langchain_core.tracers.context import tracing_v2_callback_var
 
-    tracer = RedactingLangChainTracer(project_name=project_name)
+    tracer = RedactingLangChainTracer(client=client, project_name=project_name)
     tracing_v2_callback_var.set(tracer)
     return tracer
