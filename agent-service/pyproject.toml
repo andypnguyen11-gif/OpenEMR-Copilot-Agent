@@ -110,6 +110,12 @@ filterwarnings = [
     "ignore::DeprecationWarning:langgraph.*",
     "ignore::PendingDeprecationWarning:langgraph.*",
     "ignore:.*allowed_objects.*:",
+    # langsmith.wrappers package __init__ auto-imports its deprecated
+    # _openai_agents submodule which raises DeprecationWarning. We import
+    # wrap_anthropic from langsmith.wrappers in app_state.py; the warning
+    # is internal to langsmith and clears once the openai-agents wrapper
+    # is moved to the new home (langsmith.integrations.openai_agents_sdk).
+    "ignore:langsmith\\.wrappers\\._openai_agents is deprecated:DeprecationWarning",
     # ssl.SSLSocket teardown from a long-lived httpx pool (the
     # Anthropic SDK constructs one per ``Anthropic(...)`` instance and
     # holds it for the process lifetime) surfaces as

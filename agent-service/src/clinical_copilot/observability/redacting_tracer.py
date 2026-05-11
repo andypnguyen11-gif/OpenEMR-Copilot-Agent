@@ -77,6 +77,182 @@ def _strict_drop(_payload: object) -> dict[str, Any]:
     return {"redacted": True}
 
 
+def _redact_llm_inputs(inputs: object) -> dict[str, Any]:
+    """Redactor for ``llm`` run inputs from any source.
+
+    Covers both ``@traceable_llm_complete`` (kwargs from
+    ``LlmGateway.complete``: ``self``, ``system``, ``tools``,
+    ``messages``) and ``langsmith.wrappers.wrap_anthropic``
+    (kwargs from ``Anthropic.messages.create``: ``model``,
+    ``max_tokens``, ``system``, ``tools``, ``messages``). Both shapes
+    carry the entire conversation including the system prompt, all user
+    turns, and any prior assistant tool-result blocks — every one of
+    which can contain PHI. The allowlist surfaces lengths and counts
+    only.
+    """
+
+    redacted: dict[str, Any] = {}
+    if not isinstance(inputs, dict):
+        return redacted
+
+    # Model name: wrap_anthropic exposes "model" at the top level;
+    # @traceable on the gateway exposes it via the bound ``self``.
+    model = inputs.get("model")
+    if not isinstance(model, str):
+        gateway = inputs.get("self")
+        model = getattr(gateway, "model", None)
+    if isinstance(model, str):
+        redacted["model"] = model
+
+    max_tokens = inputs.get("max_tokens")
+    if isinstance(max_tokens, int):
+        redacted["max_tokens"] = max_tokens
+
+    system = inputs.get("system")
+    if isinstance(system, str):
+        redacted["system_prompt_length"] = len(system)
+    elif isinstance(system, list):
+        # wrap_anthropic preserves the list-of-blocks shape we use for
+        # prompt caching. Sum text-block lengths for a single number.
+        redacted["system_prompt_length"] = sum(
+            len(b.get("text", "")) for b in system if isinstance(b, dict)
+        )
+
+    tools = inputs.get("tools") or []
+    if isinstance(tools, list):
+        redacted["tool_def_names"] = [
+            t["name"]
+            for t in tools
+            if isinstance(t, dict) and isinstance(t.get("name"), str)
+        ]
+
+    messages = inputs.get("messages") or []
+    if isinstance(messages, list):
+        redacted["message_count"] = len(messages)
+        redacted["message_roles"] = [
+            m["role"]
+            for m in messages
+            if isinstance(m, dict) and isinstance(m.get("role"), str)
+        ]
+
+    return redacted
+
+
+def _redact_llm_outputs(outputs: object) -> dict[str, Any]:
+    """Redactor for ``llm`` run outputs from any source.
+
+    Covers both the ``LlmTurn`` dataclass our gateway returns (with
+    ``text``, ``tool_uses``, ``stop_reason``, ``input_tokens``,
+    ``output_tokens``) and the raw ``anthropic.types.Message`` that
+    ``wrap_anthropic`` records (with ``content`` blocks and ``usage``).
+    The model's free-form text is the highest-volume PHI risk in the
+    pipeline — surface its length only. Token usage is preserved in the
+    LangChain-standard ``usage_metadata`` shape so the LangSmith Tokens
+    and Cost columns compute.
+    """
+
+    redacted: dict[str, Any] = {
+        "stop_reason": None,
+        "text_length": 0,
+        "tool_use_names": [],
+        "tool_use_count": 0,
+        "usage_metadata": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        },
+    }
+    if outputs is None:
+        return redacted
+
+    # 1) LlmTurn shape (gateway path).
+    if hasattr(outputs, "text") and hasattr(outputs, "tool_uses"):
+        text = getattr(outputs, "text", "") or ""
+        tool_uses = getattr(outputs, "tool_uses", None) or []
+        in_t = int(getattr(outputs, "input_tokens", 0) or 0)
+        out_t = int(getattr(outputs, "output_tokens", 0) or 0)
+        redacted.update(
+            {
+                "stop_reason": getattr(outputs, "stop_reason", None),
+                "text_length": len(text),
+                "tool_use_names": [
+                    getattr(u, "name", None)
+                    for u in tool_uses
+                    if isinstance(getattr(u, "name", None), str)
+                ],
+                "tool_use_count": len(tool_uses),
+                "usage_metadata": {
+                    "input_tokens": in_t,
+                    "output_tokens": out_t,
+                    "total_tokens": in_t + out_t,
+                },
+            }
+        )
+        return redacted
+
+    # 2) wrap_anthropic shape — outputs is a dict that wraps the
+    # anthropic Message. Walk content blocks for text length and tool_use
+    # names; pull usage off either ``usage`` or ``usage_metadata``.
+    if isinstance(outputs, dict):
+        # _process_chat_completion in langsmith.wrappers._anthropic
+        # surfaces the message body under various keys; check both.
+        msg = outputs.get("output") or outputs
+        content = []
+        if isinstance(msg, dict):
+            content = msg.get("content") or []
+            redacted["stop_reason"] = msg.get("stop_reason")
+        elif hasattr(msg, "content"):
+            content = getattr(msg, "content", []) or []
+            redacted["stop_reason"] = getattr(msg, "stop_reason", None)
+
+        text_len = 0
+        tool_names: list[str] = []
+        for block in content:
+            block_type = (
+                block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+            )
+            if block_type == "text":
+                text = (
+                    block.get("text", "")
+                    if isinstance(block, dict)
+                    else getattr(block, "text", "")
+                )
+                text_len += len(text or "")
+            elif block_type == "tool_use":
+                name = (
+                    block.get("name")
+                    if isinstance(block, dict)
+                    else getattr(block, "name", None)
+                )
+                if isinstance(name, str):
+                    tool_names.append(name)
+        redacted["text_length"] = text_len
+        redacted["tool_use_names"] = tool_names
+        redacted["tool_use_count"] = len(tool_names)
+
+        # Token usage: prefer the LangChain-standard shape if already set
+        # (wrap_anthropic does this), else parse from the raw ``usage``.
+        usage_md = outputs.get("usage_metadata") if isinstance(outputs, dict) else None
+        if isinstance(usage_md, dict):
+            redacted["usage_metadata"] = {
+                "input_tokens": int(usage_md.get("input_tokens", 0) or 0),
+                "output_tokens": int(usage_md.get("output_tokens", 0) or 0),
+                "total_tokens": int(usage_md.get("total_tokens", 0) or 0),
+            }
+        else:
+            usage = outputs.get("usage") if isinstance(outputs, dict) else None
+            if isinstance(usage, dict):
+                in_t = int(usage.get("input_tokens", 0) or 0)
+                out_t = int(usage.get("output_tokens", 0) or 0)
+                redacted["usage_metadata"] = {
+                    "input_tokens": in_t,
+                    "output_tokens": out_t,
+                    "total_tokens": in_t + out_t,
+                }
+
+    return redacted
+
+
 def _pick_redactors(
     run_type: str | None,
     name: str | None,
@@ -85,10 +261,17 @@ def _pick_redactors(
         return redact_supervisor_node_inputs, redact_supervisor_node_outputs
     if run_type == "chain":
         return _strict_drop, _strict_drop
-    if run_type in {"llm", "tool"}:
-        # @traceable wrappers handle these via process_inputs/process_outputs
-        # and the safe fields they emit (usage_metadata, model name,
-        # tool_use_names) must survive untouched so cost + tokens compute.
+    if run_type == "llm":
+        # Catches wrap_anthropic spans (raw .messages.create from planner /
+        # critic / synthesizer / v1_single) and any @traceable_llm_complete
+        # span that isn't already self-redacting. The redactor preserves
+        # usage_metadata + model name so cost + tokens compute.
+        return _redact_llm_inputs, _redact_llm_outputs
+    if run_type == "tool":
+        # @traceable_tool_dispatch already applies process_inputs/outputs
+        # via the decorator — its output is the safe surface (tool name,
+        # record counts, hashed patient id) and re-redacting would drop
+        # those signals.
         return None, None
     # Unknown run_type. Defense in depth — drop.
     return _strict_drop, _strict_drop

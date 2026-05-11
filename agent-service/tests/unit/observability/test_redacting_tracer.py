@@ -85,11 +85,65 @@ def test_unknown_chain_runs_drop_strictly(name: str) -> None:
     assert out_redactor is _strict_drop
 
 
-def test_llm_and_tool_runs_are_passthrough() -> None:
-    # @traceable wrappers handle these; double-redacting would strip
-    # usage_metadata / model name needed for cost computation.
-    assert _pick_redactors("llm", "llm.complete") == (None, None)
+def test_tool_runs_are_passthrough() -> None:
+    # @traceable_tool_dispatch already applies process_inputs/outputs;
+    # double-redacting would strip the tool name and record counts.
     assert _pick_redactors("tool", "tool.dispatch") == (None, None)
+
+
+def test_llm_runs_route_to_llm_redactor() -> None:
+    # wrap_anthropic emits llm spans without PHI redaction; we must
+    # apply our llm redactor here so PHI in messages/system never
+    # reaches LangSmith.
+    in_red, out_red = _pick_redactors("llm", "ChatAnthropic")
+    assert in_red is not None and in_red.__name__ == "_redact_llm_inputs"
+    assert out_red is not None and out_red.__name__ == "_redact_llm_outputs"
+
+
+def test_llm_redactor_strips_phi_from_wrap_anthropic_shape() -> None:
+    """wrap_anthropic emits inputs that match Anthropic's
+    .messages.create kwargs and outputs that wrap the Message dict.
+    Both shapes carry PHI; the redactor must strip free text but keep
+    model name + usage_metadata for cost computation."""
+
+    from clinical_copilot.observability.redacting_tracer import (
+        _redact_llm_inputs,
+        _redact_llm_outputs,
+    )
+
+    raw_inputs = {
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 512,
+        "system": "You are a clinical assistant. Patient: Olivia Smith ...",
+        "messages": [
+            {"role": "user", "content": "What's Olivia's TSH?"},
+            {"role": "assistant", "content": "Hashimoto's confirmed."},
+        ],
+        "tools": [{"name": "get_observations", "description": "..."}],
+    }
+    raw_outputs = {
+        "output": {
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Olivia's TSH is 8.4 (Hashimoto's)."}],
+        },
+        "usage_metadata": {"input_tokens": 1234, "output_tokens": 567, "total_tokens": 1801},
+    }
+
+    red_in = _redact_llm_inputs(raw_inputs)
+    red_out = _redact_llm_outputs(raw_outputs)
+
+    flat = repr(red_in) + repr(red_out)
+    for sentinel in ["Olivia", "Hashimoto", "TSH", "clinical assistant"]:
+        assert sentinel not in flat, f"{sentinel} survived: {flat}"
+    assert red_in["model"] == "claude-sonnet-4-6"
+    assert red_in["message_count"] == 2
+    assert red_in["tool_def_names"] == ["get_observations"]
+    assert red_out["usage_metadata"] == {
+        "input_tokens": 1234,
+        "output_tokens": 567,
+        "total_tokens": 1801,
+    }
+    assert red_out["text_length"] == len("Olivia's TSH is 8.4 (Hashimoto's).")
 
 
 def test_unknown_run_type_drops_strictly() -> None:
@@ -162,32 +216,37 @@ def test_apply_redaction_drops_unknown_chain_run() -> None:
     assert run.outputs == {"redacted": True}
 
 
-def test_apply_redaction_passes_through_llm_run() -> None:
-    """LLM spans must NOT be re-redacted — the @traceable wrapper already
-    emitted the safe surface (usage_metadata, model name, tool_use_names)
-    and re-running a redactor here would strip it."""
+def test_apply_redaction_strips_phi_from_llm_run() -> None:
+    """LLM spans from wrap_anthropic carry raw messages + system prompts.
+    Our llm redactor must strip them while preserving model name and
+    usage_metadata so the LangSmith Tokens / Cost columns compute."""
 
-    safe_payload = {
+    raw_inputs = {
         "model": "claude-sonnet-4-6",
-        "message_count": 3,
-        "system_prompt_length": 1234,
+        "system": "You are a clinical assistant. Olivia ...",
+        "messages": [{"role": "user", "content": "Olivia's TSH?"}],
     }
-    safe_output = {
-        "stop_reason": "end_turn",
-        "text_length": 540,
+    raw_outputs = {
+        "output": {
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Olivia has Hashimoto's."}],
+        },
         "usage_metadata": {"input_tokens": 100, "output_tokens": 200, "total_tokens": 300},
     }
     run = _build_run(
         run_type="llm",
-        name="llm.complete",
-        inputs=safe_payload,
-        outputs=safe_output,
+        name="ChatAnthropic",
+        inputs=raw_inputs,
+        outputs=raw_outputs,
     )
     tracer = RedactingLangChainTracer.__new__(RedactingLangChainTracer)
     tracer._apply_redaction(run)
 
-    assert run.inputs == safe_payload  # unchanged
-    assert run.outputs == safe_output  # unchanged
+    flat = repr(run.inputs) + repr(run.outputs)
+    for sentinel in ["Olivia", "Hashimoto", "clinical assistant"]:
+        assert sentinel not in flat, f"{sentinel} survived: {flat}"
+    assert run.inputs["model"] == "claude-sonnet-4-6"
+    assert run.outputs["usage_metadata"]["total_tokens"] == 300
 
 
 def test_apply_redaction_fails_closed_on_redactor_crash(monkeypatch: pytest.MonkeyPatch) -> None:

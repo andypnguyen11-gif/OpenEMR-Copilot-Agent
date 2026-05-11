@@ -322,7 +322,20 @@ def build_app_state(
         slow_llm = llm
         fast_llm = llm
     else:
-        client = Anthropic(api_key=settings.llm_api_key)
+        # Wrap the Anthropic client with langsmith.wrappers.wrap_anthropic
+        # so every .messages.create call (including the raw-SDK calls
+        # planner/critic/synthesizer/v1_single make outside the gateway)
+        # emits an llm-typed LangSmith span carrying usage_metadata,
+        # ls_provider, and ls_model_name. Without this, only call sites
+        # that go through gateway.complete (decorated with
+        # @traceable_llm_complete) produce llm spans — and most of the
+        # supervisor nodes go through the raw SDK, leaving the LangSmith
+        # Tokens/Cost columns blank for chat queries. PHI in the
+        # request/response payloads is scrubbed at the tracer level by
+        # RedactingLangChainTracer's llm-run redactor.
+        from langsmith.wrappers import wrap_anthropic
+
+        client = wrap_anthropic(Anthropic(api_key=settings.llm_api_key))
         slow_llm = AnthropicLlmGateway(client=client, model=settings.model_slow)
         fast_llm = AnthropicLlmGateway(client=client, model=settings.model_fast)
         # Reuse the same Anthropic client for the supervisor and the
