@@ -45,6 +45,16 @@ COPY --chown=apache:apache apis/routes/_rest_routes_copilot.inc.php \
      ${OPENEMR_ROOT}/apis/routes/_rest_routes_copilot.inc.php
 COPY --chown=apache:apache apis/routes/_rest_routes_standard.inc.php \
      ${OPENEMR_ROOT}/apis/routes/_rest_routes_standard.inc.php
+# Entry-point overlays: each file gains one ``use`` import and one
+# ``addSubscriber(new CopilotKernelBootstrapSubscriber())`` line so the
+# Co-Pilot module's scope listener is wired onto the kernel-DI event
+# dispatcher early enough in the request lifecycle. Same surgical pattern
+# as ``_rest_routes_standard.inc.php`` above — base image stays pristine
+# except for the Co-Pilot-module-required edits.
+COPY --chown=apache:apache apis/dispatch.php \
+     ${OPENEMR_ROOT}/apis/dispatch.php
+COPY --chown=apache:apache oauth2/authorize.php \
+     ${OPENEMR_ROOT}/oauth2/authorize.php
 COPY --chown=apache:apache interface/copilot/ \
      ${OPENEMR_ROOT}/interface/copilot/
 COPY --chown=apache:apache interface/patient_file/summary/labdata_fragment.php \
