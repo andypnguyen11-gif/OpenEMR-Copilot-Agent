@@ -55,6 +55,16 @@ final readonly class SessionMapper
     public const CORE_SESSION_BAG = 'OpenEMR';
 
     /**
+     * Bag-namespace key for the ``/api/...`` session.
+     * :class:`BearerTokenAuthorizationStrategy` writes ``authUserID`` here
+     * on OAuth2-authenticated API requests; equivalent to
+     * ``SessionUtil::API_SESSION_ID``. Probed alongside the core bag so the
+     * gateway works regardless of whether the caller arrived via the
+     * web-UI cookie session or an OAuth2 bearer token.
+     */
+    public const API_SESSION_BAG = 'apiOpenEMR';
+
+    /**
      * @param array<string, mixed> $session The ``$_SESSION[...]`` bag
      *        contents — typically extracted from
      *        ``$_SESSION[self::CORE_SESSION_BAG]`` at the route boundary.
@@ -69,12 +79,19 @@ final readonly class SessionMapper
     }
 
     /**
-     * Construct a mapper from the live ``$_SESSION``. Newer OpenEMR
-     * versions namespace clinician data under the core AttributeBag
-     * (key ``"OpenEMR"``); older ones write straight to the top of
-     * ``$_SESSION``. Probe the bag first; if it's missing the auth
-     * keys, fall back to the top level so the gateway works against
-     * either layout.
+     * Construct a mapper from the live ``$_SESSION``. Probes three layouts
+     * before falling back to the top level so the gateway works regardless
+     * of how the caller authenticated:
+     *
+     * * ``$_SESSION['OpenEMR']`` — newer web-UI cookie sessions namespace
+     *   clinician data under the core AttributeBag.
+     * * ``$_SESSION['apiOpenEMR']`` — OAuth2 bearer-token auth on /api/*
+     *   routes writes ``authUserID`` here via
+     *   :class:`BearerTokenAuthorizationStrategy::setupSessionForUserRole`.
+     *   The Co-Pilot chat route lives at ``/api/agent/query`` so OAuth2
+     *   clients arrive with their identity in this bag.
+     * * ``$_SESSION`` (top level) — older OpenEMR versions wrote keys
+     *   straight to the superglobal; kept as the legacy fallback.
      *
      * The resolver is injected for testability; production wiring at
      * :file:`apis/routes/_rest_routes_copilot.inc.php` passes the database
@@ -86,11 +103,13 @@ final readonly class SessionMapper
     public static function fromGlobalSession(?RoleResolverInterface $roleResolver = null): self
     {
         $resolver = $roleResolver ?? new DatabaseRoleResolver();
-        /** @var mixed $bag */
-        $bag = $_SESSION[self::CORE_SESSION_BAG] ?? null;
-        if (is_array($bag) && array_key_exists('authUserID', $bag)) {
-            /** @var array<string, mixed> $bag */
-            return new self($bag, $resolver);
+        foreach ([self::CORE_SESSION_BAG, self::API_SESSION_BAG] as $bagName) {
+            /** @var mixed $bag */
+            $bag = $_SESSION[$bagName] ?? null;
+            if (is_array($bag) && array_key_exists('authUserID', $bag)) {
+                /** @var array<string, mixed> $bag */
+                return new self($bag, $resolver);
+            }
         }
         /** @var array<string, mixed> $session */
         $session = $_SESSION ?? [];

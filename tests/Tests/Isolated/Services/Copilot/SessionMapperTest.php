@@ -304,6 +304,69 @@ final class SessionMapperTest extends TestCase
         }
     }
 
+    public function testFromGlobalSessionReadsApiBagForOAuth2BearerAuth(): void
+    {
+        // OAuth2 bearer auth on /api/* routes routes through
+        // BearerTokenAuthorizationStrategy::setupSessionForUserRole, which
+        // writes authUserID into the API session bag — $_SESSION['apiOpenEMR']
+        // — not the core OpenEMR bag. The Co-Pilot chat route lives at
+        // /api/agent/query, so OAuth2 clients arrive with their identity in
+        // this bag. Without this probe, OAuth2-authenticated requests would
+        // fall through to the top-level $_SESSION fallback (empty here) and
+        // mapWithPatient would throw "unauthenticated session" despite a
+        // valid Bearer token.
+        $saved = $_SESSION ?? [];
+        try {
+            $_SESSION = [
+                'apiOpenEMR' => [
+                    'authUserID' => 'oauth-clinician-7',
+                    'pid' => '303',
+                ],
+            ];
+
+            $identity = SessionMapper::fromGlobalSession(
+                self::resolver(Role::PHYSICIAN),
+            )->map();
+
+            self::assertSame('oauth-clinician-7', $identity->userId);
+            self::assertSame('303', $identity->patientId);
+        } finally {
+            $_SESSION = $saved;
+        }
+    }
+
+    public function testFromGlobalSessionPrefersCoreBagOverApiBag(): void
+    {
+        // When both bags are populated (e.g. a request that arrived via the
+        // web-UI cookie AND happens to have an api session for a previous
+        // request still cached), the core bag wins. Pin the precedence
+        // because the core bag represents the active web-UI clinician, and
+        // OAuth2 callers don't share a process with cookie-session callers
+        // in normal traffic.
+        $saved = $_SESSION ?? [];
+        try {
+            $_SESSION = [
+                'OpenEMR' => [
+                    'authUserID' => 'cookie-clinician',
+                    'pid' => '101',
+                ],
+                'apiOpenEMR' => [
+                    'authUserID' => 'oauth-clinician',
+                    'pid' => '999',
+                ],
+            ];
+
+            $identity = SessionMapper::fromGlobalSession(
+                self::resolver(Role::PHYSICIAN),
+            )->map();
+
+            self::assertSame('cookie-clinician', $identity->userId);
+            self::assertSame('101', $identity->patientId);
+        } finally {
+            $_SESSION = $saved;
+        }
+    }
+
     private static function resolver(Role $role): RoleResolverInterface
     {
         return new class ($role) implements RoleResolverInterface {
