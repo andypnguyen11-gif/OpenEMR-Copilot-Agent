@@ -13,6 +13,7 @@
 use OpenEMR\BC\FallbackRouter;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\RestControllers\ApiApplication;
+use OpenEMR\Services\Copilot\Listeners\CopilotKernelBootstrapSubscriber;
 
 require_once "../vendor/autoload.php";
 
@@ -23,6 +24,12 @@ try {
     $request = HttpRestRequest::createFromGlobals();
     FallbackRouter::handleRoutingTestIfRequested($request->getRequestUri(), 'oauth2');
     $apiApplication = new ApiApplication();
+    // Co-Pilot module wiring: see apis/dispatch.php for the rationale. The
+    // bootstrap subscriber attaches CopilotScopeListener to the kernel-DI
+    // dispatcher before OAuth2AuthorizationListener fires, so dynamic
+    // client registration + token grants on this entry point can include
+    // the `user/query.c` scope the chat route requires.
+    $apiApplication->getDispatcher()->addSubscriber(new CopilotKernelBootstrapSubscriber());
     $apiApplication->run($request);
 } catch (\Throwable $e) {
     // TODO: handle exceptions properly

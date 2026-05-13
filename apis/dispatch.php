@@ -20,6 +20,7 @@ require_once "../vendor/autoload.php";
 use OpenEMR\BC\FallbackRouter;
 use OpenEMR\Common\Http\HttpRestRequest;
 use OpenEMR\RestControllers\ApiApplication;
+use OpenEMR\Services\Copilot\Listeners\CopilotKernelBootstrapSubscriber;
 use Symfony\Component\HttpFoundation\Response;
 
 // create the Request object
@@ -27,6 +28,13 @@ try {
     $request = HttpRestRequest::createFromGlobals();
     FallbackRouter::handleRoutingTestIfRequested($request->getRequestUri(), 'apis');
     $apiApplication = new ApiApplication();
+    // Co-Pilot module wiring: register the scope-listener bootstrap so the
+    // chat route's `user/query.c` SMART scope is published to OpenEMR's
+    // OAuth2 scope registry on every request lifecycle. The bootstrap
+    // attaches the actual scope listener to the kernel-DI dispatcher at
+    // kernel.request priority 95 (after SiteSetupListener bootstraps the
+    // kernel at 100, before OAuth2AuthorizationListener fires at 50).
+    $apiApplication->getDispatcher()->addSubscriber(new CopilotKernelBootstrapSubscriber());
     $apiApplication->run($request);
 } catch (\Throwable $e) {
     // should never reach here, but if we do, we can log the error and return a generic error response
