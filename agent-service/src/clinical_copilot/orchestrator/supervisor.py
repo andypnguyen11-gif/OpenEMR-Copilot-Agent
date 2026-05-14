@@ -55,6 +55,34 @@ WorkerName = Literal["intake_extractor", "evidence_retriever"]
 DEFAULT_MAX_ITERATIONS = 4
 DEFAULT_MAX_TOKENS = 1024
 
+# AAISP-2026-0001 budget gate. Caps pin the contract from
+# evals/aaisp/results/.../AAISP-CASE-417694.case.json::structural_check.
+#
+# Scope (precise wording — this gate is NOT a full per-request budget):
+#
+# * Binds: the supervisor's LLM-controlled worker dispatches —
+#   tool_use blocks Claude emits inside this loop.
+# * Does NOT bind: chart-pack pre-fetch in ``main.py``, which fans
+#   out across ``chart_pack.DEFAULT_TOPICS`` (6 topics) before
+#   ``supervisor.run`` is even called. That baseline is bounded by
+#   its own contract (fixed topic list, per-topic record cap, no
+#   recursion) — not by this gate.
+#
+# The AAISP DoS vector (open-ended "unlimited iterations" expansion)
+# lives in the supervisor's LLM-controlled loop, so binding that
+# layer is what closes the named finding. A full per-request budget
+# (chart-pack + supervisor + verification, threaded through a
+# request-scoped counter) is follow-up work — call it out in PR
+# descriptions to avoid overstating the scope of this fix.
+DEFAULT_MAX_TOOL_CALLS_PER_TURN = 2
+DEFAULT_MAX_OUTPUT_TOKENS_PER_TURN = 2000
+
+_BUDGET_EXCEEDED_MESSAGE = (
+    "I've reached this request's resource budget before I could finish. "
+    "Try narrowing the scope — for example, ask about a specific problem "
+    "or a single guideline rather than the full list."
+)
+
 
 # --------------------------------------------------------------- types
 
@@ -273,6 +301,8 @@ def run(
     chart_pack: ChartPack | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    max_tool_calls_per_turn: int = DEFAULT_MAX_TOOL_CALLS_PER_TURN,
+    max_output_tokens_per_turn: int = DEFAULT_MAX_OUTPUT_TOKENS_PER_TURN,
     request_id: str | None = None,
 ) -> SupervisorResponse:
     """Run the supervisor loop. See module docstring for the contract.
@@ -287,6 +317,7 @@ def run(
 
     handoffs: list[Handoff] = []
     usage_totals = UsageTotals()
+    tool_calls_dispatched = 0
     user_content = _compose_user_content(query=query, chart_pack=chart_pack)
     messages: list[MessageParam] = [{"role": "user", "content": user_content}]
     tools = _tool_schemas()
@@ -301,14 +332,65 @@ def run(
         iteration += 1
         log.info("supervisor.turn", iteration=iteration)
 
+        # AAISP-2026-0001 budget gate (preventative leg). Stop before
+        # issuing a call we don't have budget for: any next call would
+        # add >= 1 output token, pushing the traced ``tokens_out``
+        # past the cap and tripping the AAISP judge even if our local
+        # post-hoc check fires. ``remaining <= 0`` covers both the
+        # "exactly-at-cap" and "already-over" cases.
+        remaining = max_output_tokens_per_turn - usage_totals.output_tokens
+        if remaining <= 0:
+            log.warning(
+                "supervisor.budget_exceeded",
+                metric="output_tokens",
+                accumulated=usage_totals.output_tokens,
+                cap=max_output_tokens_per_turn,
+                iterations=iteration,
+                stage="pre_call",
+            )
+            return SupervisorResponse(
+                synthesized_text=_BUDGET_EXCEEDED_MESSAGE,
+                handoffs=tuple(handoffs),
+                abstention_reason=RuntimeAbstainReason.BUDGET_EXCEEDED.value,
+                iterations=iteration,
+                rerank_backend=_latest_rerank_backend(handoffs),
+                usage_totals=usage_totals,
+            )
+        call_max_tokens = min(max_tokens, remaining)
+
         response: Message = client.messages.create(
             model=model,
-            max_tokens=max_tokens,
+            max_tokens=call_max_tokens,
             system=SYSTEM_PROMPT,
             tools=tools,
             messages=messages,
         )
         usage_totals = usage_totals + _usage_from_message(response)
+
+        # AAISP-2026-0001 budget gate (output-token leg). The case file's
+        # ``max_tokens_per_response`` is summed across iterations because
+        # one supervisor.run() == one /api/agent/query == one "response"
+        # in the case rubric. Strict ``>`` (not ``>=``) so an exactly-at-cap
+        # response is still safe per the rubric's "max 2000" wording.
+        # Preemptive sizing of outgoing max_tokens (below) makes this
+        # post-hoc check the safety net for the rare case where the
+        # model overshoots its requested cap, not the primary defense.
+        if usage_totals.output_tokens > max_output_tokens_per_turn:
+            log.warning(
+                "supervisor.budget_exceeded",
+                metric="output_tokens",
+                accumulated=usage_totals.output_tokens,
+                cap=max_output_tokens_per_turn,
+                iterations=iteration,
+            )
+            return SupervisorResponse(
+                synthesized_text=_BUDGET_EXCEEDED_MESSAGE,
+                handoffs=tuple(handoffs),
+                abstention_reason=RuntimeAbstainReason.BUDGET_EXCEEDED.value,
+                iterations=iteration,
+                rerank_backend=_latest_rerank_backend(handoffs),
+                usage_totals=usage_totals,
+            )
 
         tool_use_blocks = [b for b in response.content if isinstance(b, ToolUseBlock)]
         if not tool_use_blocks:
@@ -328,6 +410,29 @@ def run(
                 handoffs=tuple(handoffs),
                 iterations=iteration,
                 rerank_backend=backend,
+                usage_totals=usage_totals,
+            )
+
+        # AAISP-2026-0001 budget gate (tool-call leg). Count individual
+        # blocks, not iterations — otherwise an attacker can sidestep
+        # the cap by packing many blocks into one Anthropic response.
+        # The cap is one-way: every block this turn either dispatches or
+        # none of them do.
+        if tool_calls_dispatched + len(tool_use_blocks) > max_tool_calls_per_turn:
+            log.warning(
+                "supervisor.budget_exceeded",
+                metric="tool_calls_per_turn",
+                dispatched=tool_calls_dispatched,
+                requested=len(tool_use_blocks),
+                cap=max_tool_calls_per_turn,
+                iterations=iteration,
+            )
+            return SupervisorResponse(
+                synthesized_text=_BUDGET_EXCEEDED_MESSAGE,
+                handoffs=tuple(handoffs),
+                abstention_reason=RuntimeAbstainReason.BUDGET_EXCEEDED.value,
+                iterations=iteration,
+                rerank_backend=_latest_rerank_backend(handoffs),
                 usage_totals=usage_totals,
             )
 
@@ -352,6 +457,7 @@ def run(
             handoffs.append(handoff)
             tool_results.append(tool_result)
             usage_totals = usage_totals + _usage_from_handoff(handoff)
+        tool_calls_dispatched += len(tool_use_blocks)
 
         messages.append({"role": "user", "content": tool_results})
 

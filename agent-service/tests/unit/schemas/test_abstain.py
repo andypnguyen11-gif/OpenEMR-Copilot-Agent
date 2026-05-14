@@ -16,6 +16,7 @@ def test_runtime_abstain_reason_has_all_canonical_members() -> None:
         "OUT_OF_SCHEMA",
         "CITATION_INVALID",
         "UNSUPPORTED_DOCUMENT_TYPE",
+        "BUDGET_EXCEEDED",
     }
     assert {m.name for m in RuntimeAbstainReason} == expected
     # String values match member names — wire serialization contract.

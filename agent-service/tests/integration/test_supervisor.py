@@ -170,6 +170,10 @@ def test_supervisor_iteration_cap_abstains_with_tool_failure(monkeypatch) -> Non
         for i in range(10)
     ]
     client = _build_client(looping)
+    # AAISP-2026-0001 budget gate now fires before the iteration cap; this
+    # test pins the iteration-cap path so we raise the tool-call ceiling
+    # out of the way. The gate itself is covered by
+    # test_supervisor_aaisp_budget_gate.py.
     response = supervisor.run(
         client=client,
         model="claude-sonnet-4",
@@ -177,6 +181,7 @@ def test_supervisor_iteration_cap_abstains_with_tool_failure(monkeypatch) -> Non
         intake_extractor=lambda **k: {},
         evidence_retriever=lambda **k: {"chunks": []},
         max_iterations=3,
+        max_tool_calls_per_turn=99,
     )
     assert response.abstention_reason == "TOOL_FAILURE"
     assert response.iterations == 3

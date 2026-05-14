@@ -1,11 +1,13 @@
 """Canonical abstention enum (PRD2 Appendix A.1.a).
 
 Every place the agent declines to answer maps to exactly one of these
-seven members. Three of them — ``LOW_CONFIDENCE``, ``OUT_OF_SCHEMA``,
-``CITATION_INVALID`` — are new in Week 2 and arise inside the document
-extraction pipeline. The other four are the Week 1 reasons, preserved
-verbatim so existing call sites in ``verification``, ``orchestrator``,
-and ``observability.metrics`` keep compiling.
+nine members. Three of them — ``LOW_CONFIDENCE``, ``OUT_OF_SCHEMA``,
+``CITATION_INVALID`` — were added in Week 2 and arise inside the document
+extraction pipeline. Four are the Week 1 reasons, preserved verbatim so
+existing call sites in ``verification``, ``orchestrator``, and
+``observability.metrics`` keep compiling. ``UNSUPPORTED_DOCUMENT_TYPE``
+followed in the extractor-registry refactor, and ``BUDGET_EXCEEDED`` was
+added with the AAISP-2026-0001 supervisor budget gate.
 
 The enum is *runtime-only*. The eval harness uses a separate
 ``EvalCaseState`` for grader-side states; the import-linter contract
@@ -62,3 +64,9 @@ class RuntimeAbstainReason(StrEnum):
     """Caller passed a ``document_type`` the extractor registry does not
     know how to handle. Distinct from TOOL_FAILURE so the UI can surface
     "we don't read that document type yet" instead of a generic retry."""
+
+    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
+    """A per-turn budget cap fired inside the supervisor: the model
+    asked for more tool calls or more output tokens than the gate
+    permits. Distinct from TOOL_FAILURE so the UI can surface a
+    rate-limit / narrower-scope hint rather than a generic retry."""
