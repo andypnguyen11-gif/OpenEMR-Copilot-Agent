@@ -44,6 +44,54 @@ This fork adds a **Clinical Co-Pilot** — a verified, lane-aware agent for cros
 
 📹 **[Watch the Clinical Co-Pilot demo (Loom)](https://www.loom.com/share/51ae6fc7ce684f37bc3fc996cd2fa59f)** — a walkthrough of the slow-lane/fast-lane chat and the universal document upload with field-level highlighting.
 
+### How it works
+
+The Co-Pilot is a **two-lane agent**: a low-latency lane for in-chart questions and a deliberative lane for multi-step clinical reasoning with grounded evidence. Both run through the same FastAPI sidecar (`agent-service/`); a request's `lane` picks the topology. Every answer is **citation-or-abstain** — a claim either resolves to a fetched source (FHIR resource, retrieved guideline chunk, or document region) or the agent declines, surfacing one of four typed abstention states (`NO_DATA`, `VERIFICATION_FAILED`, `TOOL_FAILURE`, `UNAUTHORIZED`).
+
+#### ⚡ Fast lane — in-chart side panel (≤5s p50)
+
+A raw Anthropic tool-use loop (no LangChain) on **Claude Haiku 4.5**, tuned for latency. It calls a small set of **chart tools** (`get_flags`, `get_problems`, `get_meds`, `get_labs`, `get_visits`) — FHIR-backed reads against OpenEMR's FHIR API over OAuth2, plus the discrepancy-engine flags. Every tool runs through a **patient-scoped registry** that enforces RBAC (role + patient-id + scope) and writes an audit row *before* any PHI leaves the tool layer. Hard budget gates (≤2 tool calls/turn, 2000 output tokens) keep the loop bounded and fast.
+
+#### 🧠 Slow lane — Supervisor + hybrid RAG
+
+A **LangGraph `StateGraph`** supervisor decomposes the question and fans out to parallel workers, then synthesizes and verifies:
+
+```
+planner (Haiku) ──► [ evidence_retriever ‖ intake_extractor ]  (parallel fan-out)
+                          │
+                          ▼
+                synthesizer (Sonnet 4.6) ──► critic ──► verification ──► answer
+```
+
+The retrieval core is a **hybrid RAG pipeline** (`agent-service/src/clinical_copilot/corpus/`):
+
+1. **Sparse** — BM25 (`rank-bm25` / `BM25Okapi`) lexical retrieval over the guideline corpus.
+2. **Dense** — OpenAI `text-embedding-3-small` (1536-dim, L2-normalized); cosine similarity as a NumPy dot-product scan.
+3. **Fusion** — **Reciprocal Rank Fusion (RRF, k=60)** merges the two ranked lists without needing to normalize heterogeneous score scales.
+4. **Rerank** — a **Cohere `rerank-v3.5` cross-encoder** re-scores the fused top-N, with a **Claude Haiku LLM-judge** as an env-gated fallback.
+
+The whole pipeline **degrades gracefully**: missing dense index, embedder, or Cohere key each fall back a level (hybrid → BM25-only → input order) instead of failing. The corpus is chunked clinical guidelines (AHA / CDC / NIH / USPSTF / ADA) using overlapping sentence-window chunking, prebuilt into committed `bm25.pkl` + `dense.pkl` indexes. A two-tier **critic** (deterministic checks — citation presence, action-verb blacklist, confidence floor — then an LLM judge) gates synthesis before the answer is returned.
+
+#### 📋 Daily Brief — pre-clinic pre-warm
+
+A server-rendered pre-clinic surface (`interface/copilot/daily_brief.php`) that shows a card per patient on the provider's panel. It **pre-warms** a deterministic **discrepancy engine** off the critical path: a rule-based flag engine (categories: consistency, data-quality, safety, value-sanity) computes per-patient flags into a two-tier cache (in-process + Postgres, 30-min TTL) that's invalidated on chart writes — so the brief renders instantly when the clinician opens it.
+
+#### 📄 Universal Document Upload — extract-with-citations
+
+Upload a PDF / image / TIFF / HL7 / fax → pages render at 300 DPI (`pypdfium2` + Pillow) → a **Claude vision extractor** with *forced tool-use* fills typed Pydantic schemas (labs with LOINC codes + reference ranges; intake demographics, meds, allergies, problems). The grounding contract is the generic **`ExtractedField[T]`** with an **XOR validator**: a field carries *either* a value + citation *or* an abstain reason — never both, never neither. Citations carry `page + normalized bbox`, so each extracted field maps back to a region of the source image. A **Tesseract OCR pass tightens the bounding boxes** — relocating each field's `raw_text` and replacing the VLM's coarse rectangle with a tight union box — which powers precise **click-to-highlight** in the side-by-side review UI. Low-confidence fields (<0.7) abstain rather than guess, and nothing is written to the chart until a clinician confirms.
+
+#### Stack at a glance
+
+| Layer | Tech |
+|---|---|
+| Orchestration | LangGraph `StateGraph` (slow lane) · raw Anthropic tool-use loop (fast lane) |
+| Models | Claude Sonnet 4.6 (synthesis) · Claude Haiku 4.5 (planner / fast lane / judge) |
+| Retrieval | BM25 (`rank-bm25`) + dense (`text-embedding-3-small`) · RRF fusion · Cohere `rerank-v3.5` |
+| Vision / docs | Claude vision extraction · `pypdfium2` + Pillow render · Tesseract OCR bbox tightening |
+| Grounding | Pydantic `ExtractedField[T]` XOR-validated citations · FHIR / guideline / document citation union |
+| Data | OpenEMR FHIR API over OAuth2 · NumPy vector scan · pickled corpus indexes |
+| Observability | LangSmith tracing with PHI-redacting wrappers |
+
 ### App URL
 
 | Environment | URL |
