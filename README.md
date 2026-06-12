@@ -1,3 +1,17 @@
+<div align="center">
+
+# 🩺 Clinical Co-Pilot — OpenEMR Fork
+
+### ▶️ [**Watch the Demo Video**](https://www.loom.com/share/51ae6fc7ce684f37bc3fc996cd2fa59f)
+
+[![Watch the Demo](https://img.shields.io/badge/▶_Watch_Demo-Loom-625DF5?style=for-the-badge&logo=loom&logoColor=white)](https://www.loom.com/share/51ae6fc7ce684f37bc3fc996cd2fa59f)
+
+*Walkthrough of the slow-lane / fast-lane chat and the universal document upload with field-level highlighting.*
+
+</div>
+
+---
+
 [![Syntax Status](https://github.com/openemr/openemr/actions/workflows/syntax.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/syntax.yml)
 [![Styling Status](https://github.com/openemr/openemr/actions/workflows/styling.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/styling.yml)
 [![Testing Status](https://github.com/openemr/openemr/actions/workflows/test.yml/badge.svg)](https://github.com/openemr/openemr/actions/workflows/test.yml)
@@ -25,6 +39,10 @@
 ## Clinical Co-Pilot (case-study fork)
 
 This fork adds a **Clinical Co-Pilot** — a verified, lane-aware agent for cross-coverage primary-care clinicians. Architecture is a PHP gateway inside OpenEMR plus a Python/FastAPI sidecar (`agent-service/`) running the LLM tool-use loop, verification middleware, and discrepancy engine. See [USERS.md](USERS.md) for the seven user-facing use cases, [ARCHITECTURE.md](ARCHITECTURE.md) for the full design, [PRD.md](PRD.md) for the product brief, and [AUDIT.md](AUDIT.md) for the OpenEMR integration audit.
+
+### Demo video
+
+📹 **[Watch the Clinical Co-Pilot demo (Loom)](https://www.loom.com/share/51ae6fc7ce684f37bc3fc996cd2fa59f)** — a walkthrough of the slow-lane/fast-lane chat and the universal document upload with field-level highlighting.
 
 ### App URL
 
