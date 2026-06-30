@@ -191,9 +191,11 @@ repos:
   # any release branch push.
   #
   # The PRD2 §15 ask is "Git Hook or equivalent that runs the eval
-  # suite and blocks regressions." With no GitLab runners available
-  # this hook IS the regression gate — `git push --no-verify` is the
-  # only way around it.
+  # suite and blocks regressions." Remote enforcement now lives in
+  # GitHub Actions (`.github/workflows/eval-gate.yml`, which runs the
+  # offline label + cached-replay gate on every PR plus the live gate
+  # when ANTHROPIC_API_KEY is set); this local pre-push hook is the
+  # fast offline gate — `git push --no-verify` is the only way around it.
   #
   # Install with:  prek install --hook-type pre-push
   # Skip ad-hoc:   PREK_SKIP=agent-service-eval-gate git push

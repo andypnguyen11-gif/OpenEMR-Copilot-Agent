@@ -5,11 +5,11 @@
 # Files under ``interface/copilot/`` and ``src/Services/Copilot/`` are
 # part of the OpenEMR PHP image that Railway deploys to
 # ``openemr-production-6c31.up.railway.app`` — the instance our testers
-# are using. The Railway service watches the GitLab remote
-# (``labs.gauntletai.com``) on the ``main`` branch — pushes there
-# auto-deploy. Pushes to the GitHub mirror (``oe-fork``) are not
-# wired to Railway and don't ship anything to testers; we let those
-# pass through without prompting.
+# are using. The Railway service watches the GitHub remote
+# (``andypnguyen11-gif/OpenEMR-Copilot-Agent``) on the ``main`` branch —
+# pushes there auto-deploy. Pushes to other remotes (e.g. the upstream
+# ``openemr/openemr``) are not wired to Railway and don't ship anything
+# to testers; we let those pass through without prompting.
 #
 # This hook is wired in ``.pre-commit-config.yaml`` as a ``pre-push``
 # stage with a ``files:`` regex that limits invocation to copilot PHP
@@ -31,7 +31,7 @@
 
 set -eu
 
-# Only the GitLab remote on the main branch deploys via Railway. Pre-commit
+# Only the GitHub prod remote on the main branch deploys via Railway. Pre-commit
 # and prek both export PRE_COMMIT_REMOTE_URL / PRE_COMMIT_REMOTE_BRANCH for
 # pre-push hooks. If either is missing (older runner), fall through and
 # prompt anyway — better to over-prompt than to miss a prod-bound push.
@@ -42,12 +42,12 @@ case "$remote_url" in
     "")
         # Unknown remote — fall through and prompt, defensively.
         ;;
-    *labs.gauntletai.com*)
-        # GitLab remote — Railway watches this. Continue to the branch check.
+    *andypnguyen11-gif/OpenEMR-Copilot-Agent*)
+        # GitHub prod remote — Railway watches this. Continue to the branch check.
         ;;
     *)
-        # Any other remote (GitHub mirror, etc.) — no prod deploy.
-        echo "  (skipping copilot-prod-push-confirm — push target is not the GitLab prod remote)"
+        # Any other remote (upstream openemr/openemr, etc.) — no prod deploy.
+        echo "  (skipping copilot-prod-push-confirm — push target is not the GitHub prod remote)"
         exit 0
         ;;
 esac
@@ -81,7 +81,7 @@ cat <<'EOF'
     interface/copilot/      and/or
     src/Services/Copilot/
 
-  Railway auto-deploys GitLab/main pushes into the production
+  Railway auto-deploys GitHub/main pushes into the production
   OpenEMR service (openemr-production-6c31.up.railway.app), which
   is what the testers are using. Only continue if you intend to
   ship this.

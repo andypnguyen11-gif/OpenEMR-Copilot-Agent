@@ -1,5 +1,19 @@
 # OpenEMR Development Guide
 
+## Source of Truth & Deployment
+
+- **Git source of truth: GitHub** — `andypnguyen11-gif/OpenEMR-Copilot-Agent`
+  (branch `main`). The old GitLab remote (`labs.gauntletai.com`) is
+  **deprecated and no longer used** — do not push there.
+- **Production:** the Railway `openemr` service auto-deploys on push to GitHub
+  `main` → https://openemr-production-6c31.up.railway.app (builds the root
+  `Dockerfile`; the Python copilot app is a separate `agent-service`).
+- **CI:** GitHub Actions `.github/workflows/eval-gate.yml` runs the eval gate on
+  PRs and pushes to `main`.
+- The `Week 2` submission docs (`SUBMISSIONW2.md`, `PRD2.md`, `W2_ARCHITECTURE.md`,
+  `WEEK2_README.md`, `TASKS*.md`, the `plans/`) describe the original **GitLab**
+  submission and are kept as historical records — do not rewrite them.
+
 ## Project Structure
 
 ```

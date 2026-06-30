@@ -182,14 +182,20 @@ In `production` (`APP_ENV=production`), missing required variables raise
 `ConfigError` at startup so a misconfigured deploy fails loudly instead of
 silently running with insecure defaults.
 
-## Local quality gate
+## Quality gate
 
-The pre-merge gate runs locally — there is no GitLab CI / GitHub Actions /
-Railway auto-deploy in MVP scope (see `../TASKS.md`):
+The eval gate runs in two places. Locally, before pushing:
 
 ```bash
 make check    # ruff + mypy + pytest (offline; integration tests skipped)
 ```
+
+Remotely, on every PR and push to `main`, via GitHub Actions
+(`../.github/workflows/eval-gate.yml`): targeted pytest + the offline
+label/manifest validation + cached-replay regression always run, and the
+full live extraction gate (`make eval-extraction-gate`) runs when the
+`ANTHROPIC_API_KEY` repo secret is configured. Railway auto-deploys
+`main` from GitHub once merged.
 
 Integration tests live under `tests/integration/` and are tagged with the
 `integration` pytest marker. They are skipped by default and only run when
