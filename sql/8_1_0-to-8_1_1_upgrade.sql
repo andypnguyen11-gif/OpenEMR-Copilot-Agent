@@ -112,3 +112,10 @@
 --  #IfMBOEncounterNeeded
 --    desc: Add encounter to the form_misc_billing_options table
 --    arguments: none
+
+#IfMissingColumn documents chart_write_started_at
+ALTER TABLE `documents`
+  ADD COLUMN `chart_write_started_at` DATETIME NULL DEFAULT NULL COMMENT 'Co-Pilot: lock-acquired timestamp, bounded by 5-minute TTL',
+  ADD COLUMN `chart_written_at` DATETIME NULL DEFAULT NULL COMMENT 'Co-Pilot: successful chart-write COMMIT timestamp',
+  ADD COLUMN `chart_write_summary` LONGTEXT NULL DEFAULT NULL COMMENT 'Co-Pilot: JSON summary of the original chart write for idempotent replay';
+#EndIf

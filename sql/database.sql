@@ -3,7 +3,7 @@
 --
 -- Keep v_database in sync with $v_database in version.php.
 -- CI will fail if they don't match.
--- v_database: 538
+-- v_database: 539
 --
 
 --
@@ -1422,6 +1422,9 @@ CREATE TABLE `documents` (
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
   `foreign_reference_id` bigint(20) default NULL,
   `foreign_reference_table` VARCHAR(40) default NULL,
+  `chart_write_started_at` DATETIME NULL DEFAULT NULL COMMENT 'Co-Pilot: lock-acquired timestamp, bounded by 5-minute TTL',
+  `chart_written_at` DATETIME NULL DEFAULT NULL COMMENT 'Co-Pilot: successful chart-write COMMIT timestamp',
+  `chart_write_summary` LONGTEXT NULL DEFAULT NULL COMMENT 'Co-Pilot: JSON summary of the original chart write for idempotent replay',
   PRIMARY KEY  (`id`),
   UNIQUE KEY `drive_uuid` (`drive_uuid`),
   UNIQUE KEY `uuid` (`uuid`),
