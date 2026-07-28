@@ -164,9 +164,22 @@ trait BaseTrait
                 // Wait for the active tab element to exist (handles page transitions)
                 $this->client->waitFor(XpathsConstants::ACTIVE_TAB);
 
-                // Wait for each loading indicator to disappear from the live DOM
+                // Wait for each loading indicator to disappear from the live
+                // DOM. Read the tab text via JS instead of Panther's
+                // waitForElementToNotContain: its wait condition passes
+                // WebDriver getText() straight to str_contains(), and getText()
+                // can come back null mid page-transition, crashing the wait
+                // with a TypeError instead of retrying.
                 foreach (explode('||', $loading) as $loadingText) {
-                    $this->client->waitForElementToNotContain(XpathsConstants::ACTIVE_TAB, $loadingText);
+                    $this->client->wait(30)->until(function () use ($loadingText): bool {
+                        $tabText = $this->client->executeScript(
+                            'const el = document.evaluate(arguments[0], document, null,'
+                                . ' XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;'
+                                . ' return el ? el.innerText : null;',
+                            [XpathsConstants::ACTIVE_TAB]
+                        );
+                        return is_string($tabText) && !str_contains($tabText, $loadingText);
+                    });
                 }
 
                 // Success - exit retry loop

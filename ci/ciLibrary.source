@@ -84,6 +84,19 @@ convert_coverage() {
 }
 
 dockers_env_start() {
+    # Retry to ride out transient registry failures (e.g. Docker Hub
+    # connection resets during image pull). No teardown between attempts:
+    # this is also called mid-run (selenium_video_start, setup_e2e_bookends)
+    # where existing containers and volumes must be preserved.
+    local attempt
+    for attempt in 1 2; do
+        # shellcheck disable=SC2310  # Intentionally checking exit code in condition
+        if dc up --detach --quiet-pull --wait --wait-timeout 300; then
+            return 0
+        fi
+        echo "docker compose up failed (attempt ${attempt}), retrying in 15s..."
+        sleep 15
+    done
     dc up --detach --quiet-pull --wait --wait-timeout 300
 }
 

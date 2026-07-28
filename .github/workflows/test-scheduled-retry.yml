@@ -1,0 +1,36 @@
+##
+# Auto-retry for the scheduled nightly test run.
+#
+# The nightly matrix (~20 docker configs, long Selenium e2e suites) fails
+# intermittently on transient causes: registry pulls, browser timing flakes,
+# container startup races. When "Test (Scheduled)" concludes in failure,
+# re-run only its failed jobs, up to two retries. A run that passes on
+# retry shows as green (GitHub displays the latest attempt's conclusion).
+# Persistent real failures still end red after the third attempt.
+
+name: Test (Scheduled) Retry
+
+on:
+  workflow_run:
+    workflows: [Test (Scheduled)]
+    types: [completed]
+
+permissions:
+  actions: write
+
+jobs:
+  rerun-failed-jobs:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    runs-on: ubuntu-24.04
+    steps:
+    - name: Re-run failed jobs
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.event.workflow_run.id }}
+        RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      run: |
+        echo "Re-running failed jobs of run ${RUN_ID} (attempt ${RUN_ATTEMPT} failed)"
+        gh run rerun "${RUN_ID}" --failed
